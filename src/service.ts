@@ -1,5 +1,6 @@
 import { Lifecycle } from "@well-known-components/interfaces"
 import { setupRouter } from "./controllers/routes"
+import { setupSubjects } from "./controllers/subjects"
 import { AppComponents, GlobalContext, TestComponents } from "./types"
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
@@ -17,6 +18,8 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   components.server.use(router.allowedMethods())
   // set the context to be passed to the handlers
   components.server.setContext(globalContext)
+
+  setupSubjects(components.messageBroker)
 
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
