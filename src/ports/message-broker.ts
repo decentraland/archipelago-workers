@@ -1,64 +1,81 @@
-import { IConfigComponent, ILoggerComponent } from "@well-known-components/interfaces"
-import { connect, JSONCodec } from "nats"
+import { IBaseComponent, IConfigComponent, ILoggerComponent } from "@well-known-components/interfaces"
+import { connect, JSONCodec, StringCodec, NatsConnection, Subscription } from "nats"
+import { BaseComponents } from "../types"
 
 export declare type IMessageBrokerComponent = {
-  publish(subject: string, message: any): void
-  subscribe(subject: string, handler: Function, respond?: boolean): void
-}
+  publish(topic: string, message: any): void
+  subscribe(topic: string, handler: Function): Subscription
 
-export declare type MessageBrokerComponents = {
-  config: IConfigComponent
-  logs: ILoggerComponent
+  start(): Promise<void>
+  stop(): Promise<void>
 }
 
 export async function createMessageBrokerComponent(
-  components: MessageBrokerComponents
-): Promise<IMessageBrokerComponent> {
+  components: Pick<BaseComponents, "config" | "logs">
+): Promise<IMessageBrokerComponent & IBaseComponent> {
   const { config, logs } = components
   const logger = logs.getLogger("MessageBroker")
   const jsonCodec = JSONCodec()
+  const stringCodec = StringCodec()
 
   // config
-  const port = await config.requireNumber("NATS_SERVER_PORT")
-  const host = await config.requireString("NATS_SERVER_HOST")
+  const natsUrl = (await config.getString("NATS_URL")) || "nats.decentraland.zone:4222"
+  const natsConfig = { servers: `${natsUrl}` }
+  let natsConnection: NatsConnection
 
-  const serverConfig = { servers: `${host}:${port}` }
-  const server = await connect(serverConfig)
-
-  const publish = (subject: string, message: any) => {
-    server.publish(subject, jsonCodec.encode(message))
+  function publish(topic: string, message: any): void {
+    if (message instanceof Uint8Array) {
+      natsConnection.publish(topic, message)
+    } else if (typeof message === "object") {
+      natsConnection.publish(topic, jsonCodec.encode(message))
+    } else if (typeof message === "string") {
+      natsConnection.publish(topic, stringCodec.encode(message))
+    } else {
+      logger.error(`Invalid message: ${JSON.stringify(message)}`)
+    }
   }
 
-  const subscribe = (subject: string, handler: Function, respond?: boolean) => {
-    const subscription = server.subscribe(subject)
+  function subscribe(topic: string, handler: Function): Subscription {
+    const subscription = natsConnection.subscribe(topic)
     ;(async () => {
       for await (const message of subscription) {
         try {
           if (message.data.length) {
-            const data = jsonCodec.decode(message.data) as any
-            logger.debug(`[${subscription.getProcessed()}]: ${message.subject}: ${JSON.stringify(data, null, 2)}`)
+            const data = message.data
             const payload = await handler(data)
-            if (respond) {
-              message.respond(jsonCodec.encode(payload))
-            }
           } else {
-            logger.debug(`[${subscription.getProcessed()}]: ${message.subject}`)
             const payload = await handler()
-            if (respond) {
-              message.respond(jsonCodec.encode(payload))
-            }
           }
         } catch (err: any) {
           logger.error(err)
         }
       }
     })()
+    return subscription
   }
 
-  const nats: IMessageBrokerComponent = {
+  async function start() {
+    try {
+      natsConnection = await connect(natsConfig)
+      logger.info(`Connected to NATS: ${natsUrl}`)
+    } catch (error) {
+      logger.error(`An error occurred trying to connect to the NATS server: ${natsUrl}`)
+      throw error
+    }
+  }
+
+  async function stop() {
+    try {
+      await natsConnection.close()
+    } catch (error) {
+      logger.error(`An error occurred trying to close the connection to the NATS server: ${natsUrl}`)
+    }
+  }
+
+  return {
     publish,
     subscribe,
+    start,
+    stop,
   }
-
-  return nats
 }

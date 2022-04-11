@@ -7,6 +7,7 @@ import type {
   IMetricsComponent,
 } from "@well-known-components/interfaces"
 import { metricDeclarations } from "./metrics"
+import { IArchipelagoComponent } from "./ports/archipelago"
 import { IMessageBrokerComponent } from "./ports/message-broker"
 
 export type GlobalContext = {
@@ -21,6 +22,7 @@ export type BaseComponents = {
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   messageBroker: IMessageBrokerComponent
+  archipelago: IArchipelagoComponent
 }
 
 // components used in runtime
