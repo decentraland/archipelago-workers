@@ -15,7 +15,7 @@ export function setupTopics(globalContext: GlobalContext): void {
 
   archipelago.subscribeToUpdates((updates: IslandUpdates) => {
     if (Object.keys(updates).length) {
-      messageBroker.publish("island_updates", updates)
+      messageBroker.publish("island_changes", updates)
     }
   })
 }
