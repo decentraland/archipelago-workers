@@ -42,9 +42,9 @@ export async function createMessageBrokerComponent(
         try {
           if (message.data.length) {
             const data = message.data
-            const payload = await handler(data)
+            await handler(data)
           } else {
-            const payload = await handler()
+            await handler()
           }
         } catch (err: any) {
           logger.error(err)
