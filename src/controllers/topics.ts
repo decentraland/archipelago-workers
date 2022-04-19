@@ -1,12 +1,23 @@
 import { IslandUpdates, PeerPositionChange } from "@dcl/archipelago"
-import { JSONCodec } from "nats"
+import { JSONCodec, StringCodec } from "nats"
 import { GlobalContext } from "../types"
 
 const jsonCodec = JSONCodec()
+const stringCodec = StringCodec()
 
 export function setupTopics(globalContext: GlobalContext): void {
   const messageBroker = globalContext.components.messageBroker
   const archipelago = globalContext.components.archipelago
+
+  messageBroker.subscribe("peer_connect", (data: Uint8Array) => {
+    const peerId = stringCodec.decode(data)
+    archipelago.clearPeers(peerId)
+  })
+
+  messageBroker.subscribe("peer_disconnect", (data: Uint8Array) => {
+    const peerId = stringCodec.decode(data)
+    archipelago.clearPeers(peerId)
+  })
 
   messageBroker.subscribe("heartbeat", (data: Uint8Array) => {
     const peerPositionChange = jsonCodec.decode(data) as PeerPositionChange
