@@ -1,4 +1,4 @@
-import { ArchipelagoController, defaultArchipelagoController } from "@dcl/archipelago"
+import { ArchipelagoController, defaultArchipelagoController } from "../logic/archipelago"
 import { IConfigComponent } from "@well-known-components/interfaces"
 
 export declare type IArchipelagoComponent = ArchipelagoController

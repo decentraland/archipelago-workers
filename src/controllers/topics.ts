@@ -1,4 +1,4 @@
-import { IslandUpdates, PeerPositionChange } from "@dcl/archipelago"
+import { IslandUpdates, PeerPositionChange } from "../logic/archipelago"
 import { JSONCodec, StringCodec } from "nats"
 import { GlobalContext } from "../types"
 
