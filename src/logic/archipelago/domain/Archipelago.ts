@@ -11,6 +11,8 @@ import {
 } from "../types/interfaces"
 import { findMax, popFirstByOrder, popMax } from "../misc/utils"
 import { IArchipelago } from "./interfaces"
+import { AccessToken } from 'livekit-server-sdk';
+
 
 const X_AXIS = 0
 const Y_AXIS = 1
@@ -57,6 +59,30 @@ type InternalIsland = Island & {
   _recalculateGeometryIfNeeded: () => void
 }
 
+interface ConnectionGenerator {
+  generate(peerId: string, islandId: string): string
+}
+
+class WsConnectionGenerator implements ConnectionGenerator {
+  constructor(private url: string) { }
+
+  generate(peerId: string, islandId: string): string {
+    return `ws-room:${this.url}/${islandId}`
+  }
+}
+
+class LivekitConnectionGenerator implements ConnectionGenerator {
+  constructor(private url: string, private apiKey: string, private apiSecret: string) { }
+
+  generate(peerId: string, islandId: string): string {
+    const token = new AccessToken(this.apiKey, this.apiSecret, {
+      identity: peerId
+    });
+    token.addGrant({ roomJoin: true, roomCreate: true, room: islandId });
+    return `livekit:${this.url}?access_token=${token.toJwt()}`
+  }
+}
+
 export class Archipelago implements IArchipelago {
   private peers: Map<string, PeerData> = new Map()
   private islands: Map<string, InternalIsland> = new Map()
@@ -65,12 +91,25 @@ export class Archipelago implements IArchipelago {
 
   private currentSequence: number = 0
 
+  private connectionGenerator: ConnectionGenerator
+
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
   }
 
   constructor(options: ArchipelagoParameters) {
     this.options = { ...defaultOptions(), ...options }
+
+    if (process.env.LIVEKIT_URL &&
+      process.env.LIVEKIT_API_KEY &&
+      process.env.LIVEKIT_API_SECRET) {
+
+      this.connectionGenerator = new LivekitConnectionGenerator(process.env.LIVEKIT_URL, process.env.LIVEKIT_API_KEY, process.env.LIVEKIT_API_SECRET)
+    } else if (process.env.WS_ROOM_SERVICE_URL) {
+      this.connectionGenerator = new WsConnectionGenerator(process.env.WS_ROOM_SERVICE_URL)
+    } else {
+      throw new Error('No enough parameters provided to assign room service url')
+    }
   }
 
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
@@ -373,7 +412,8 @@ export class Archipelago implements IArchipelago {
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
-      updates[peer.id] = { action: "changeTo", islandId, fromIslandId: previousIslandId }
+      const connStr = this.connectionGenerator.generate(peer.id, islandId)
+      updates[peer.id] = { action: "changeTo", islandId, fromIslandId: previousIslandId, connStr }
     }
 
     return updates

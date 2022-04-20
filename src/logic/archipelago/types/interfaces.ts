@@ -42,6 +42,7 @@ export interface ArchipelagoController {
 export type ChangeToIslandUpdate = {
   action: "changeTo"
   islandId: string
+  connStr: string
   fromIslandId?: string
 }
 
