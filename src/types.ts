@@ -6,8 +6,8 @@ import type {
   IBaseComponent,
   IMetricsComponent,
 } from "@well-known-components/interfaces"
+import { IArchipelagoComponent } from "./logic/archipelago/component"
 import { metricDeclarations } from "./metrics"
-import { IArchipelagoComponent } from "./ports/archipelago"
 import { IMessageBrokerComponent } from "./ports/message-broker"
 
 export type GlobalContext = {

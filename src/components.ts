@@ -6,7 +6,7 @@ import { createMetricsComponent } from "@well-known-components/metrics"
 import { AppComponents, GlobalContext } from "./types"
 import { metricDeclarations } from "./metrics"
 import { createMessageBrokerComponent } from "./ports/message-broker"
-import { createArchipelagoComponent } from "./ports/archipelago"
+import { createArchipelagoComponent } from "./logic/archipelago/component"
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
