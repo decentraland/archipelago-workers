@@ -3,7 +3,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
-    "test": ""
+    "test": "jest --forceExit --detectOpenHandles --coverage --verbose"
   },
   "devDependencies": {
     "@types/node": "^14.17.33",

@@ -4,7 +4,7 @@ import { BaseComponents } from "../types"
 
 export declare type IMessageBrokerComponent = {
   publish(topic: string, message: any): void
-  subscribe(topic: string, handler: Function): Subscription
+  subscribe(topic: string, handler: Function): void
 
   start(): Promise<void>
   stop(): Promise<void>
@@ -35,7 +35,7 @@ export async function createMessageBrokerComponent(
     }
   }
 
-  function subscribe(topic: string, handler: Function): Subscription {
+  function subscribe(topic: string, handler: Function): void {
     const subscription = natsConnection.subscribe(topic)
     ;(async () => {
       for await (const message of subscription) {
@@ -51,7 +51,6 @@ export async function createMessageBrokerComponent(
         }
       }
     })()
-    return subscription
   }
 
   async function start() {
