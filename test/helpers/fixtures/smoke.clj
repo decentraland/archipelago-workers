@@ -12,11 +12,6 @@
 (assert/equal {} {})
 (assert/equal #{1} #{1})
 
-(assert/throws (throwIf 1))
-(assert/throws (throwIf (= 1 1)))
-(assert/throws (throwIf (not (= 1 1))))
-(assert/throws (assert/equal #{1} #{2}))
-
 ; initialize the archipelago
 (configure)
 
