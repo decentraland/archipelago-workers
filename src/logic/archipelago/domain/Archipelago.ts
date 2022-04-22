@@ -99,14 +99,14 @@ export class Archipelago implements IArchipelago {
   constructor(options: ArchipelagoParameters) {
     this.options = { ...defaultOptions(), ...options }
 
-    if (process.env.LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET) {
+    if (this.options.livekit?.url && this.options.livekit?.apiKey && this.options.livekit?.apiSecret) {
       this.connectionGenerator = new LivekitConnectionGenerator(
-        process.env.LIVEKIT_URL,
-        process.env.LIVEKIT_API_KEY,
-        process.env.LIVEKIT_API_SECRET
+        this.options.livekit.url,
+        this.options.livekit.apiKey,
+        this.options.livekit.apiSecret
       )
-    } else if (process.env.WS_ROOM_SERVICE_URL) {
-      this.connectionGenerator = new WsConnectionGenerator(process.env.WS_ROOM_SERVICE_URL)
+    } else if (this.options.wsRoomServiceUrl) {
+      this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomServiceUrl)
     } else {
       throw new Error("No enough parameters provided to assign room service url")
     }

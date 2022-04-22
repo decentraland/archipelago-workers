@@ -10,7 +10,7 @@ type PositionWithId = [string, number, number, number]
 describe("archipelago", () => {
   let archipelago: Archipelago
   beforeEach(() => {
-    archipelago = new Archipelago({ joinDistance: 64, leaveDistance: 80 })
+    archipelago = new Archipelago({ joinDistance: 64, leaveDistance: 80, wsRoomServiceUrl: "test_url" })
   })
 
   function setPositionArrays(...positions: PositionWithId[]) {

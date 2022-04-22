@@ -60,13 +60,19 @@ export type ArchipelagoOptions = {
   joinDistance: number
   leaveDistance: number
   islandIdGenerator: IdGenerator
+  livekit?: {
+    url: string
+    apiKey: string
+    apiSecret: string
+  }
+  wsRoomServiceUrl?: string
 }
 
 export type MandatoryArchipelagoOptions = Pick<ArchipelagoOptions, "joinDistance" | "leaveDistance">
 
 export type ArchipelagoParameters = MandatoryArchipelagoOptions & Partial<ArchipelagoOptions>
 
-export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, 'islandIdGenerator'>>
+export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, "islandIdGenerator">>
 
 export type Logger = {
   info(message?: any, ...optionalParams: any[]): void

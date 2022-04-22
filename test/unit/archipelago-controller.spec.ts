@@ -8,7 +8,7 @@ describe("archipelago controller", () => {
 
   beforeEach(() => {
     controller = defaultArchipelagoController({
-      archipelagoParameters: { joinDistance: 64, leaveDistance: 80 },
+      archipelagoParameters: { joinDistance: 64, leaveDistance: 80, wsRoomServiceUrl: "test_url" },
       flushFrequency: 0.05,
       workerSrcPath: "./dist/logic/archipelago/worker/worker.js",
     })
