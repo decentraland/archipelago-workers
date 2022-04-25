@@ -18,7 +18,6 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     const getPeerId = ([peerId, _]: [string, number]) => peerId
 
     const inactivePeers = Array.from(lastPeerHeartbeats).filter(hasExpired).map(getPeerId)
-    console.log(lastPeerHeartbeats, inactivePeers)
 
     inactivePeers.forEach((peerId) => lastPeerHeartbeats.delete(peerId))
     archipelago.clearPeers(...inactivePeers)
