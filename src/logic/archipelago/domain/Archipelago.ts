@@ -63,19 +63,19 @@ interface ConnectionGenerator {
 }
 
 class WsConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string) {}
+  constructor(private url: string) { }
 
   generate(peerId: string, islandId: string): string {
-    return `ws-room:${this.url}/${islandId}`
+    return `ws-room:${this.url}/${islandId}?identity=${peerId}`
   }
 }
 
 class LivekitConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string, private apiKey: string, private apiSecret: string) {}
+  constructor(private url: string, private apiKey: string, private apiSecret: string) { }
 
   generate(peerId: string, islandId: string): string {
     const token = new AccessToken(this.apiKey, this.apiSecret, {
-      identity: peerId,
+      identity: peerId
     })
     token.addGrant({ roomJoin: true, roomCreate: true, room: islandId })
     return `livekit:${this.url}?access_token=${token.toJwt()}`
