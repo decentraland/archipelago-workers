@@ -66,7 +66,8 @@ class WsConnectionGenerator implements ConnectionGenerator {
   constructor(private url: string) { }
 
   generate(peerId: string, islandId: string): string {
-    return `ws-room:${this.url}/${islandId}?identity=${peerId}`
+    const identity = btoa(peerId)
+    return `ws-room:${this.url}/${islandId}?identity=${identity}`
   }
 }
 
