@@ -1,12 +1,6 @@
 import { IslandUpdates, PeerPositionChange, Position3D } from "../logic/archipelago"
 import { GlobalContext } from "../types"
-import {
-  PeerConnectMessage,
-  PeerDisconnectMessage,
-  HeartbeatMessage,
-  IslandChangedMessage,
-  IslandLeftMessage,
-} from "./proto/nats_pb"
+import { HeartbeatMessage, IslandChangedMessage, IslandLeftMessage } from "./proto/nats_pb"
 
 const lastPeerHeartbeats = new Map<string, number>()
 
@@ -28,30 +22,31 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     archipelago.clearPeers(...inactivePeers)
   }, checkHeartbeatInterval)
 
-  messageBroker.subscribe("peer.*.connect", (data: Uint8Array) => {
+  messageBroker.subscribe("peer.*.connect", ({ topic }) => {
     try {
-      const message = PeerConnectMessage.deserializeBinary(data)
-      archipelago.clearPeers(message.getPeerId())
+      const id = topic.getLevel(1)
+      archipelago.clearPeers(id)
     } catch (e) {
       logger.error(`cannot process peer_connect message ${e}`)
     }
   })
 
-  messageBroker.subscribe("peer.*.disconnect", (data: Uint8Array) => {
+  messageBroker.subscribe("peer.*.disconnect", ({ topic }) => {
     try {
-      const message = PeerDisconnectMessage.deserializeBinary(data)
-      archipelago.clearPeers(message.getPeerId())
+      const id = topic.getLevel(1)
+      archipelago.clearPeers(id)
     } catch (e) {
       logger.error(`cannot process peer_disconnect message ${e}`)
     }
   })
 
-  messageBroker.subscribe("peer.*.heartbeat", (data: Uint8Array) => {
+  messageBroker.subscribe("peer.*.heartbeat", ({ data, topic }) => {
     try {
+      const id = topic.getLevel(1)
       const message = HeartbeatMessage.deserializeBinary(data)
 
       const peerPositionChange: PeerPositionChange = {
-        id: message.getId(),
+        id,
         position: message.getPositionList() as Position3D,
       }
 
