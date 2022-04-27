@@ -1,5 +1,5 @@
 import { IBaseComponent, IConfigComponent } from "@well-known-components/interfaces"
-import { Subscription } from "nats"
+import { Subscription } from "../../src/ports/message-broker"
 import { IMessageBrokerComponent } from "../../src/ports/message-broker"
 import { BaseComponents } from "../../src/types"
 
@@ -8,7 +8,10 @@ export async function createLocalMessageBrokerComponent(
 ): Promise<IMessageBrokerComponent & IBaseComponent> {
   function publish(topic: string, message: any): void {}
 
-  function subscribe(topic: string, handler: Function): void {}
+  function subscribe(topic: string, handler: Function): Subscription {
+    const unsubscribe = () => {}
+    return { unsubscribe }
+  }
 
   async function start() {}
 
