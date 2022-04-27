@@ -12,6 +12,7 @@ import {
 import { findMax, popFirstByOrder, popMax } from "../misc/utils"
 import { IArchipelago } from "./interfaces"
 import { AccessToken } from "livekit-server-sdk"
+import * as jwt from 'jsonwebtoken'
 
 const X_AXIS = 0
 const Y_AXIS = 1
@@ -27,6 +28,8 @@ const squaredDistance = (p1: Position3D, p2: Position3D) => {
 
 export function defaultOptions() {
   return {
+    livekit: {},
+    wsRoomService: {},
     maxPeersPerIsland: 200,
     islandIdGenerator: sequentialIdGenerator("I"),
   }
@@ -63,11 +66,14 @@ interface ConnectionGenerator {
 }
 
 class WsConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string) { }
+  constructor(private url: string, private secret: string) { }
 
   generate(peerId: string, islandId: string): string {
-    const identity = Buffer.from(peerId, 'binary').toString('base64')
-    return `ws-room:${this.url}/${islandId}?identity=${identity}`
+    const token = jwt.sign({ peerId }, this.secret, {
+      audience: this.url
+    })
+
+    return `ws-room:${this.url}/${islandId}?access_token=${token}`
   }
 }
 
@@ -100,14 +106,14 @@ export class Archipelago implements IArchipelago {
   constructor(options: ArchipelagoParameters) {
     this.options = { ...defaultOptions(), ...options }
 
-    if (this.options.livekit?.url && this.options.livekit?.apiKey && this.options.livekit?.apiSecret) {
+    if (this.options.livekit.url && this.options.livekit.apiKey && this.options.livekit.apiSecret) {
       this.connectionGenerator = new LivekitConnectionGenerator(
         this.options.livekit.url,
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-    } else if (this.options.wsRoomServiceUrl) {
-      this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomServiceUrl)
+    } else if (this.options.wsRoomService && this.options.wsRoomService.url && this.options.wsRoomService.secret) {
+      this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
     } else {
       throw new Error("No enough parameters provided to assign room service url")
     }

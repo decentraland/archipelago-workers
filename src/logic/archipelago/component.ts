@@ -20,7 +20,10 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
     apiKey: await config.requireString("LIVEKIT_API_KEY"),
     apiSecret: await config.requireString("LIVEKIT_API_SECRET"),
   }
-  const wsRoomServiceUrl = await config.requireString("WS_ROOM_SERVICE_URL")
+  const wsRoomService = {
+    url: await config.requireString("WS_ROOM_SERVICE_URL"),
+    secret: await config.requireString("WS_ROOM_SERVICE_SECRET")
+  }
 
   const controller = defaultArchipelagoController({
     flushFrequency,
@@ -29,7 +32,7 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
       leaveDistance,
       maxPeersPerIsland,
       livekit,
-      wsRoomServiceUrl,
+      wsRoomService
     },
   })
 
