@@ -2,9 +2,9 @@ import { IConfigComponent } from "@well-known-components/interfaces"
 import { defaultArchipelagoController } from "./controller/ArchipelagoController"
 import { ArchipelagoController } from "./types/interfaces"
 
-export declare type IArchipelagoComponent = ArchipelagoController
+export type IArchipelagoComponent = ArchipelagoController
 
-export declare type ArchipelagoComponents = {
+export type ArchipelagoComponents = {
   config: IConfigComponent
 }
 
