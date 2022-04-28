@@ -13,7 +13,7 @@ import get from "lodash.get"
 import { createRandomizer } from "../helpers/random"
 import { IdGenerator, sequentialIdGenerator } from "../../src/logic/archipelago/misc/idGenerator"
 
-export const defaultArchipelagoOptions = { joinDistance: 64, leaveDistance: 80, wsRoomService: { url: "test_url", secret: '123456' } }
+export const defaultArchipelagoOptions = { joinDistance: 64, leaveDistance: 80, wsRoomService: { url: "test_url", secret: '123456' }, livekit: {} }
 
 export function expectIslandWith(archipelago: Archipelago, ...ids: string[]) {
   assert(Array.isArray(ids))
