@@ -13,7 +13,7 @@ import get from "lodash.get"
 import { createRandomizer } from "../helpers/random"
 import { IdGenerator, sequentialIdGenerator } from "../../src/logic/archipelago/misc/idGenerator"
 
-export const defaultArchipelagoOptions = { joinDistance: 64, leaveDistance: 80, wsRoomServiceUrl: "test_url" }
+export const defaultArchipelagoOptions = { joinDistance: 64, leaveDistance: 80, wsRoomService: { url: "test_url", secret: '123456' } }
 
 export function expectIslandWith(archipelago: Archipelago, ...ids: string[]) {
   assert(Array.isArray(ids))
@@ -28,9 +28,9 @@ function expectIslandWithPeerIdsIn(ids: string[], islands: Island[]) {
   if (!condition) {
     throw new Error(
       "\nThere are no islands with the peers:\n  " +
-        JSON.stringify(sortedIds) +
-        "\nIslands have:\n" +
-        islands.map((it) => "  " + it.id + " -> " + JSON.stringify(it.peers.map((peer) => peer.id).sort())).join("\n")
+      JSON.stringify(sortedIds) +
+      "\nIslands have:\n" +
+      islands.map((it) => "  " + it.id + " -> " + JSON.stringify(it.peers.map((peer) => peer.id).sort())).join("\n")
     )
   }
 }
@@ -132,46 +132,46 @@ export function configureLibs(closure: BaseClosure) {
   })
 
   // (* ...args)
-  closure.defJsFunction("*", async function (...args: any[]) {
+  closure.defJsFunction("*", async function(...args: any[]) {
     return args.reduce((a, b) => a * b, 1)
   })
 
   // (+ ...args)
-  closure.defJsFunction("+", async function (...args: any[]) {
+  closure.defJsFunction("+", async function(...args: any[]) {
     return args.reduce((a, b) => a + b, 0)
   })
 
   // (- ...args)
-  closure.defJsFunction("-", async function (...args: any[]) {
+  closure.defJsFunction("-", async function(...args: any[]) {
     return args.reduce((a, b) => a - b)
   })
 
   // (/ ...args)
-  closure.defJsFunction("/", async function (...args: any[]) {
+  closure.defJsFunction("/", async function(...args: any[]) {
     return args.reduce((a, b) => a / b)
   })
 
   // (= a b)
-  closure.defJsFunction("=", async function (a, b) {
+  closure.defJsFunction("=", async function(a, b) {
     assert.deepStrictEqual(arguments.length, 2, "(= a b) requires exactly two arguments")
     return deepEqual(a, b)
   })
 
   // (not a)
-  closure.defJsFunction("not", async function (a) {
+  closure.defJsFunction("not", async function(a) {
     assert.deepStrictEqual(arguments.length, 1, "(not arg) requires exactly one argument, got: " + arguments.length)
     return !a
   })
 
   // (assert/equal a b)
-  closure.defJsFunction("assert/equal", async function (a, b) {
+  closure.defJsFunction("assert/equal", async function(a, b) {
     assert.deepStrictEqual(arguments.length, 2, "assert/equal requires exactly two arguments")
     assert.deepStrictEqual(a, b)
     return true
   })
 
   // (assert/notEqual a b)
-  closure.defJsFunction("assert/notEqual", async function (a, b) {
+  closure.defJsFunction("assert/notEqual", async function(a, b) {
     assert.strictEqual(arguments.length, 2, "assert/notEqual requires exactly two arguments")
     assert.notDeepStrictEqual(a, b)
     return true
@@ -188,14 +188,14 @@ export function configureLibs(closure: BaseClosure) {
   })
 
   // (assert "name" condition)
-  closure.defJsFunction("throwIf", async function (condition) {
+  closure.defJsFunction("throwIf", async function(condition) {
     if (condition) {
       throw new Error("bla")
     }
   })
 
   // (assert "name" condition)
-  closure.defJsFunction("assert", async function (name, condition) {
+  closure.defJsFunction("assert", async function(name, condition) {
     assert(condition, name)
   })
 
