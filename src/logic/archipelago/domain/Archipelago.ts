@@ -28,8 +28,6 @@ const squaredDistance = (p1: Position3D, p2: Position3D) => {
 
 export function defaultOptions() {
   return {
-    livekit: {},
-    wsRoomService: {},
     maxPeersPerIsland: 200,
     islandIdGenerator: sequentialIdGenerator("I"),
   }
@@ -106,13 +104,13 @@ export class Archipelago implements IArchipelago {
   constructor(options: ArchipelagoParameters) {
     this.options = { ...defaultOptions(), ...options }
 
-    if (this.options.livekit.url && this.options.livekit.apiKey && this.options.livekit.apiSecret) {
+    if (this.options.livekit) {
       this.connectionGenerator = new LivekitConnectionGenerator(
         this.options.livekit.url,
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-    } else if (this.options.wsRoomService && this.options.wsRoomService.url && this.options.wsRoomService.secret) {
+    } else if (this.options.wsRoomService) {
       this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
     } else {
       throw new Error("No enough parameters provided to assign room service url")
