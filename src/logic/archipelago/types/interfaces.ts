@@ -69,6 +69,9 @@ export type ArchipelagoOptions = {
     url: string
     secret: string
   }
+  lighthouse?: {
+    url: string
+  }
 }
 
 export type MandatoryArchipelagoOptions = Pick<ArchipelagoOptions, "joinDistance" | "leaveDistance">

@@ -87,6 +87,14 @@ class LivekitConnectionGenerator implements ConnectionGenerator {
   }
 }
 
+class LighthouseConnectionGenerator implements ConnectionGenerator {
+  constructor(private url: string) { }
+
+  generate(peerId: string, islandId: string): string {
+    return `lighthouse:${this.url}?island_id=${islandId}&peerId=${peerId}`
+  }
+}
+
 export class Archipelago implements IArchipelago {
   private peers: Map<string, PeerData> = new Map()
   private islands: Map<string, InternalIsland> = new Map()
@@ -112,6 +120,8 @@ export class Archipelago implements IArchipelago {
       )
     } else if (this.options.wsRoomService) {
       this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
+    } else if (this.options.lighthouse) {
+      this.connectionGenerator = new LighthouseConnectionGenerator(this.options.lighthouse.url)
     } else {
       throw new Error("No enough parameters provided to assign room service url")
     }

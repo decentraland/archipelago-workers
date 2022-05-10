@@ -31,6 +31,14 @@ async function getWsRoomServiceConf(config: IConfigComponent) {
   return { url, secret }
 }
 
+async function getLighthouseConf(config: IConfigComponent) {
+  const url = await config.requireString("LIGHTHOUSE_URL")
+  if (!url) {
+    return
+  }
+
+  return { url }
+}
 export async function createArchipelagoComponent(components: ArchipelagoComponents): Promise<ArchipelagoController> {
   const { config } = components
 
@@ -46,7 +54,8 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
       leaveDistance,
       maxPeersPerIsland,
       livekit: await getLivekitConf(config),
-      wsRoomService: await getWsRoomServiceConf(config)
+      wsRoomService: await getWsRoomServiceConf(config),
+      lighthouse: await getLighthouseConf(config)
     },
   })
 
