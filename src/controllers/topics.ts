@@ -1,6 +1,6 @@
-import { IslandUpdates, PeerPositionChange, Position3D } from "../logic/archipelago"
+import { IslandUpdates, PeerData, PeerPositionChange, Position3D } from "../logic/archipelago"
 import { GlobalContext } from "../types"
-import { HeartbeatMessage, IslandChangedMessage, IslandLeftMessage } from "./proto/nats_pb"
+import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage, Position3DMessage } from "./proto/archipelago_pb"
 
 const lastPeerHeartbeats = new Map<string, number>()
 
@@ -44,10 +44,11 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     try {
       const id = topic.getLevel(1)
       const message = HeartbeatMessage.deserializeBinary(data)
+      const position = message.getPosition()!
 
       const peerPositionChange: PeerPositionChange = {
         id,
-        position: message.getPositionList() as Position3D,
+        position: [position.getX(), position.getY(), position.getZ()]
       }
 
       lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
@@ -62,21 +63,44 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
       return
     }
 
-    Object.keys(updates).forEach((peerId) => {
+    Object.keys(updates).forEach(async (peerId) => {
       const update = updates[peerId]
 
       if (update.action === "changeTo") {
-        const message = new IslandChangedMessage()
-        message.setIslandId(update.islandId)
-        message.setConnStr(update.connStr)
-        if (update.fromIslandId) {
-          message.setFromIslandId(update.fromIslandId)
+        const island = await archipelago.getIsland(update.islandId)
+        if (!island) {
+          return
         }
-        messageBroker.publish(`peer.${peerId}.island_changed`, message.serializeBinary())
+
+        const islandChangedMessage = new IslandChangedMessage()
+        islandChangedMessage.setIslandId(update.islandId)
+        islandChangedMessage.setConnStr(update.connStr)
+
+        const peers = islandChangedMessage.getPeersMap()
+        island.peers.forEach((peerData: PeerData) => {
+          const p = new Position3DMessage()
+          p.setX(peerData.position[0])
+          p.setY(peerData.position[1])
+          p.setZ(peerData.position[2])
+          peers.set(peerData.id, p)
+
+        })
+        if (update.fromIslandId) {
+          islandChangedMessage.setFromIslandId(update.fromIslandId)
+        }
+        messageBroker.publish(`peer.${peerId}.island_changed`, islandChangedMessage.serializeBinary())
+
+
+        const peerJoinMessage = new LeftIslandMessage()
+        peerJoinMessage.setIslandId(update.islandId)
+        peerJoinMessage.setPeerId(peerId)
+        messageBroker.publish(`island.${update.islandId}.peer_join`, peerJoinMessage.serializeBinary())
       } else if (update.action === "leave") {
-        const message = new IslandLeftMessage()
+        const message = new LeftIslandMessage()
         message.setIslandId(update.islandId)
-        messageBroker.publish(`peer.${peerId}.island_left`, message.serializeBinary())
+        message.setPeerId(peerId)
+        const data = message.serializeBinary()
+        messageBroker.publish(`island.${update.islandId}.peer_left`, data)
       }
     })
   })
