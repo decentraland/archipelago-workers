@@ -76,6 +76,7 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
         islandChangedMessage.setIslandId(update.islandId)
         islandChangedMessage.setConnStr(update.connStr)
 
+
         const peers = islandChangedMessage.getPeersMap()
         island.peers.forEach((peerData: PeerData) => {
           const p = new Position3DMessage()
@@ -91,7 +92,7 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
         messageBroker.publish(`peer.${peerId}.island_changed`, islandChangedMessage.serializeBinary())
 
 
-        const peerJoinMessage = new LeftIslandMessage()
+        const peerJoinMessage = new JoinIslandMessage()
         peerJoinMessage.setIslandId(update.islandId)
         peerJoinMessage.setPeerId(peerId)
         messageBroker.publish(`island.${update.islandId}.peer_join`, peerJoinMessage.serializeBinary())
