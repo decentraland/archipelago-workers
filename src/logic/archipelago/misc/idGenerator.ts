@@ -9,6 +9,6 @@ export function sequentialIdGenerator(prefix: string): IdGenerator {
     generateId: () => {
       currentId++
       return prefix + currentId.toString(36)
-    },
+    }
   }
 }

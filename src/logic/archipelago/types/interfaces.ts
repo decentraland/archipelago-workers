@@ -1,4 +1,4 @@
-import { IdGenerator } from "../misc/idGenerator"
+import { IdGenerator } from '../misc/idGenerator'
 
 export type Position3D = [number, number, number]
 
@@ -40,14 +40,14 @@ export interface ArchipelagoController {
 }
 
 export type ChangeToIslandUpdate = {
-  action: "changeTo"
+  action: 'changeTo'
   islandId: string
   connStr: string
   fromIslandId?: string
 }
 
 export type LeaveIslandUpdate = {
-  action: "leave"
+  action: 'leave'
   islandId: string
 }
 
@@ -71,11 +71,11 @@ export type ArchipelagoOptions = {
   }
 }
 
-export type MandatoryArchipelagoOptions = Pick<ArchipelagoOptions, "joinDistance" | "leaveDistance">
+export type MandatoryArchipelagoOptions = Pick<ArchipelagoOptions, 'joinDistance' | 'leaveDistance'>
 
 export type ArchipelagoParameters = MandatoryArchipelagoOptions & Partial<ArchipelagoOptions>
 
-export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, "islandIdGenerator">>
+export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, 'islandIdGenerator'>>
 
 export type Logger = {
   info(message?: any, ...optionalParams: any[]): void
@@ -93,4 +93,4 @@ export type ArchipelagoControllerOptions = {
   workerSrcPath?: string
 }
 
-export { IdGenerator } from "../misc/idGenerator"
+export { IdGenerator } from '../misc/idGenerator'

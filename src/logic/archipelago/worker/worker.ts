@@ -1,8 +1,8 @@
-import { WorkerOptions } from "../controller/ArchipelagoController"
-import { Archipelago } from "../domain/Archipelago"
-import { IArchipelago } from "../domain/interfaces"
-import { NullLogger } from "../misc/utils"
-import { IslandUpdates, Logger, PeerData } from "../types/interfaces"
+import { WorkerOptions } from '../controller/ArchipelagoController'
+import { Archipelago } from '../domain/Archipelago'
+import { IArchipelago } from '../domain/interfaces'
+import { NullLogger } from '../misc/utils'
+import { IslandUpdates, Logger, PeerData } from '../types/interfaces'
 import {
   DisposeResponse,
   GetPeerDataResponse,
@@ -13,8 +13,8 @@ import {
   IslandsResponse,
   IslandsUpdated,
   WorkerMessage,
-  WorkerStatusMessage,
-} from "../types/messageTypes"
+  WorkerStatusMessage
+} from '../types/messageTypes'
 
 const options: WorkerOptions = JSON.parse(process.argv[2])
 
@@ -24,83 +24,83 @@ const archipelago: IArchipelago = new Archipelago(options.archipelagoParameters)
 
 const logger: Logger = options.logging ? console : NullLogger
 
-let status: "idle" | "working" = "idle"
+let status: 'idle' | 'working' = 'idle'
 
-process.on("message", (message: WorkerMessage) => {
+process.on('message', (message: WorkerMessage) => {
   switch (message.type) {
-    case "apply-updates":
+    case 'apply-updates':
       const { clearUpdates, positionUpdates } = message.updates
       performArchipelagoOperation(
         (archipelago) => ({
           ...archipelago.clearPeers(clearUpdates),
-          ...archipelago.setPeersPositions(positionUpdates),
+          ...archipelago.setPeersPositions(positionUpdates)
         }),
-        "updates"
+        'updates'
       )
       break
-    case "apply-options-update":
-      performArchipelagoOperation((archipelago) => archipelago.modifyOptions(message.updates), "options update")
+    case 'apply-options-update':
+      performArchipelagoOperation((archipelago) => archipelago.modifyOptions(message.updates), 'options update')
       break
-    case "get-islands": {
+    case 'get-islands': {
       const response: IslandsResponse = {
-        type: "islands-response",
+        type: 'islands-response',
         payload: archipelago.getIslands(),
-        requestId: message.requestId,
+        requestId: message.requestId
       }
       process.send!(response)
       break
     }
-    case "get-islands-count": {
+    case 'get-islands-count': {
       const response: IslandsCountResponse = {
-        type: "islands-count-response",
+        type: 'islands-count-response',
         payload: archipelago.getIslandsCount(),
-        requestId: message.requestId,
+        requestId: message.requestId
       }
       process.send!(response)
       break
     }
-    case "get-island": {
+    case 'get-island': {
       const response: IslandResponse = {
-        type: "island-response",
+        type: 'island-response',
         payload: archipelago.getIsland(message.islandId),
-        requestId: message.requestId,
+        requestId: message.requestId
       }
 
       process.send!(response)
       break
     }
-    case "get-peer-data": {
+    case 'get-peer-data': {
       const response: GetPeerDataResponse = {
-        type: "get-peer-data-response",
+        type: 'get-peer-data-response',
         payload: archipelago.getPeerData(message.peerId),
-        requestId: message.requestId,
+        requestId: message.requestId
       }
 
       process.send!(response)
       break
     }
-    case "get-peers-data": {
+    case 'get-peers-data': {
       const response: GetPeersDataResponse = {
-        type: "get-peers-data-response",
+        type: 'get-peers-data-response',
         payload: getPeersData(message.peerIds),
-        requestId: message.requestId,
+        requestId: message.requestId
       }
 
       process.send!(response)
       break
     }
-    case "dispose-request": {
+    case 'dispose-request': {
       const response: DisposeResponse = {
-        type: "dispose-response",
+        type: 'dispose-response',
         requestId: message.requestId,
-        payload: null,
+        payload: null
       }
       process.send!(response)
       break
     }
-    case "get-peer-ids": {
+    case 'get-peer-ids': {
       const response: GetPeerIdsResponse = {
-        type: "get-peer-ids-response",
+        type: 'get-peer-ids-response',
         requestId: message.requestId,
         payload: archipelago.getPeerIds()
       }
@@ -114,7 +114,7 @@ function getPeersData(peerIds: string[]): Record<string, PeerData> {
   const response: Record<string, PeerData> = {}
   for (const id of peerIds) {
     const data = archipelago.getPeerData(id)
-    if (typeof data !== "undefined") {
+    if (typeof data !== 'undefined') {
       response[id] = data
     }
   }
@@ -124,14 +124,14 @@ function getPeersData(peerIds: string[]): Record<string, PeerData> {
 
 function emitUpdates(updates: IslandUpdates) {
   const updatesMessage: IslandsUpdated = {
-    type: "islands-updated",
-    islandUpdates: updates,
+    type: 'islands-updated',
+    islandUpdates: updates
   }
   process.send!(updatesMessage)
 }
 
 function performArchipelagoOperation(operation: (archipelago: IArchipelago) => IslandUpdates, description: string) {
-  setStatus("working")
+  setStatus('working')
   const startTime = Date.now()
 
   logger.debug(`Processing ${description}`)
@@ -141,19 +141,19 @@ function performArchipelagoOperation(operation: (archipelago: IArchipelago) => I
 
   logger.debug(`Processing ${description} took: ${Date.now() - startTime}`)
 
-  setStatus("idle")
+  setStatus('idle')
 }
 
-function setStatus(aStatus: "idle" | "working") {
+function setStatus(aStatus: 'idle' | 'working') {
   logger.info(`Setting worker status to ${aStatus}`)
   status = aStatus
   sendStatus()
 }
 
 function sendStatus() {
-  const message: WorkerStatusMessage = { type: "worker-status", status }
+  const message: WorkerStatusMessage = { type: 'worker-status', status }
   process.send?.(message)
 }
 
-logger.info("Worker started")
-setStatus("idle")
+logger.info('Worker started')
+setStatus('idle')

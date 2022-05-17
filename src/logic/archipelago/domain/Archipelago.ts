@@ -1,4 +1,4 @@
-import { sequentialIdGenerator } from "../misc/idGenerator"
+import { sequentialIdGenerator } from '../misc/idGenerator'
 import {
   Position3D,
   PeerData,
@@ -7,11 +7,11 @@ import {
   PeerPositionChange,
   Island,
   ArchipelagoParameters,
-  UpdatableArchipelagoParameters,
-} from "../types/interfaces"
-import { findMax, popFirstByOrder, popMax } from "../misc/utils"
-import { IArchipelago } from "./interfaces"
-import { AccessToken } from "livekit-server-sdk"
+  UpdatableArchipelagoParameters
+} from '../types/interfaces'
+import { findMax, popFirstByOrder, popMax } from '../misc/utils'
+import { IArchipelago } from './interfaces'
+import { AccessToken } from 'livekit-server-sdk'
 import * as jwt from 'jsonwebtoken'
 
 const X_AXIS = 0
@@ -29,7 +29,7 @@ const squaredDistance = (p1: Position3D, p2: Position3D) => {
 export function defaultOptions() {
   return {
     maxPeersPerIsland: 200,
-    islandIdGenerator: sequentialIdGenerator("I"),
+    islandIdGenerator: sequentialIdGenerator('I')
   }
 }
 
@@ -64,7 +64,7 @@ interface ConnectionGenerator {
 }
 
 class WsConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string, private secret: string) { }
+  constructor(private url: string, private secret: string) {}
 
   generate(peerId: string, islandId: string): string {
     const token = jwt.sign({ peerId }, this.secret, {
@@ -76,7 +76,7 @@ class WsConnectionGenerator implements ConnectionGenerator {
 }
 
 class LivekitConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string, private apiKey: string, private apiSecret: string) { }
+  constructor(private url: string, private apiKey: string, private apiSecret: string) {}
 
   generate(peerId: string, islandId: string): string {
     const token = new AccessToken(this.apiKey, this.apiSecret, {
@@ -117,7 +117,10 @@ export class Archipelago implements IArchipelago {
         this.options.livekit.apiSecret
       )
     } else if (this.options.wsRoomService) {
-      this.connectionGenerator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
+      this.connectionGenerator = new WsConnectionGenerator(
+        this.options.wsRoomService.url,
+        this.options.wsRoomService.secret
+      )
     } else {
       this.connectionGenerator = new P2PConnectionGenerator()
     }
@@ -126,7 +129,7 @@ export class Archipelago implements IArchipelago {
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
     this.options = { ...this.options, ...options }
 
-    let updates: IslandUpdates = {}
+    const updates: IslandUpdates = {}
     const allIslands = new Set(this.islands.keys())
 
     this.updateIslands(updates, allIslands)
@@ -142,7 +145,7 @@ export class Archipelago implements IArchipelago {
    * This returns a map containing the peers that left or changed island as keys, how they changed as values
    * */
   setPeersPositions(changes: PeerPositionChange[]): IslandUpdates {
-    let updates: IslandUpdates = {}
+    const updates: IslandUpdates = {}
     const affectedIslands: Set<string> = new Set()
     for (const change of changes) {
       const { id, position, preferedIslandId } = change
@@ -155,7 +158,7 @@ export class Archipelago implements IArchipelago {
 
         // We can set the prefered island to undefined by explicitly providing the key but no value.
         // If we don't provide the key, we leave it as it is
-        if ("preferedIslandId" in change) {
+        if ('preferedIslandId' in change) {
           peer.preferedIslandId = preferedIslandId
         }
 
@@ -171,7 +174,7 @@ export class Archipelago implements IArchipelago {
   }
 
   clearPeers(ids: string[]): IslandUpdates {
-    let updates: IslandUpdates = {}
+    const updates: IslandUpdates = {}
     const affectedIslands: Set<string> = new Set()
     for (const id of ids) {
       const peer = this.peers.get(id)
@@ -180,7 +183,7 @@ export class Archipelago implements IArchipelago {
         this.peers.delete(id)
         if (peer.islandId) {
           this.clearPeerFromIsland(id, this.islands.get(peer.islandId)!)
-          updates[peer.id] = { action: "leave", islandId: peer.islandId }
+          updates[peer.id] = { action: 'leave', islandId: peer.islandId }
           if (this.islands.has(peer.islandId)) {
             affectedIslands.add(peer.islandId)
           } else {
@@ -407,7 +410,7 @@ export class Archipelago implements IArchipelago {
       get radius() {
         this._recalculateGeometryIfNeeded()
         return this._radius!
-      },
+      }
     }
 
     this.islands.set(newIslandId, island)
@@ -421,7 +424,7 @@ export class Archipelago implements IArchipelago {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
       const connStr = this.connectionGenerator.generate(peer.id, islandId)
-      updates[peer.id] = { action: "changeTo", islandId, fromIslandId: previousIslandId, connStr }
+      updates[peer.id] = { action: 'changeTo', islandId, fromIslandId: previousIslandId, connStr }
     }
 
     return updates

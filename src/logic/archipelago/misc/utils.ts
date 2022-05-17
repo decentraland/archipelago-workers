@@ -1,4 +1,4 @@
-import { Logger } from "../types/interfaces"
+import { Logger } from '../types/interfaces'
 
 /**
  * Finds the index of the element that is first according to the provided ordering
@@ -26,11 +26,11 @@ export function findMaxIndex<T>(array: T[], criteria: (t: T) => number) {
 
 export function findMax<T>(array: T[], criteria: (t: T) => number) {
   const index = findMaxIndex(array, criteria)
-  return typeof index !== "undefined" ? array[index] : undefined
+  return typeof index !== 'undefined' ? array[index] : undefined
 }
 
 export function popIndex<T>(array: T[], index: number | undefined) {
-  if (typeof index !== "undefined") {
+  if (typeof index !== 'undefined') {
     const [max] = array.splice(index, 1)
     return max
   } else {
@@ -53,7 +53,7 @@ export function popFirstByOrder<T>(array: T[], ordering: (t1: T, t2: T) => numbe
 }
 
 export function isEmpty(obj: Record<any, any>) {
-  for (var prop in obj) {
+  for (const prop in obj) {
     if (obj.hasOwnProperty(prop)) {
       return false
     }
@@ -68,5 +68,5 @@ export const NullLogger: Logger = {
   error(message?: any, ...optionalParams: any[]) {},
   warn(message?: any, ...optionalParams: any[]) {},
   debug(message?: any, ...optionalParams: any[]) {},
-  trace(message?: any, ...optionalParams: any[]) {},
+  trace(message?: any, ...optionalParams: any[]) {}
 }
