@@ -5,3 +5,4 @@ dist/
 *.json
 
 src/controllers/proto
+src/index.ts

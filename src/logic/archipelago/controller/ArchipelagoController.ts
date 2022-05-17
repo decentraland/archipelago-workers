@@ -6,7 +6,6 @@ import {
   Logger,
   PeerData,
   PeerPositionChange,
-  Position3D,
   UpdatableArchipelagoParameters,
   UpdateSubscriber
 } from '../types/interfaces'

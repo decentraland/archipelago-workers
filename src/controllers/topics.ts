@@ -1,4 +1,4 @@
-import { IslandUpdates, PeerData, PeerPositionChange, Position3D } from '../logic/archipelago'
+import { IslandUpdates, PeerData, PeerPositionChange } from '../logic/archipelago'
 import { GlobalContext } from '../types'
 import {
   HeartbeatMessage,

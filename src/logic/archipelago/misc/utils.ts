@@ -63,10 +63,10 @@ export function isEmpty(obj: Record<any, any>) {
 }
 
 export const NullLogger: Logger = {
-  info(message?: any, ...optionalParams: any[]) {},
-  log(message?: any, ...optionalParams: any[]) {},
-  error(message?: any, ...optionalParams: any[]) {},
-  warn(message?: any, ...optionalParams: any[]) {},
-  debug(message?: any, ...optionalParams: any[]) {},
-  trace(message?: any, ...optionalParams: any[]) {}
+  info(_?: any, ...__: any[]) {},
+  log(_?: any, ...__: any[]) {},
+  error(_?: any, ...__: any[]) {},
+  warn(_?: any, ...__: any[]) {},
+  debug(_?: any, ...__: any[]) {},
+  trace(_?: any, ...__: any[]) {}
 }

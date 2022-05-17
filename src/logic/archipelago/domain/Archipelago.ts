@@ -9,13 +9,12 @@ import {
   ArchipelagoParameters,
   UpdatableArchipelagoParameters
 } from '../types/interfaces'
-import { findMax, popFirstByOrder, popMax } from '../misc/utils'
+import { findMax, popMax } from '../misc/utils'
 import { IArchipelago } from './interfaces'
 import { AccessToken } from 'livekit-server-sdk'
 import * as jwt from 'jsonwebtoken'
 
 const X_AXIS = 0
-const Y_AXIS = 1
 const Z_AXIS = 2
 
 const squaredDistance = (p1: Position3D, p2: Position3D) => {
