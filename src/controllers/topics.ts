@@ -107,12 +107,12 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     // Metrics
     const archipelagoMetrics = await archipelago.calculateMetrics()
 
-    metrics.observe('dcl_peers_count', { transport: 'livekit' }, archipelagoMetrics.livekit.peers)
-    metrics.observe('dcl_peers_count', { transport: 'ws' }, archipelagoMetrics.ws.peers)
-    metrics.observe('dcl_peers_count', { transport: 'p2p' }, archipelagoMetrics.p2p.peers)
+    metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archipelagoMetrics.livekit.peers)
+    metrics.observe('dcl_archipelago_count', { transport: 'ws' }, archipelagoMetrics.ws.peers)
+    metrics.observe('dcl_archipelago_count', { transport: 'p2p' }, archipelagoMetrics.p2p.peers)
 
-    metrics.observe('dcl_islands_count', { transport: 'livekit' }, archipelagoMetrics.livekit.islands)
-    metrics.observe('dcl_islands_count', { transport: 'ws' }, archipelagoMetrics.ws.islands)
-    metrics.observe('dcl_islands_count', { transport: 'p2p' }, archipelagoMetrics.p2p.islands)
+    metrics.observe('dcl_archipelago_count', { transport: 'livekit' }, archipelagoMetrics.livekit.islands)
+    metrics.observe('dcl_archipelago_count', { transport: 'ws' }, archipelagoMetrics.ws.islands)
+    metrics.observe('dcl_archipelago_count', { transport: 'p2p' }, archipelagoMetrics.p2p.islands)
   })
 }
