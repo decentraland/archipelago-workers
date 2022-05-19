@@ -65,6 +65,11 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
   })
 
   archipelago.subscribeToUpdates(async (updates: IslandUpdates) => {
+    // Prevent processing updates if there are no changes
+    if (!Object.keys(updates).length) {
+      return
+    }
+
     Object.keys(updates).forEach(async (peerId) => {
       const update = updates[peerId]
 
