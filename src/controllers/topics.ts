@@ -110,19 +110,19 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
         messageBroker.publish(`island.${update.islandId}.peer_left`, data)
       }
     })
-
-    // Metrics
-    setInterval(async () => {
-      const archMetrics = await archipelago.calculateMetrics()
-      logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
-
-      metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archMetrics.peers.transport.livekit)
-      metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archMetrics.peers.transport.ws)
-      metrics.observe('dcl_archipelago_peers_count', { transport: 'p2p' }, archMetrics.peers.transport.p2p)
-
-      metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archMetrics.islands.transport.livekit)
-      metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archMetrics.islands.transport.ws)
-      metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archMetrics.islands.transport.p2p)
-    }, archipelagoMetricsInterval)
   })
+
+  // Metrics
+  setInterval(async () => {
+    const archMetrics = await archipelago.calculateMetrics()
+    logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
+
+    metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archMetrics.peers.transport.livekit)
+    metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archMetrics.peers.transport.ws)
+    metrics.observe('dcl_archipelago_peers_count', { transport: 'p2p' }, archMetrics.peers.transport.p2p)
+
+    metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archMetrics.islands.transport.livekit)
+    metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archMetrics.islands.transport.ws)
+    metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archMetrics.islands.transport.p2p)
+  }, archipelagoMetricsInterval)
 }
