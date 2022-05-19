@@ -93,14 +93,16 @@ export type ArchipelagoControllerOptions = {
 }
 
 export type ArchipelagoMetricPerTransport = {
-  islands: number
-  peers: number
+  transport: {
+    livekit: number
+    ws: number
+    p2p: number
+  }
 }
 
 export type ArchipelagoMetrics = {
-  livekit: ArchipelagoMetricPerTransport
-  ws: ArchipelagoMetricPerTransport
-  p2p: ArchipelagoMetricPerTransport
+  peers: ArchipelagoMetricPerTransport
+  islands: ArchipelagoMetricPerTransport
 }
 
 export { IdGenerator } from '../misc/idGenerator'

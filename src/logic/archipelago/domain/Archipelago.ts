@@ -471,17 +471,11 @@ export class Archipelago implements IArchipelago {
     const p2pIslands = islands.filter(islandsFilter('p2p'))
 
     return {
-      livekit: {
-        islands: livekitIslands.length,
-        peers: peersCount(livekitIslands)
+      islands: {
+        transport: { livekit: livekitIslands.length, ws: wsIslands.length, p2p: p2pIslands.length }
       },
-      ws: {
-        islands: wsIslands.length,
-        peers: peersCount(wsIslands)
-      },
-      p2p: {
-        islands: p2pIslands.length,
-        peers: peersCount(p2pIslands)
+      peers: {
+        transport: { livekit: peersCount(livekitIslands), ws: peersCount(wsIslands), p2p: peersCount(p2pIslands) }
       }
     }
   }

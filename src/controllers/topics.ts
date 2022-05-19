@@ -17,6 +17,8 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
 
   // Clear peers that did not send heartbeats in the required interval
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
+  const archipelagoMetricsInterval = await config.requireNumber('ARCHIPELAGO_METRICS_INTERVAL')
+
   setInterval(() => {
     const expiredHeartbeat = Date.now() - checkHeartbeatInterval
     const hasExpired = ([_, lastHearbeat]: [string, number]) => lastHearbeat < expiredHeartbeat
@@ -110,15 +112,17 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     })
 
     // Metrics
-    const archipelagoMetrics = await archipelago.calculateMetrics()
-    logger.info(`Archipelago Metrics: ${JSON.stringify(archipelagoMetrics)}`)
+    setInterval(async () => {
+      const archMetrics = await archipelago.calculateMetrics()
+      logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
 
-    metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archipelagoMetrics.livekit.peers)
-    metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archipelagoMetrics.ws.peers)
-    metrics.observe('dcl_archipelago_peers_count', { transport: 'p2p' }, archipelagoMetrics.p2p.peers)
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archMetrics.peers.transport.livekit)
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archMetrics.peers.transport.ws)
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'p2p' }, archMetrics.peers.transport.p2p)
 
-    metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archipelagoMetrics.livekit.islands)
-    metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archipelagoMetrics.ws.islands)
-    metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archipelagoMetrics.p2p.islands)
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archMetrics.islands.transport.livekit)
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archMetrics.islands.transport.ws)
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archMetrics.islands.transport.p2p)
+    }, archipelagoMetricsInterval)
   })
 }
