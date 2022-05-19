@@ -7,7 +7,9 @@ import {
   PeerPositionChange,
   Island,
   ArchipelagoParameters,
-  UpdatableArchipelagoParameters
+  UpdatableArchipelagoParameters,
+  Transport,
+  ArchipelagoMetrics
 } from '../types/interfaces'
 import { findMax, popMax } from '../misc/utils'
 import { IArchipelago } from './interfaces'
@@ -102,6 +104,8 @@ export class Archipelago implements IArchipelago {
 
   private connectionGenerator: ConnectionGenerator
 
+  private transport: Transport
+
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
   }
@@ -115,13 +119,16 @@ export class Archipelago implements IArchipelago {
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
+      this.transport = 'livekit'
     } else if (this.options.wsRoomService) {
       this.connectionGenerator = new WsConnectionGenerator(
         this.options.wsRoomService.url,
         this.options.wsRoomService.secret
       )
+      this.transport = 'ws'
     } else {
       this.connectionGenerator = new P2PConnectionGenerator()
+      this.transport = 'p2p'
     }
   }
 
@@ -409,7 +416,8 @@ export class Archipelago implements IArchipelago {
       get radius() {
         this._recalculateGeometryIfNeeded()
         return this._radius!
-      }
+      },
+      transport: this.transport
     }
 
     this.islands.set(newIslandId, island)
@@ -447,5 +455,34 @@ export class Archipelago implements IArchipelago {
 
   getPeerIds(): string[] {
     return [...this.peers.keys()]
+  }
+
+  calculateMetrics(): ArchipelagoMetrics {
+    const islands = Array.from(this.islands.values())
+
+    const islandsFilter = (transport: Transport) => (island: InternalIsland) =>
+      island.transport === transport && island.peers.length
+
+    const peersCount = (internalIslands: InternalIsland[]) =>
+      internalIslands.reduce((total, island) => total + island.peers.length, 0)
+
+    const livekitIslands = islands.filter(islandsFilter('livekit'))
+    const wsIslands = islands.filter(islandsFilter('ws'))
+    const p2pIslands = islands.filter(islandsFilter('p2p'))
+
+    return {
+      livekit: {
+        islands: livekitIslands.length,
+        peers: peersCount(livekitIslands)
+      },
+      ws: {
+        islands: wsIslands.length,
+        peers: peersCount(wsIslands)
+      },
+      p2p: {
+        islands: p2pIslands.length,
+        peers: peersCount(p2pIslands)
+      }
+    }
   }
 }

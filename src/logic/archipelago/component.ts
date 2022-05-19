@@ -1,5 +1,4 @@
-import { IConfigComponent, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
-import { metricDeclarations } from '../../metrics'
+import { IConfigComponent, ILoggerComponent } from '@well-known-components/interfaces'
 import { defaultArchipelagoController } from './controller/ArchipelagoController'
 import { ArchipelagoController } from './types/interfaces'
 
@@ -7,7 +6,6 @@ export type IArchipelagoComponent = ArchipelagoController
 
 export type ArchipelagoComponents = {
   config: IConfigComponent
-  metrics: IMetricsComponent<keyof typeof metricDeclarations>
   logs: ILoggerComponent
 }
 

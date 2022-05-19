@@ -11,7 +11,7 @@ import {
 const lastPeerHeartbeats = new Map<string, number>()
 
 export async function setupTopics(globalContext: GlobalContext): Promise<void> {
-  const { messageBroker, archipelago, config, logs } = globalContext.components
+  const { messageBroker, archipelago, config, logs, metrics } = globalContext.components
 
   const logger = logs.getLogger('Topics')
 
@@ -64,11 +64,7 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     }
   })
 
-  archipelago.subscribeToUpdates((updates: IslandUpdates) => {
-    if (!Object.keys(updates).length) {
-      return
-    }
-
+  archipelago.subscribeToUpdates(async (updates: IslandUpdates) => {
     Object.keys(updates).forEach(async (peerId) => {
       const update = updates[peerId]
 
@@ -107,5 +103,16 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
         messageBroker.publish(`island.${update.islandId}.peer_left`, data)
       }
     })
+
+    // Metrics
+    const archipelagoMetrics = await archipelago.calculateMetrics()
+
+    metrics.observe('dcl_peers_count', { transport: 'livekit' }, archipelagoMetrics.livekit.peers)
+    metrics.observe('dcl_peers_count', { transport: 'ws' }, archipelagoMetrics.ws.peers)
+    metrics.observe('dcl_peers_count', { transport: 'p2p' }, archipelagoMetrics.p2p.peers)
+
+    metrics.observe('dcl_islands_count', { transport: 'livekit' }, archipelagoMetrics.livekit.islands)
+    metrics.observe('dcl_islands_count', { transport: 'ws' }, archipelagoMetrics.ws.islands)
+    metrics.observe('dcl_islands_count', { transport: 'p2p' }, archipelagoMetrics.p2p.islands)
   })
 }

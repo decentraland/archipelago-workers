@@ -1,8 +1,8 @@
-import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
-import { metricDeclarations } from '../../../metrics'
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { IdGenerator } from '../misc/idGenerator'
 
 export type Position3D = [number, number, number]
+export type Transport = 'livekit' | 'ws' | 'p2p'
 
 export type PeerData = {
   id: string
@@ -18,6 +18,7 @@ export type Island = {
   center: Position3D
   radius: number
   sequenceId: number
+  transport: Transport
 }
 
 export type PeerPositionChange = { id: string; position: Position3D; preferedIslandId?: string }
@@ -39,6 +40,7 @@ export interface ArchipelagoController {
   dispose(): Promise<void>
   flush(): void
   modifyOptions(options: UpdatableArchipelagoParameters): void
+  calculateMetrics(): Promise<ArchipelagoMetrics>
 }
 
 export type ChangeToIslandUpdate = {
@@ -80,7 +82,6 @@ export type ArchipelagoParameters = MandatoryArchipelagoOptions & Partial<Archip
 export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, 'islandIdGenerator'>>
 
 type ArchipelagoControllerComponents = {
-  metrics?: IMetricsComponent<keyof typeof metricDeclarations>
   logs?: ILoggerComponent
 }
 
@@ -89,6 +90,17 @@ export type ArchipelagoControllerOptions = {
   archipelagoParameters: ArchipelagoParameters
   workerSrcPath?: string
   components: ArchipelagoControllerComponents
+}
+
+export type ArchipelagoMetricPerTransport = {
+  islands: number
+  peers: number
+}
+
+export type ArchipelagoMetrics = {
+  livekit: ArchipelagoMetricPerTransport
+  ws: ArchipelagoMetricPerTransport
+  p2p: ArchipelagoMetricPerTransport
 }
 
 export { IdGenerator } from '../misc/idGenerator'
