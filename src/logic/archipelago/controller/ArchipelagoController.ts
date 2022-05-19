@@ -3,7 +3,6 @@ import {
   ArchipelagoControllerOptions,
   ArchipelagoParameters,
   Island,
-  Logger,
   PeerData,
   PeerPositionChange,
   UpdatableArchipelagoParameters,
@@ -22,6 +21,7 @@ import {
   WorkerStatus
 } from '../types/messageTypes'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
+import { ILoggerComponent } from '@well-known-components/interfaces'
 
 type SetPositionUpdate = { type: 'set-position' } & PeerPositionChange
 type ClearUpdate = { type: 'clear' }
@@ -113,15 +113,17 @@ export class ArchipelagoControllerImpl implements ArchipelagoController {
 
   activePeers: Set<string> = new Set()
   flushFrequency: number
-  logger: Logger
+  logger: ILoggerComponent.ILogger
 
   workerController: WorkerController
 
   disposed: boolean = false
 
   constructor(options: ArchipelagoControllerOptions) {
+    const { logs } = options.components
+    this.logger = logs ? logs.getLogger('Archipelago') : console
+
     this.flushFrequency = options.flushFrequency ?? 2
-    this.logger = options.logger ?? console
     this.workerController = new WorkerController(this.handleWorkerMessage.bind(this), options.archipelagoParameters, {
       workerSrcPath: options.workerSrcPath
     })

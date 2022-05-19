@@ -1,4 +1,4 @@
-import { Logger } from '../types/interfaces'
+import { ILoggerComponent } from '@well-known-components/interfaces'
 
 /**
  * Finds the index of the element that is first according to the provided ordering
@@ -62,11 +62,10 @@ export function isEmpty(obj: Record<any, any>) {
   return JSON.stringify(obj) === JSON.stringify({})
 }
 
-export const NullLogger: Logger = {
+export const NullLogger: ILoggerComponent.ILogger = {
   info(_?: any, ...__: any[]) {},
   log(_?: any, ...__: any[]) {},
   error(_?: any, ...__: any[]) {},
   warn(_?: any, ...__: any[]) {},
-  debug(_?: any, ...__: any[]) {},
-  trace(_?: any, ...__: any[]) {}
+  debug(_?: any, ...__: any[]) {}
 }

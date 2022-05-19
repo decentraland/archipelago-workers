@@ -1,3 +1,5 @@
+import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import { metricDeclarations } from '../../../metrics'
 import { IdGenerator } from '../misc/idGenerator'
 
 export type Position3D = [number, number, number]
@@ -77,20 +79,16 @@ export type ArchipelagoParameters = MandatoryArchipelagoOptions & Partial<Archip
 
 export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, 'islandIdGenerator'>>
 
-export type Logger = {
-  info(message?: any, ...optionalParams: any[]): void
-  log(message?: any, ...optionalParams: any[]): void
-  error(message?: any, ...optionalParams: any[]): void
-  warn(message?: any, ...optionalParams: any[]): void
-  debug(message?: any, ...optionalParams: any[]): void
-  trace(message?: any, ...optionalParams: any[]): void
+type ArchipelagoControllerComponents = {
+  metrics?: IMetricsComponent<keyof typeof metricDeclarations>
+  logs?: ILoggerComponent
 }
 
 export type ArchipelagoControllerOptions = {
   flushFrequency?: number
   archipelagoParameters: ArchipelagoParameters
-  logger?: Logger
   workerSrcPath?: string
+  components: ArchipelagoControllerComponents
 }
 
 export { IdGenerator } from '../misc/idGenerator'

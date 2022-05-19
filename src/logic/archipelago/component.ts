@@ -1,4 +1,5 @@
-import { IConfigComponent } from '@well-known-components/interfaces'
+import { IConfigComponent, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import { metricDeclarations } from '../../metrics'
 import { defaultArchipelagoController } from './controller/ArchipelagoController'
 import { ArchipelagoController } from './types/interfaces'
 
@@ -6,6 +7,8 @@ export type IArchipelagoComponent = ArchipelagoController
 
 export type ArchipelagoComponents = {
   config: IConfigComponent
+  metrics: IMetricsComponent<keyof typeof metricDeclarations>
+  logs: ILoggerComponent
 }
 
 async function getLivekitConf(config: IConfigComponent) {
@@ -47,7 +50,8 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
       maxPeersPerIsland,
       livekit: await getLivekitConf(config),
       wsRoomService: await getWsRoomServiceConf(config)
-    }
+    },
+    components
   })
 
   return controller

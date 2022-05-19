@@ -18,7 +18,7 @@ export async function initComponents(): Promise<AppComponents> {
   const fetch = await createFetchComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { server, config })
   const messageBroker = await createMessageBrokerComponent({ config, logs })
-  const archipelago = await createArchipelagoComponent({ config })
+  const archipelago = await createArchipelagoComponent({ config, metrics, logs })
 
   return {
     config,
