@@ -124,5 +124,19 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archMetrics.islands.transport.livekit)
     metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archMetrics.islands.transport.ws)
     metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archMetrics.islands.transport.p2p)
+
+    metrics.reset('dcl_archipelago_top_islands')
+    archMetrics.islands.top.forEach((island) => {
+      metrics.observe(
+        'dcl_archipelago_top_islands',
+        {
+          id: island.id,
+          center_x: island.centerX,
+          center_y: island.centerY,
+          radius: island.radius
+        },
+        island.peers
+      )
+    })
   }, archipelagoMetricsInterval)
 }
