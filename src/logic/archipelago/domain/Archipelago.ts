@@ -470,20 +470,9 @@ export class Archipelago implements IArchipelago {
     const wsIslands = islands.filter(islandsFilter('ws'))
     const p2pIslands = islands.filter(islandsFilter('p2p'))
 
-    const topIslands = islands.sort((islandA, islandB) => islandB.peers.length - islandA.peers.length).slice(0, 10)
-    const topIslandsMetrics = topIslands.map((island) => ({
-      id: island.id,
-      centerX: island.center[0],
-      centerY: island.center[1],
-      radius: island.radius,
-      peers: island.peers.length,
-      transport: island.transport
-    }))
-
     return {
       islands: {
-        transport: { livekit: livekitIslands.length, ws: wsIslands.length, p2p: p2pIslands.length },
-        top: topIslandsMetrics
+        transport: { livekit: livekitIslands.length, ws: wsIslands.length, p2p: p2pIslands.length }
       },
       peers: {
         transport: { livekit: peersCount(livekitIslands), ws: peersCount(wsIslands), p2p: peersCount(p2pIslands) }

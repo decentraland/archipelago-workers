@@ -100,19 +100,9 @@ export type ArchipelagoMetricPerTransport = {
   }
 }
 
-export type TopIslandMetrics = {
-  id: string
-  centerX: number
-  centerY: number
-  radius: number
-  peers: number
-}
-
 export type ArchipelagoMetrics = {
   peers: ArchipelagoMetricPerTransport
-  islands: ArchipelagoMetricPerTransport & {
-    top: TopIslandMetrics[]
-  }
+  islands: ArchipelagoMetricPerTransport
 }
 
 export { IdGenerator } from '../misc/idGenerator'
