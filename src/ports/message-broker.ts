@@ -43,6 +43,14 @@ export async function createMessageBrokerComponent(
 
   function subscribe(topic: string, handler: (_: Message) => Promise<void>): Subscription {
     const subscription = natsConnection.subscribe(topic)
+
+    subscription.closed
+      .then(() => {
+        logger.log('subscription closed')
+      })
+      .catch((err) => {
+        logger.error(`subscription closed with an error ${err.message}`)
+      })
     ;(async () => {
       for await (const message of subscription) {
         await handler({ data: message.data, topic: new Topic(message.subject) })

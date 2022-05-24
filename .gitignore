@@ -3,3 +3,6 @@ node_modules/
 **/.DS_Store
 coverage
 .env
+
+protoc3
+src/controllers/proto/*.ts

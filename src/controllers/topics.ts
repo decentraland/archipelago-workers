@@ -46,9 +46,9 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     }
   })
 
-  messageBroker.subscribe('peer.*.heartbeat', ({ data, topic }) => {
+  messageBroker.subscribe('client-proto.peer.*.heartbeat', ({ data, topic }) => {
     try {
-      const id = topic.getLevel(1)
+      const id = topic.getLevel(2)
       const message = HeartbeatMessage.deserializeBinary(data)
       const position = message.getPosition()!
 
@@ -93,18 +93,18 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
         if (update.fromIslandId) {
           islandChangedMessage.setFromIslandId(update.fromIslandId)
         }
-        messageBroker.publish(`peer.${peerId}.island_changed`, islandChangedMessage.serializeBinary())
+        messageBroker.publish(`client-proto.${peerId}.island_changed`, islandChangedMessage.serializeBinary())
 
         const peerJoinMessage = new JoinIslandMessage()
         peerJoinMessage.setIslandId(update.islandId)
         peerJoinMessage.setPeerId(peerId)
-        messageBroker.publish(`island.${update.islandId}.peer_join`, peerJoinMessage.serializeBinary())
+        messageBroker.publish(`client-proto.island.${update.islandId}.peer_join`, peerJoinMessage.serializeBinary())
       } else if (update.action === 'leave') {
         const message = new LeftIslandMessage()
         message.setIslandId(update.islandId)
         message.setPeerId(peerId)
         const data = message.serializeBinary()
-        messageBroker.publish(`island.${update.islandId}.peer_left`, data)
+        messageBroker.publish(`client-proto.island.${update.islandId}.peer_left`, data)
       }
     })
   })
