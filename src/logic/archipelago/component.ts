@@ -39,6 +39,7 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
   const joinDistance = await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE')
   const leaveDistance = await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE')
   const maxPeersPerIsland = await config.requireNumber('ARCHIPELAGO_MAX_PEERS_PER_ISLAND')
+  const workerSrcPath = await config.getString('ARCHIPELAGO_WORKER_SRC_PATH')
 
   const controller = defaultArchipelagoController({
     flushFrequency,
@@ -49,6 +50,7 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
       livekit: await getLivekitConf(config),
       wsRoomService: await getWsRoomServiceConf(config)
     },
+    workerSrcPath,
     components
   })
 

@@ -1,12 +1,12 @@
 // This file is the "test-environment" analogous for src/components.ts
 // Here we define the test components to be used in the testing environment
 
-import { createRunner, createLocalFetchCompoment } from "@well-known-components/test-helpers"
+import { createRunner, createLocalFetchCompoment } from '@well-known-components/test-helpers'
 
-import { main } from "../src/service"
-import { TestComponents } from "../src/types"
-import { initComponents as originalInitComponents } from "../src/components"
-import { createLocalMessageBrokerComponent } from "./helpers/message-broker"
+import { main } from '../src/service'
+import { TestComponents } from '../src/types'
+import { initComponents as originalInitComponents } from '../src/components'
+import { createLocalMessageBrokerComponent } from './helpers/message-broker'
 
 /**
  * Behaves like Jest "describe" function, used to describe a test for a
@@ -17,10 +17,12 @@ import { createLocalMessageBrokerComponent } from "./helpers/message-broker"
  */
 export const test = createRunner<TestComponents>({
   main,
-  initComponents,
+  initComponents
 })
 
 async function initComponents(): Promise<TestComponents> {
+  process.env.ARCHIPELAGO_WORKER_SRC_PATH = './dist/logic/archipelago/worker/worker.js'
+
   const components = await originalInitComponents()
 
   const { config, logs } = components
@@ -28,6 +30,6 @@ async function initComponents(): Promise<TestComponents> {
   return {
     ...components,
     localFetch: await createLocalFetchCompoment(config),
-    messageBroker: await createLocalMessageBrokerComponent({ config, logs }),
+    messageBroker: await createLocalMessageBrokerComponent({ config, logs })
   }
 }

@@ -7,7 +7,7 @@ export type Message = {
   topic: Topic
 }
 
-class Topic {
+export class Topic {
   constructor(private readonly topic: string) {}
   getLevel(level: number): string {
     return this.topic.split('.')[level]
