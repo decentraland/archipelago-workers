@@ -3,7 +3,6 @@ import { Subscription } from '../../src/ports/message-broker'
 import { IMessageBrokerComponent } from '../../src/ports/message-broker'
 import { BaseComponents } from '../../src/types'
 import { Topic } from '../../src/ports/message-broker'
-import { HeartbeatMessage } from '../../src/controllers/proto/archipelago_pb'
 const { connect } = require('mock-nats-client')
 
 export async function createLocalMessageBrokerComponent(

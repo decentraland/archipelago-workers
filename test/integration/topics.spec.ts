@@ -1,5 +1,4 @@
-import { HeartbeatMessage, Position3DMessage } from '../../src/controllers/proto/archipelago_pb'
-import { setupTopics } from '../../src/controllers/topics'
+import { HeartbeatMessage } from '../../src/controllers/proto/archipelago'
 import { IslandUpdates, UpdateSubscriber } from '../../src/logic/archipelago'
 import { test } from '../components'
 import { untilTrue } from '../helpers/archipelago'
@@ -36,14 +35,15 @@ test('Topics', function ({ components }) {
     const clearPeersSpy = jest.spyOn(components.archipelago, 'clearPeers')
 
     const peerId = '1'
-    const message = new HeartbeatMessage()
-    const position = new Position3DMessage()
-    position.setX(0)
-    position.setY(0)
-    position.setZ(0)
-    message.setPosition(position)
+    const message = {
+      position: {
+        x: 0,
+        y: 0,
+        z: 0
+      }
+    }
 
-    components.messageBroker.publish(`peer.${peerId}.heartbeat`, message.serializeBinary())
+    components.messageBroker.publish(`client-proto.peer.${peerId}.heartbeat`, HeartbeatMessage.encode(message).finish())
     components.archipelago.flush()
     await receivedUpdatesForPeers('1')
 
