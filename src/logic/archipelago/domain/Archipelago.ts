@@ -7,7 +7,9 @@ import {
   PeerPositionChange,
   Island,
   ArchipelagoParameters,
-  UpdatableArchipelagoParameters
+  UpdatableArchipelagoParameters,
+  Transport,
+  ArchipelagoMetrics
 } from '../types/interfaces'
 import { findMax, popMax } from '../misc/utils'
 import { IArchipelago } from './interfaces'
@@ -100,9 +102,9 @@ export class Archipelago implements IArchipelago {
 
   private currentSequence: number = 0
 
-  private livekitConnectionGenerator: LivekitConnectionGenerator | null = null
-  private wsConnectionGenerator: WsConnectionGenerator | null = null
-  private p2pConnectionGenerator: P2PConnectionGenerator | null = null
+  private connectionGenerator: ConnectionGenerator
+
+  private transport: Transport
 
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
@@ -112,20 +114,22 @@ export class Archipelago implements IArchipelago {
     this.options = { ...defaultOptions(), ...options }
 
     if (this.options.livekit) {
-      this.livekitConnectionGenerator = new LivekitConnectionGenerator(
+      this.connectionGenerator = new LivekitConnectionGenerator(
         this.options.livekit.url,
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-    }
-    if (this.options.wsRoomService) {
-      this.wsConnectionGenerator = new WsConnectionGenerator(
+      this.transport = 'livekit'
+    } else if (this.options.wsRoomService) {
+      this.connectionGenerator = new WsConnectionGenerator(
         this.options.wsRoomService.url,
         this.options.wsRoomService.secret
       )
+      this.transport = 'ws'
+    } else {
+      this.connectionGenerator = new P2PConnectionGenerator()
+      this.transport = 'p2p'
     }
-
-    this.p2pConnectionGenerator = new P2PConnectionGenerator()
   }
 
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
@@ -412,7 +416,8 @@ export class Archipelago implements IArchipelago {
       get radius() {
         this._recalculateGeometryIfNeeded()
         return this._radius!
-      }
+      },
+      transport: this.transport
     }
 
     this.islands.set(newIslandId, island)
@@ -422,11 +427,10 @@ export class Archipelago implements IArchipelago {
   }
 
   private setPeersIsland(islandId: string, peers: PeerData[], updates: IslandUpdates): IslandUpdates {
-    const connStr = this.connectionGenerator.generate(peer.id, islandId)
-
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
+      const connStr = this.connectionGenerator.generate(peer.id, islandId)
       updates[peer.id] = { action: 'changeTo', islandId, fromIslandId: previousIslandId, connStr }
     }
 
@@ -451,5 +455,28 @@ export class Archipelago implements IArchipelago {
 
   getPeerIds(): string[] {
     return [...this.peers.keys()]
+  }
+
+  calculateMetrics(): ArchipelagoMetrics {
+    const islands = Array.from(this.islands.values())
+
+    const islandsFilter = (transport: Transport) => (island: InternalIsland) =>
+      island.transport === transport && island.peers.length
+
+    const peersCount = (internalIslands: InternalIsland[]) =>
+      internalIslands.reduce((total, island) => total + island.peers.length, 0)
+
+    const livekitIslands = islands.filter(islandsFilter('livekit'))
+    const wsIslands = islands.filter(islandsFilter('ws'))
+    const p2pIslands = islands.filter(islandsFilter('p2p'))
+
+    return {
+      islands: {
+        transport: { livekit: livekitIslands.length, ws: wsIslands.length, p2p: p2pIslands.length }
+      },
+      peers: {
+        transport: { livekit: peersCount(livekitIslands), ws: peersCount(wsIslands), p2p: peersCount(p2pIslands) }
+      }
+    }
   }
 }

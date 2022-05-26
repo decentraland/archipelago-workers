@@ -6,6 +6,16 @@ export const metricDeclarations = {
     help: 'Count calls to ping',
     type: IMetricsComponent.CounterType,
     labelNames: ['pathname']
+  },
+  dcl_archipelago_peers_count: {
+    help: 'Number of peers in islands',
+    type: IMetricsComponent.GaugeType,
+    labelNames: ['transport'] // transport=(livekit|ws|p2p)
+  },
+  dcl_archipelago_islands_count: {
+    help: 'Number of live islands',
+    type: IMetricsComponent.GaugeType,
+    labelNames: ['transport'] // transport=(livekit|ws|p2p)
   }
 }
 

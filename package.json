@@ -11,6 +11,7 @@
     "@dcl/eslint-config": "^1.0.3",
     "@types/assert": "^1.5.6",
     "@types/glob": "^7.2.0",
+    "@types/jest": "^27.5.1",
     "@types/lodash.get": "^4.4.7",
     "@types/node": "^14.17.33",
     "@typescript-eslint/eslint-plugin": "^5.24.0",
@@ -22,9 +23,12 @@
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.0.0",
     "glob": "^8.0.3",
+    "jest": "^28.1.0",
     "lodash.get": "^4.4.2",
+    "mock-nats-client": "^0.2.0",
     "prettier": "^2.6.2",
     "tiny-clojure": "^1.0.0-20210503032805.commit-386e3d2",
+    "ts-jest": "^28.0.3",
     "typescript": "^4.6.4"
   },
   "prettier": {

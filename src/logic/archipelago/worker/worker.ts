@@ -1,9 +1,11 @@
+import { ILoggerComponent } from '@well-known-components/interfaces'
 import { WorkerOptions } from '../controller/ArchipelagoController'
 import { Archipelago } from '../domain/Archipelago'
 import { IArchipelago } from '../domain/interfaces'
 import { NullLogger } from '../misc/utils'
-import { IslandUpdates, Logger, PeerData } from '../types/interfaces'
+import { IslandUpdates, PeerData } from '../types/interfaces'
 import {
+  CalculateMetricsResponse,
   DisposeResponse,
   GetPeerDataResponse,
   GetPeerIdsResponse,
@@ -22,7 +24,7 @@ console.log(`Starting worker with parameters ${JSON.stringify(process.argv)}`)
 
 const archipelago: IArchipelago = new Archipelago(options.archipelagoParameters)
 
-const logger: Logger = options.logging ? console : NullLogger
+const logger: ILoggerComponent.ILogger = options.logging ? console : NullLogger
 
 let status: 'idle' | 'working' = 'idle'
 
@@ -103,6 +105,15 @@ process.on('message', (message: WorkerMessage) => {
         type: 'get-peer-ids-response',
         requestId: message.requestId,
         payload: archipelago.getPeerIds()
+      }
+      process.send!(response)
+      break
+    }
+    case 'calculate-metrics': {
+      const response: CalculateMetricsResponse = {
+        type: 'calculate-metrics-response',
+        requestId: message.requestId,
+        payload: archipelago.calculateMetrics()
       }
       process.send!(response)
       break

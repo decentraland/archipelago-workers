@@ -3,21 +3,22 @@ import { GlobalContext } from '../types'
 import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage } from './proto/archipelago'
 import { Reader } from 'protobufjs/minimal'
 
-const lastPeerHeartbeats = new Map<string, number>()
-
 export async function setupTopics(globalContext: GlobalContext): Promise<void> {
-  const { messageBroker, archipelago, config, logs } = globalContext.components
+  const { messageBroker, archipelago, config, logs, metrics } = globalContext.components
 
+  const lastPeerHeartbeats = new Map<string, number>()
   const logger = logs.getLogger('Topics')
 
   // Clear peers that did not send heartbeats in the required interval
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
-  setInterval(() => {
-    const expiredHeartbeat = Date.now() - checkHeartbeatInterval
-    const hasExpired = ([_, lastHearbeat]: [string, number]) => lastHearbeat < expiredHeartbeat
-    const getPeerId = ([peerId, _]: [string, number]) => peerId
+  const archipelagoMetricsInterval = await config.requireNumber('ARCHIPELAGO_METRICS_INTERVAL')
 
-    const inactivePeers = Array.from(lastPeerHeartbeats).filter(hasExpired).map(getPeerId)
+  setInterval(() => {
+    const expiredHeartbeatTime = Date.now() - checkHeartbeatInterval
+
+    const inactivePeers = Array.from(lastPeerHeartbeats)
+      .filter(([_, lastHearbeat]) => lastHearbeat < expiredHeartbeatTime)
+      .map(([peerId, _]) => peerId)
 
     inactivePeers.forEach((peerId) => lastPeerHeartbeats.delete(peerId))
     archipelago.clearPeers(...inactivePeers)
@@ -59,7 +60,8 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     }
   })
 
-  archipelago.subscribeToUpdates((updates: IslandUpdates) => {
+  archipelago.subscribeToUpdates(async (updates: IslandUpdates) => {
+    // Prevent processing updates if there are no changes
     if (!Object.keys(updates).length) {
       return
     }
@@ -112,4 +114,22 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
       }
     })
   })
+
+  // Metrics
+  setInterval(async () => {
+    try {
+      const archMetrics = await archipelago.calculateMetrics()
+      logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
+
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archMetrics.peers.transport.livekit)
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archMetrics.peers.transport.ws)
+      metrics.observe('dcl_archipelago_peers_count', { transport: 'p2p' }, archMetrics.peers.transport.p2p)
+
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'livekit' }, archMetrics.islands.transport.livekit)
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'ws' }, archMetrics.islands.transport.ws)
+      metrics.observe('dcl_archipelago_islands_count', { transport: 'p2p' }, archMetrics.islands.transport.p2p)
+    } catch (err: any) {
+      logger.error(err)
+    }
+  }, archipelagoMetricsInterval)
 }
