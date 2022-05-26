@@ -1,3 +1,12 @@
+UNAME := $(shell uname)
+
+PROTOBUF_VERSION = 3.19.1
+ifeq ($(UNAME), Darwin)
+PROTOBUF_ZIP = protoc-$(PROTOBUF_VERSION)-osx-x86_64.zip
+else
+PROTOBUF_ZIP = protoc-$(PROTOBUF_VERSION)-linux-x86_64.zip
+endif
+
 protoc3/bin/protoc:
 	@# remove local folder
 	rm -rf protoc3 || true
@@ -17,10 +26,9 @@ build-proto: protoc3/bin/protoc
 	protoc3/bin/protoc \
 		--plugin=./node_modules/.bin/protoc-gen-ts_proto \
 		--ts_proto_opt=esModuleInterop=true,oneof=unions \
-		--ts_proto_out="$(PWD)/packages/shared/comms/v4/proto" \
-		-I="$(PWD)/packages/shared/comms/v4/proto" \
-		"$(PWD)/packages/shared/comms/v4/proto/comms.proto"  \
-		"$(PWD)/packages/shared/comms/v4/proto/archipelago.proto" 
+		--ts_proto_out="$(PWD)/src/controllers/proto" \
+		-I="$(PWD)/src/controllers/proto" \
+		"$(PWD)/src/controllers/proto/archipelago.proto" 
 
 build: build-proto
 	npm run build

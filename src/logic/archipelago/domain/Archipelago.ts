@@ -100,7 +100,9 @@ export class Archipelago implements IArchipelago {
 
   private currentSequence: number = 0
 
-  private connectionGenerator: ConnectionGenerator
+  private livekitConnectionGenerator: LivekitConnectionGenerator | null = null
+  private wsConnectionGenerator: WsConnectionGenerator | null = null
+  private p2pConnectionGenerator: P2PConnectionGenerator | null = null
 
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
@@ -110,19 +112,20 @@ export class Archipelago implements IArchipelago {
     this.options = { ...defaultOptions(), ...options }
 
     if (this.options.livekit) {
-      this.connectionGenerator = new LivekitConnectionGenerator(
+      this.livekitConnectionGenerator = new LivekitConnectionGenerator(
         this.options.livekit.url,
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-    } else if (this.options.wsRoomService) {
-      this.connectionGenerator = new WsConnectionGenerator(
+    }
+    if (this.options.wsRoomService) {
+      this.wsConnectionGenerator = new WsConnectionGenerator(
         this.options.wsRoomService.url,
         this.options.wsRoomService.secret
       )
-    } else {
-      this.connectionGenerator = new P2PConnectionGenerator()
     }
+
+    this.p2pConnectionGenerator = new P2PConnectionGenerator()
   }
 
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
@@ -419,10 +422,11 @@ export class Archipelago implements IArchipelago {
   }
 
   private setPeersIsland(islandId: string, peers: PeerData[], updates: IslandUpdates): IslandUpdates {
+    const connStr = this.connectionGenerator.generate(peer.id, islandId)
+
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
-      const connStr = this.connectionGenerator.generate(peer.id, islandId)
       updates[peer.id] = { action: 'changeTo', islandId, fromIslandId: previousIslandId, connStr }
     }
 

@@ -1,12 +1,7 @@
 import { IslandUpdates, PeerData, PeerPositionChange } from '../logic/archipelago'
 import { GlobalContext } from '../types'
-import {
-  HeartbeatMessage,
-  IslandChangedMessage,
-  LeftIslandMessage,
-  JoinIslandMessage,
-  Position3DMessage
-} from './proto/archipelago_pb'
+import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage } from './proto/archipelago'
+import { Reader } from 'protobufjs/minimal'
 
 const lastPeerHeartbeats = new Map<string, number>()
 
@@ -49,12 +44,12 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
   messageBroker.subscribe('client-proto.peer.*.heartbeat', ({ data, topic }) => {
     try {
       const id = topic.getLevel(2)
-      const message = HeartbeatMessage.deserializeBinary(data)
-      const position = message.getPosition()!
+      const message = HeartbeatMessage.decode(Reader.create(data))
+      const position = message.position!
 
       const peerPositionChange: PeerPositionChange = {
         id,
-        position: [position.getX(), position.getY(), position.getZ()]
+        position: [position.x, position.y, position.z]
       }
 
       lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
@@ -78,33 +73,42 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
           return
         }
 
-        const islandChangedMessage = new IslandChangedMessage()
-        islandChangedMessage.setIslandId(update.islandId)
-        islandChangedMessage.setConnStr(update.connStr)
+        const islandChangedMessage: IslandChangedMessage = {
+          islandId: update.islandId,
+          connStr: update.connStr,
+          peers: {}
+        }
 
-        const peers = islandChangedMessage.getPeersMap()
         island.peers.forEach((peerData: PeerData) => {
-          const p = new Position3DMessage()
-          p.setX(peerData.position[0])
-          p.setY(peerData.position[1])
-          p.setZ(peerData.position[2])
-          peers.set(peerData.id, p)
+          islandChangedMessage.peers[peerData.id] = {
+            x: peerData.position[0],
+            y: peerData.position[1],
+            z: peerData.position[2]
+          }
         })
         if (update.fromIslandId) {
-          islandChangedMessage.setFromIslandId(update.fromIslandId)
+          islandChangedMessage.fromIslandId = update.fromIslandId
         }
-        messageBroker.publish(`client-proto.${peerId}.island_changed`, islandChangedMessage.serializeBinary())
+        messageBroker.publish(
+          `client-proto.${peerId}.island_changed`,
+          IslandChangedMessage.encode(islandChangedMessage).finish()
+        )
 
-        const peerJoinMessage = new JoinIslandMessage()
-        peerJoinMessage.setIslandId(update.islandId)
-        peerJoinMessage.setPeerId(peerId)
-        messageBroker.publish(`client-proto.island.${update.islandId}.peer_join`, peerJoinMessage.serializeBinary())
+        messageBroker.publish(
+          `client-proto.island.${update.islandId}.peer_join`,
+          JoinIslandMessage.encode({
+            islandId: update.islandId,
+            peerId
+          }).finish()
+        )
       } else if (update.action === 'leave') {
-        const message = new LeftIslandMessage()
-        message.setIslandId(update.islandId)
-        message.setPeerId(peerId)
-        const data = message.serializeBinary()
-        messageBroker.publish(`client-proto.island.${update.islandId}.peer_left`, data)
+        messageBroker.publish(
+          `client-proto.island.${update.islandId}.peer_left`,
+          LeftIslandMessage.encode({
+            islandId: update.islandId,
+            peerId
+          }).finish()
+        )
       }
     })
   })
