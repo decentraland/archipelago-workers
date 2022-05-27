@@ -102,9 +102,7 @@ export class Archipelago implements IArchipelago {
 
   private currentSequence: number = 0
 
-  private connectionGenerator: ConnectionGenerator
-
-  private transport: Transport
+  private connectionGenerators = new Map<Transport, ConnectionGenerator>()
 
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
@@ -114,22 +112,23 @@ export class Archipelago implements IArchipelago {
     this.options = { ...defaultOptions(), ...options }
 
     if (this.options.livekit) {
-      this.connectionGenerator = new LivekitConnectionGenerator(
+      const generator = new LivekitConnectionGenerator(
         this.options.livekit.url,
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-      this.transport = 'livekit'
-    } else if (this.options.wsRoomService) {
-      this.connectionGenerator = new WsConnectionGenerator(
-        this.options.wsRoomService.url,
-        this.options.wsRoomService.secret
-      )
-      this.transport = 'ws'
-    } else {
-      this.connectionGenerator = new P2PConnectionGenerator()
-      this.transport = 'p2p'
+      console.log('Livekit is enabled')
+      this.connectionGenerators.set('livekit', generator)
     }
+
+    if (this.options.wsRoomService) {
+      const generator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
+      console.log('WS is enabled')
+      this.connectionGenerators.set('ws', generator)
+    }
+
+    console.log('P2P is enabled')
+    this.connectionGenerators.set('p2p', new P2PConnectionGenerator())
   }
 
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
@@ -395,6 +394,9 @@ export class Archipelago implements IArchipelago {
   private createIsland(group: PeerData[], updates: IslandUpdates, affectedIslands: Set<string>): IslandUpdates {
     const newIslandId = this.generateId()
 
+    const connectionGenerators = this.connectionGenerators
+    let transport: Transport | null = null
+
     const island: InternalIsland = {
       id: newIslandId,
       peers: group,
@@ -417,7 +419,26 @@ export class Archipelago implements IArchipelago {
         this._recalculateGeometryIfNeeded()
         return this._radius!
       },
-      transport: this.transport
+      get transport() {
+        if (transport) {
+          return transport
+        }
+
+        transport = 'p2p'
+
+        if (this.center[Z_AXIS] > 100) {
+          const x = this.center[X_AXIS]
+          if (x > 100 && connectionGenerators.has('livekit')) {
+            transport = 'livekit'
+          } else if (x < 100 && connectionGenerators.has('ws')) {
+            transport = 'ws'
+          }
+        }
+
+        console.log('ISLAND', this.center, transport)
+
+        return transport
+      }
     }
 
     this.islands.set(newIslandId, island)
@@ -427,10 +448,12 @@ export class Archipelago implements IArchipelago {
   }
 
   private setPeersIsland(islandId: string, peers: PeerData[], updates: IslandUpdates): IslandUpdates {
+    const island = this.getIsland(islandId)
+    const generator = this.connectionGenerators.get(island ? island.transport : 'p2p')
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
-      const connStr = this.connectionGenerator.generate(peer.id, islandId)
+      const connStr = generator!.generate(peer.id, islandId)
       updates[peer.id] = { action: 'changeTo', islandId, fromIslandId: previousIslandId, connStr }
     }
 

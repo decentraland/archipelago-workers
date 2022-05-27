@@ -119,7 +119,7 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
   setInterval(async () => {
     try {
       const archMetrics = await archipelago.calculateMetrics()
-      logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
+      // logger.info(`Archipelago Metrics: ${JSON.stringify(archMetrics)}`)
 
       metrics.observe('dcl_archipelago_peers_count', { transport: 'livekit' }, archMetrics.peers.transport.livekit)
       metrics.observe('dcl_archipelago_peers_count', { transport: 'ws' }, archMetrics.peers.transport.ws)
