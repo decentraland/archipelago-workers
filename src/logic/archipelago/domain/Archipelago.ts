@@ -19,6 +19,8 @@ import * as jwt from 'jsonwebtoken'
 const X_AXIS = 0
 const Z_AXIS = 2
 
+const parcelSize = 16
+
 const squaredDistance = (p1: Position3D, p2: Position3D) => {
   // By default, we use XZ plane squared distance. We ignore "height"
   const xDiff = p2[X_AXIS] - p1[X_AXIS]
@@ -426,11 +428,12 @@ export class Archipelago implements IArchipelago {
 
         transport = 'p2p'
 
-        if (this.center[Z_AXIS] > 100) {
+        const arbitraryLimit = 100 * parcelSize
+        if (this.center[Z_AXIS] > arbitraryLimit) {
           const x = this.center[X_AXIS]
-          if (x > 100 && connectionGenerators.has('livekit')) {
+          if (x > arbitraryLimit && connectionGenerators.has('livekit')) {
             transport = 'livekit'
-          } else if (x < 100 && connectionGenerators.has('ws')) {
+          } else if (x < arbitraryLimit && connectionGenerators.has('ws')) {
             transport = 'ws'
           }
         }
