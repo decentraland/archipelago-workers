@@ -9,6 +9,7 @@ import type {
 import { IArchipelagoComponent } from './logic/archipelago/component'
 import { metricDeclarations } from './metrics'
 import { IMessageBrokerComponent } from './ports/message-broker'
+import { IRealmComponent } from './ports/realm'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -23,6 +24,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   messageBroker: IMessageBrokerComponent
   archipelago: IArchipelagoComponent
+  realm: IRealmComponent
 }
 
 // components used in runtime
@@ -46,5 +48,12 @@ export type HandlerContextWithPath<
   }>,
   Path
 >
+
+export type Parcel = [number, number]
+
+export type ServiceDiscoveryMessage = {
+  serverName: string
+  status: any
+}
 
 export type Context<Path extends string = any> = IHttpServerComponent.PathAwareContext<GlobalContext, Path>

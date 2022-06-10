@@ -7,6 +7,7 @@ import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import { createMessageBrokerComponent } from './ports/message-broker'
 import { createArchipelagoComponent } from './logic/archipelago/component'
+import { createRealmComponent } from './ports/realm'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -19,6 +20,7 @@ export async function initComponents(): Promise<AppComponents> {
   const metrics = await createMetricsComponent(metricDeclarations, { server, config })
   const messageBroker = await createMessageBrokerComponent({ config, logs })
   const archipelago = await createArchipelagoComponent({ config, logs })
+  const realm = await createRealmComponent({ config, logs })
 
   return {
     config,
@@ -28,6 +30,7 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
     messageBroker,
-    archipelago
+    archipelago,
+    realm
   }
 }

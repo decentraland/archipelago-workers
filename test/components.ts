@@ -7,6 +7,7 @@ import { main } from '../src/service'
 import { TestComponents } from '../src/types'
 import { initComponents as originalInitComponents } from '../src/components'
 import { createLocalMessageBrokerComponent } from './helpers/message-broker'
+import { createTestRealmComponent } from './helpers/realm'
 
 /**
  * Behaves like Jest "describe" function, used to describe a test for a
@@ -30,6 +31,7 @@ async function initComponents(): Promise<TestComponents> {
   return {
     ...components,
     localFetch: await createLocalFetchCompoment(config),
-    messageBroker: await createLocalMessageBrokerComponent({ config, logs })
+    messageBroker: await createLocalMessageBrokerComponent({ config, logs }),
+    realm: await createTestRealmComponent()
   }
 }
