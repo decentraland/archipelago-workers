@@ -8,7 +8,7 @@ import type {
 } from '@well-known-components/interfaces'
 import { IArchipelagoComponent } from './logic/archipelago/component'
 import { metricDeclarations } from './metrics'
-import { IMessageBrokerComponent } from './ports/message-broker'
+import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IRealmComponent } from './ports/realm'
 
 export type GlobalContext = {
@@ -22,7 +22,7 @@ export type BaseComponents = {
   server: IHttpServerComponent<GlobalContext>
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
-  messageBroker: IMessageBrokerComponent
+  nats: INatsComponent
   archipelago: IArchipelagoComponent
   realm: IRealmComponent
 }

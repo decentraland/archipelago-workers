@@ -43,7 +43,7 @@ test('Topics', function ({ components }) {
       }
     }
 
-    components.messageBroker.publish(`client-proto.peer.${peerId}.heartbeat`, HeartbeatMessage.encode(message).finish())
+    components.nats.publish(`client-proto.peer.${peerId}.heartbeat`, HeartbeatMessage.encode(message).finish())
     components.archipelago.flush()
     await receivedUpdatesForPeers('1')
 

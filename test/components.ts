@@ -6,7 +6,7 @@ import { createRunner, createLocalFetchCompoment } from '@well-known-components/
 import { main } from '../src/service'
 import { TestComponents } from '../src/types'
 import { initComponents as originalInitComponents } from '../src/components'
-import { createLocalMessageBrokerComponent } from './helpers/message-broker'
+import { createLocalNatsComponent } from '@well-known-components/nats-component/dist/test-component'
 import { createTestRealmComponent } from './helpers/realm'
 
 /**
@@ -31,7 +31,7 @@ async function initComponents(): Promise<TestComponents> {
   return {
     ...components,
     localFetch: await createLocalFetchCompoment(config),
-    messageBroker: await createLocalMessageBrokerComponent({ config, logs }),
+    nats: await createLocalNatsComponent({ config, logs }),
     realm: await createTestRealmComponent()
   }
 }

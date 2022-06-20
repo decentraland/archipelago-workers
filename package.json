@@ -25,7 +25,6 @@
     "glob": "^8.0.3",
     "jest": "^28.1.0",
     "lodash.get": "^4.4.2",
-    "mock-nats-client": "^0.2.0",
     "prettier": "^2.6.2",
     "tiny-clojure": "^1.0.0-20210503032805.commit-386e3d2",
     "ts-jest": "^28.0.3",
@@ -47,10 +46,10 @@
     "@well-known-components/interfaces": "^1.1.1",
     "@well-known-components/logger": "^1.1.0",
     "@well-known-components/metrics": "^1.1.3",
+    "@well-known-components/nats-component": "^1.0.0-20220620133413.commit-3a68cf2",
     "google-protobuf": "^3.20.1",
     "jsonwebtoken": "^8.5.1",
     "livekit-server-sdk": "^0.5.10",
-    "nats": "^2.6.1",
     "protoc-gen-dcl": "^1.0.0-20220109214200.commit-f45e34a",
     "ts-proto": "^1.112.2"
   }

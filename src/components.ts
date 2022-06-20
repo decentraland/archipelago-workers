@@ -5,7 +5,7 @@ import { createFetchComponent } from './ports/fetch'
 import { createMetricsComponent } from '@well-known-components/metrics'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
-import { createMessageBrokerComponent } from './ports/message-broker'
+import { createNatsComponent } from '@well-known-components/nats-component'
 import { createArchipelagoComponent } from './logic/archipelago/component'
 import { createRealmComponent } from './ports/realm'
 
@@ -18,7 +18,7 @@ export async function initComponents(): Promise<AppComponents> {
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { server, config })
-  const messageBroker = await createMessageBrokerComponent({ config, logs })
+  const nats = await createNatsComponent({ config, logs })
   const archipelago = await createArchipelagoComponent({ config, logs })
   const realm = await createRealmComponent({ config, logs })
 
@@ -29,7 +29,7 @@ export async function initComponents(): Promise<AppComponents> {
     statusChecks,
     fetch,
     metrics,
-    messageBroker,
+    nats,
     archipelago,
     realm
   }
