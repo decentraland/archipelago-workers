@@ -39,6 +39,10 @@ export async function createRealmComponent(
   let realmName = ''
 
   async function start() {
+    // TODO implement realm name. The flow has been cut to prevent race conditions between this service and Lighthouse
+    realmName = ''
+    return
+
     const CURRENT_ETH_NETWORK = (await config.getString('ETH_NETWORK')) ?? DEFAULT_ETH_NETWORK
 
     // Keeping LIGHTHOUSE_NAMES for retrocompatibility
