@@ -32,3 +32,6 @@ build-proto: protoc3/bin/protoc
 
 build: build-proto
 	npm run build
+
+install:
+	npm ci
