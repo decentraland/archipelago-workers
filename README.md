@@ -1,54 +1,72 @@
-# template-server
+# Archipelago Service
 
-## Architecture
+## Getting Started
 
-Extension of "ports and adapters architecture", also known as "hexagonal architecture".
+### Dependencies
 
-With this architecture, code is organized into several layers: logic, controllers, adapters, and ports.
+- Node >= v16
+- [NATS](https://nats.io/) running instance.
+   - `NATS_URL` environment variable must be set. Eg: `NATS_URL=localhost:4222`
 
-## Application lifecycle
+### Installation
 
-1. **Start application lifecycle** - Handled by [src/index.ts](src/index.ts) in only one line of code: `Lifecycle.run({ main, initComponents })`
-2. **Create components** - Handled by [src/components.ts](src/components.ts) in the function `initComponents`
-3. **Wire application & start components** - Handled by [src/service.ts](src/service.ts) in the funciton `main`.
-   1. First wire HTTP routes and other events with [controllers](#src/controllers)
-   2. Then call to `startComponents()` to initialize the components (i.e. http-listener)
+Install Node dependencies:
 
-The same lifecycle is also valid for tests: [test/components.ts](test/components.ts)
-
-## Namespaces
-
-### src/logic
-
-Deals with pure business logic and shouldn't have side-effects or throw exceptions.
-
-### src/controllers
-
-The "glue" between all the other layers, orchestrating calls between pure business logic, adapters, and ports.
-
-Controllers always receive an hydrated context containing components and parameters to call the business logic e.g:
-
-```ts
-// handler for /ping
-export async function pingHandler(context: {
-  url: URL // parameter added by http-server
-  components: AppComponents // components of the app, part of the global context
-}) {
-  components.metrics.increment("test_ping_counter")
-  return { status: 200 }
-}
+```
+npm install
 ```
 
-### src/adapters
+### Usage
 
-The layer that converts external data representations into internal ones, and vice-versa. Acts as buffer to protect the service from changes in the outside world; when a data representation changes, you only need to change how the adapters deal with it.
+Build and start the project:
 
-### src/ports
+```
+make build
+npm run start
+```
 
-The layer that communicates with the outside world, such as http, kafka, and the database.
+### Test
 
-### src/components.ts
+Run unit and integration tests:
 
-We use the components abstraction to organize our ports (e.g. HTTP client, database client, redis client) and any other logic that needs to track mutable state or encode dependencies between stateful components. For every environment (e.g. test, e2e, prod, staging...) we have a different version of our component systems, enabling us to easily inject mocks or different implementations for different contexts.
+```
+make build
+npm run test
+```
 
-We make components available to incoming http and kafka handlers. For instance, the http-server handlers have access to things like the database or HTTP components, and pass them down to the controller level for general use.
+### Environment Variables
+
+#### NATS
+
+- `NATS_URL` (required): URL of the NATS instance to be connected to
+
+#### Server
+
+- `HTTP_SERVER_PORT`: (Defaults to 5000)
+- `HTTP_SERVER_HOST`: (Defaults to 0.0.0.0)
+
+#### Archipelago
+
+- `ARCHIPELAGO_FLUSH_FREQUENCY`: Frequency in seconds for islands/peers updates in Archipelago (Defaults to 2.0)
+- `ARCHIPELAGO_JOIN_DISTANCE`: (Defaults to 64)
+- `ARCHIPELAGO_LEAVE_DISTANCE`: (Defaults to 80)
+- `ARCHIPELAGO_MAX_PEERS_PER_ISLAND`: (Defaults to 100)
+- `ARCHIPELAGO_PARCEL_SIZE`: (Defaults to 16)
+- `ARCHIPELAGO_METRICS_INTERVAL`: Frequency in milliseconds for updating Prometheus metrics (Defaults to 10000)
+- `ARCHIPELAGO_STATUS_UPDATE_INTERVAL`: Frequency in milliseconds for updating Archipelago status information (Defaults to 10000)
+- `CHECK_HEARTBEAT_INTERVAL`: Frequency in milliseconds for checking the last peer update and assume it is active (Defaults to 60000)
+
+#### Livekit
+
+The following variables have to be set to configure a Livekit node:
+
+- `LIVEKIT_URL`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+
+#### WS
+
+The following variables have to be set to configure a WebSocket node:
+
+- `WS_ROOM_SERVICE_URL`
+- `WS_ROOM_SERVICE_SECRET`
