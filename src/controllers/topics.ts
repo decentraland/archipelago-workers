@@ -1,4 +1,4 @@
-import { IslandUpdates, PeerData, PeerPositionChange, Position3D } from '../logic/archipelago'
+import { IslandUpdates, PeerData, PeerPositionChange, Position3D } from '../interfaces'
 import { GlobalContext, Parcel, ServiceDiscoveryMessage } from '../types'
 import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage } from './proto/archipelago'
 import { Reader } from 'protobufjs/minimal'

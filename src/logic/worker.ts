@@ -1,9 +1,9 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
-import { WorkerOptions } from '../controller/ArchipelagoController'
+import { WorkerOptions } from '../controllers/ArchipelagoController'
 import { Archipelago } from '../domain/Archipelago'
 import { IArchipelago } from '../domain/interfaces'
 import { NullLogger } from '../misc/utils'
-import { IslandUpdates, PeerData } from '../types/interfaces'
+import { IslandUpdates, PeerData } from '../interfaces'
 import {
   CalculateMetricsResponse,
   DisposeResponse,
@@ -16,7 +16,7 @@ import {
   IslandsUpdated,
   WorkerMessage,
   WorkerStatusMessage
-} from '../types/messageTypes'
+} from '../messageTypes'
 
 const options: WorkerOptions = JSON.parse(process.argv[2])
 

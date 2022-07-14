@@ -22,7 +22,7 @@ export const test = createRunner<TestComponents>({
 })
 
 async function initComponents(): Promise<TestComponents> {
-  process.env.ARCHIPELAGO_WORKER_SRC_PATH = './dist/logic/archipelago/worker/worker.js'
+  process.env.ARCHIPELAGO_WORKER_SRC_PATH = './dist/logic/worker.js'
 
   const components = await originalInitComponents()
 

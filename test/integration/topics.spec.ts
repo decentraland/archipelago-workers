@@ -1,5 +1,5 @@
 import { HeartbeatMessage } from '../../src/controllers/proto/archipelago'
-import { IslandUpdates, UpdateSubscriber } from '../../src/logic/archipelago'
+import { IslandUpdates, UpdateSubscriber } from '../../src/interfaces'
 import { test } from '../components'
 import { untilTrue } from '../helpers/archipelago'
 

@@ -1,5 +1,5 @@
 import { ILoggerComponent } from '@well-known-components/interfaces'
-import { IdGenerator } from '../misc/idGenerator'
+import { IdGenerator } from './misc/idGenerator'
 
 export type Position3D = [number, number, number]
 export type Transport = 'livekit' | 'ws' | 'p2p'
@@ -24,24 +24,6 @@ export type Island = {
 export type PeerPositionChange = { id: string; position: Position3D; preferedIslandId?: string }
 
 export type UpdateSubscriber = (updates: IslandUpdates) => any
-
-export interface ArchipelagoController {
-  setPeersPositions(...requests: PeerPositionChange[]): void
-  getIslands(): Promise<Island[]>
-  getIsland(id: string): Promise<Island | undefined>
-  clearPeers(...ids: string[]): void
-  getPeersCount(): Promise<number>
-  getPeerIds(): Promise<string[]>
-  getIslandsCount(): Promise<number>
-  subscribeToUpdates(subscriber: UpdateSubscriber): void
-  unsubscribeFromUpdates(subscriber: UpdateSubscriber): void
-  getPeerData(id: string): Promise<PeerData | undefined>
-  getPeersData(ids: string[]): Promise<Record<string, PeerData>>
-  dispose(): Promise<void>
-  flush(): void
-  modifyOptions(options: UpdatableArchipelagoParameters): void
-  calculateMetrics(): Promise<ArchipelagoMetrics>
-}
 
 export type ChangeToIslandUpdate = {
   action: 'changeTo'
@@ -105,4 +87,4 @@ export type ArchipelagoMetrics = {
   islands: ArchipelagoMetricPerTransport
 }
 
-export { IdGenerator } from '../misc/idGenerator'
+export { IdGenerator } from './misc/idGenerator'

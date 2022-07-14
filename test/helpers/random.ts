@@ -1,4 +1,4 @@
-import { Position3D } from "../../src/logic/archipelago"
+import { Position3D } from '../../src/interfaces'
 
 export function createRandomizer(generator: () => number = Math.random) {
   const randomizer = {
@@ -18,7 +18,7 @@ export function createRandomizer(generator: () => number = Math.random) {
       return [
         randomizer.randomBetween(minPosition[0], maxPosition[0]),
         randomizer.randomBetween(minPosition[1], maxPosition[1]),
-        randomizer.randomBetween(minPosition[2], maxPosition[2]),
+        randomizer.randomBetween(minPosition[2], maxPosition[2])
       ]
     },
 
@@ -26,9 +26,9 @@ export function createRandomizer(generator: () => number = Math.random) {
       return [
         randomizer.randomBetween(aPosition[0] - maxOffset[0], aPosition[0] + maxOffset[0]),
         randomizer.randomBetween(aPosition[1] - maxOffset[1], aPosition[1] + maxOffset[1]),
-        randomizer.randomBetween(aPosition[2] - maxOffset[2], aPosition[2] + maxOffset[2]),
+        randomizer.randomBetween(aPosition[2] - maxOffset[2], aPosition[2] + maxOffset[2])
       ]
-    },
+    }
   }
 
   return randomizer

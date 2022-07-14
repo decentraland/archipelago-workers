@@ -1,5 +1,11 @@
-import { Island, IslandUpdates, PeerPositionChange } from '..'
-import { ArchipelagoMetrics, PeerData, UpdatableArchipelagoParameters } from '../types/interfaces'
+import {
+  Island,
+  IslandUpdates,
+  PeerPositionChange,
+  ArchipelagoMetrics,
+  PeerData,
+  UpdatableArchipelagoParameters
+} from '../interfaces'
 
 export interface IArchipelago {
   getIslandsCount(): number

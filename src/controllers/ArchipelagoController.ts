@@ -1,5 +1,4 @@
 import {
-  ArchipelagoController,
   ArchipelagoControllerOptions,
   ArchipelagoMetrics,
   ArchipelagoParameters,
@@ -8,7 +7,7 @@ import {
   PeerPositionChange,
   UpdatableArchipelagoParameters,
   UpdateSubscriber
-} from '../types/interfaces'
+} from '../interfaces'
 
 import { fork, ChildProcess } from 'child_process'
 import {
@@ -21,7 +20,7 @@ import {
   WorkerRequest,
   WorkerResponse,
   WorkerStatus
-} from '../types/messageTypes'
+} from '../messageTypes'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
 import { ILoggerComponent } from '@well-known-components/interfaces'
 
@@ -52,7 +51,7 @@ class WorkerController {
     parameters: ArchipelagoParameters,
     options: Partial<WorkerControllerOptions> = {}
   ) {
-    const workerSrcPath = options.workerSrcPath ?? __dirname + '/../worker/worker.js'
+    const workerSrcPath = options.workerSrcPath ?? __dirname + '/../logic/worker.js'
 
     this.worker = fork(workerSrcPath, [
       JSON.stringify({ archipelagoParameters: parameters, logging: options.workerLogging ?? true })
@@ -108,7 +107,7 @@ class WorkerController {
   }
 }
 
-export class ArchipelagoControllerImpl implements ArchipelagoController {
+export class ArchipelagoComponent {
   pendingUpdates: Map<string, PeerUpdate> = new Map()
 
   updatesSubscribers: Set<UpdateSubscriber> = new Set()
@@ -250,8 +249,4 @@ export class ArchipelagoControllerImpl implements ArchipelagoController {
     const request: Omit<CalculateMetrics, 'requestId'> = { type: 'calculate-metrics' }
     return this.workerController.sendRequestToWorker(request)
   }
-}
-
-export function defaultArchipelagoController(options: ArchipelagoControllerOptions): ArchipelagoController {
-  return new ArchipelagoControllerImpl(options)
 }

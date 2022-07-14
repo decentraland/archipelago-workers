@@ -1,5 +1,11 @@
-import { PeerPositionChange } from '..'
-import { ArchipelagoMetrics, Island, IslandUpdates, PeerData, UpdatableArchipelagoParameters } from './interfaces'
+import {
+  PeerPositionChange,
+  ArchipelagoMetrics,
+  Island,
+  IslandUpdates,
+  PeerData,
+  UpdatableArchipelagoParameters
+} from './interfaces'
 
 export type ApplyUpdates = {
   type: 'apply-updates'

@@ -6,7 +6,7 @@ import type {
   IBaseComponent,
   IMetricsComponent
 } from '@well-known-components/interfaces'
-import { IArchipelagoComponent } from './logic/archipelago/component'
+import { ArchipelagoComponent } from './controllers/ArchipelagoController'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IRealmComponent } from './ports/realm'
@@ -23,7 +23,7 @@ export type BaseComponents = {
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
-  archipelago: IArchipelagoComponent
+  archipelago: ArchipelagoComponent
   realm: IRealmComponent
 }
 

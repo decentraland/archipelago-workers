@@ -10,7 +10,7 @@ import {
   UpdatableArchipelagoParameters,
   Transport,
   ArchipelagoMetrics
-} from '../types/interfaces'
+} from '../interfaces'
 import { findMax, popMax } from '../misc/utils'
 import { IArchipelago } from './interfaces'
 import { AccessToken } from 'livekit-server-sdk'
@@ -119,17 +119,14 @@ export class Archipelago implements IArchipelago {
         this.options.livekit.apiKey,
         this.options.livekit.apiSecret
       )
-      console.log('Livekit is enabled')
       this.connectionGenerators.set('livekit', generator)
     }
 
     if (this.options.wsRoomService) {
       const generator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
-      console.log('WS is enabled')
       this.connectionGenerators.set('ws', generator)
     }
 
-    console.log('P2P is enabled')
     this.connectionGenerators.set('p2p', new P2PConnectionGenerator())
   }
 
@@ -437,8 +434,6 @@ export class Archipelago implements IArchipelago {
             transport = 'ws'
           }
         }
-
-        console.log('ISLAND', this.center, transport)
 
         return transport
       }
