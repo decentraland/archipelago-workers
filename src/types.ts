@@ -9,7 +9,6 @@ import type {
 import { ArchipelagoComponent } from './controllers/ArchipelagoController'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
-import { IRealmComponent } from './ports/realm'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -24,7 +23,6 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
   archipelago: ArchipelagoComponent
-  realm: IRealmComponent
 }
 
 // components used in runtime

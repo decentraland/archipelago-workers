@@ -1,13 +1,12 @@
-import { IslandUpdates, PeerData, PeerPositionChange, Position3D } from '../interfaces'
-import { GlobalContext, Parcel, ServiceDiscoveryMessage } from '../types'
+import { IslandUpdates, PeerData, PeerPositionChange } from '../interfaces'
+import { GlobalContext, ServiceDiscoveryMessage } from '../types'
 import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage } from './proto/archipelago'
 import { Reader } from 'protobufjs/minimal'
 import { JSONCodec } from '@well-known-components/nats-component'
 
 export async function setupTopics(globalContext: GlobalContext): Promise<void> {
-  const { nats, archipelago, config, logs, metrics, realm } = globalContext.components
+  const { nats, archipelago, config, logs, metrics } = globalContext.components
 
-  const PARCEL_SIZE = await config.requireNumber('ARCHIPELAGO_PARCEL_SIZE')
   const jsonCodec = JSONCodec()
   const lastPeerHeartbeats = new Map<string, number>()
   const logger = logs.getLogger('Topics')
@@ -146,36 +145,13 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
   }, archipelagoMetricsInterval)
 
   // Status
-  const worldToGrid = (position: Position3D): Parcel => {
-    const parcelX = Math.floor(position[0] / PARCEL_SIZE)
-    const parcelY = Math.floor(position[2] / PARCEL_SIZE)
-    return [parcelX, parcelY]
-  }
   const getStatus = async () => {
-    const islands = await archipelago.getIslands()
-    const usersPositions = islands.map((island) => island.peers.map((peer) => peer.position)).flat()
-    const usersParcels = usersPositions.map((position) => worldToGrid(position))
-
-    const [maxUsers, commitHash, catalystVersion] = await Promise.all([
-      config.getNumber('MAX_CONCURRENT_USERS'),
-      config.getString('COMMIT_HASH'),
-      config.getString('CATALYST_VERSION')
-    ])
-
+    const commitHash = await config.getString('COMMIT_HASH')
     const status = {
-      name: realm.getRealmName(),
-      version: '1.0.0',
       currenTime: Date.now(),
       env: {
-        secure: false,
-        commitHash,
-        catalystVersion: catalystVersion || 'Unknown'
-      },
-      ready: true,
-      usersCount: usersPositions.length,
-      islandsCount: islands.length,
-      maxUsers: maxUsers ?? 5000,
-      usersParcels
+        commitHash
+      }
     }
 
     return status
