@@ -149,9 +149,7 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
     const commitHash = await config.getString('COMMIT_HASH')
     const status = {
       currenTime: Date.now(),
-      env: {
-        commitHash
-      }
+      commitHash
     }
 
     return status

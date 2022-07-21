@@ -66,7 +66,7 @@ export async function createArchipelagoComponent(components: ArchipelagoComponen
 export async function initComponents(): Promise<AppComponents> {
   const config = await createDotEnvConfigComponent({ path: ['.env.default', '.env'] })
 
-  const logs = createLogComponent()
+  const logs = createLogComponent({})
   const server = await createServerComponent<GlobalContext>({ config, logs }, {})
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
