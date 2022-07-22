@@ -38,7 +38,6 @@
     "tabWidth": 2
   },
   "dependencies": {
-    "@dcl/catalyst-node-commons": "^1.0.4",
     "@types/google-protobuf": "^3.15.6",
     "@types/jsonwebtoken": "^8.5.8",
     "@well-known-components/env-config-provider": "^1.1.1",
