@@ -1,8 +1,17 @@
 import { IslandUpdates, PeerData, PeerPositionChange } from '../interfaces'
 import { GlobalContext, ServiceDiscoveryMessage } from '../types'
-import { HeartbeatMessage, IslandChangedMessage, LeftIslandMessage, JoinIslandMessage } from './proto/archipelago'
+import {
+  HeartbeatMessage,
+  IslandChangedMessage,
+  LeftIslandMessage,
+  JoinIslandMessage,
+  IslandStatusMessage,
+  IslandData
+} from './proto/archipelago'
 import { Reader } from 'protobufjs/minimal'
 import { JSONCodec } from '@well-known-components/nats-component'
+
+const ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL = 1000 * 60 * 2 // 2 min
 
 export async function setupTopics(globalContext: GlobalContext): Promise<void> {
   const { nats, archipelago, config, logs, metrics } = globalContext.components
@@ -167,4 +176,27 @@ export async function setupTopics(globalContext: GlobalContext): Promise<void> {
       logger.error(err)
     }
   }, await config.requireNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL'))
+
+  setInterval(async () => {
+    try {
+      const islands = await archipelago.getIslands()
+      const data: IslandData[] = islands.map((i) => {
+        return {
+          id: i.id,
+          center: {
+            x: i.center[0],
+            y: i.center[1],
+            z: i.center[2]
+          },
+          maxPeers: 100,
+          radius: i.radius,
+          peers: i.peers.map((p) => p.id)
+        }
+      })
+      const message = IslandStatusMessage.encode({ data }).finish()
+      nats.publish('archipelago.islands', message)
+    } catch (err: any) {
+      logger.error(err)
+    }
+  }, ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL)
 }
