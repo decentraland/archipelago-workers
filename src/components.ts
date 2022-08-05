@@ -6,57 +6,28 @@ import { createFetchComponent } from './ports/fetch'
 import { createMetricsComponent } from '@well-known-components/metrics'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
-import { ArchipelagoComponent } from './controllers/ArchipelagoController'
+import { ArchipelagoController } from './controllers/ArchipelagoController'
 import { createNatsComponent } from '@well-known-components/nats-component'
 
-export type ArchipelagoComponents = {
-  config: IConfigComponent
+export async function createArchipelagoComponent(
+  config: IConfigComponent,
   logs: ILoggerComponent
-}
-
-async function getLivekitConf(config: IConfigComponent) {
-  const url = await config.requireString('LIVEKIT_URL')
-  const apiKey = await config.requireString('LIVEKIT_API_KEY')
-  const apiSecret = await config.requireString('LIVEKIT_API_SECRET')
-
-  if (!url || !apiKey || !apiSecret) {
-    return
-  }
-
-  return { url, apiKey, apiSecret }
-}
-
-async function getWsRoomServiceConf(config: IConfigComponent) {
-  const url = await config.requireString('WS_ROOM_SERVICE_URL')
-  const secret = await config.requireString('WS_ROOM_SERVICE_SECRET')
-
-  if (!url || !secret) {
-    return
-  }
-
-  return { url, secret }
-}
-
-export async function createArchipelagoComponent(components: ArchipelagoComponents): Promise<ArchipelagoComponent> {
-  const { config } = components
-
+): Promise<ArchipelagoController> {
   const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
   const joinDistance = await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE')
   const leaveDistance = await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE')
   const maxPeersPerIsland = await config.requireNumber('ARCHIPELAGO_MAX_PEERS_PER_ISLAND')
   const workerSrcPath = await config.getString('ARCHIPELAGO_WORKER_SRC_PATH')
 
-  const controller = new ArchipelagoComponent({
+  const controller = new ArchipelagoController({
     flushFrequency,
     archipelagoParameters: {
       joinDistance,
       leaveDistance,
-      maxPeersPerIsland,
-      livekit: await getLivekitConf(config),
-      wsRoomService: await getWsRoomServiceConf(config)
+      maxPeersPerIsland
     },
     workerSrcPath,
-    components
+    components: { logs }
   })
 
   return controller
@@ -72,7 +43,7 @@ export async function initComponents(): Promise<AppComponents> {
   const fetch = await createFetchComponent()
   const metrics = await createMetricsComponent(metricDeclarations, { server, config })
   const nats = await createNatsComponent({ config, logs })
-  const archipelago = await createArchipelagoComponent({ config, logs })
+  const archipelago = await createArchipelagoComponent(config, logs)
 
   return {
     config,

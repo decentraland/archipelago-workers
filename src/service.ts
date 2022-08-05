@@ -1,7 +1,14 @@
 import { Lifecycle } from '@well-known-components/interfaces'
+import { setupIslandsStatusReporting } from './controllers/islands-status-report'
+import { setupMetrics } from './controllers/metrics'
+import { setupPublishing } from './controllers/publish'
 import { setupRouter } from './controllers/routes'
-import { setupTopics } from './controllers/topics'
+import { setupServiceDiscovery } from './controllers/service-discovery'
 import { AppComponents, GlobalContext, TestComponents } from './types'
+
+type Startable = {
+  start(): Promise<void>
+}
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
 export async function main(program: Lifecycle.EntryPointParameters<AppComponents | TestComponents>) {
@@ -22,5 +29,15 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  await setupTopics(globalContext)
+  const { nats, config, logs, metrics, archipelago } = components
+
+  const start = async (s: Promise<Startable>) => {
+    const { start } = await s
+    await start()
+  }
+
+  await setupPublishing({ nats, archipelago })
+  await start(setupServiceDiscovery({ nats, logs, config }))
+  await start(setupMetrics({ config, logs, metrics, archipelago }))
+  await start(setupIslandsStatusReporting({ nats, logs, config, archipelago }))
 }

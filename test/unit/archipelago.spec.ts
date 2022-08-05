@@ -1,7 +1,7 @@
 import { Archipelago } from '../../src/domain/Archipelago'
 
 import expect from 'assert'
-import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate } from '../../src/interfaces'
+import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate } from '../../src/types'
 import { sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../helpers/archipelago'
 
@@ -12,8 +12,7 @@ describe('archipelago', () => {
   beforeEach(() => {
     archipelago = new Archipelago({
       joinDistance: 64,
-      leaveDistance: 80,
-      wsRoomService: { url: 'test_url', secret: '123456' }
+      leaveDistance: 80
     })
   })
 

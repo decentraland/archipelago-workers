@@ -1,18 +1,17 @@
 import expect from 'assert'
-import { IslandUpdates } from '../../src/interfaces'
-import { ArchipelagoComponent } from '../../src/controllers/ArchipelagoController'
+import { IslandUpdates } from '../../src/types'
+import { ArchipelagoController } from '../../src/controllers/ArchipelagoController'
 import { deepEqual, expectIslandsInControllerWith, untilTrue } from '../helpers/archipelago'
 
 describe('archipelago controller', () => {
-  let controller: ArchipelagoComponent
+  let controller: ArchipelagoController
   let receivedUpdates: IslandUpdates[]
 
   beforeEach(() => {
-    controller = new ArchipelagoComponent({
+    controller = new ArchipelagoController({
       archipelagoParameters: {
         joinDistance: 64,
-        leaveDistance: 80,
-        wsRoomService: { url: 'test_url', secret: '123456' }
+        leaveDistance: 80
       },
       flushFrequency: 0.05,
       workerSrcPath: './dist/logic/worker.js',

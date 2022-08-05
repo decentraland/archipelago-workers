@@ -10,16 +10,12 @@ import {
   UpdatableArchipelagoParameters,
   Transport,
   ArchipelagoMetrics
-} from '../interfaces'
+} from '../types'
 import { findMax, popMax } from '../misc/utils'
 import { IArchipelago } from './interfaces'
-import { AccessToken } from 'livekit-server-sdk'
-import * as jwt from 'jsonwebtoken'
 
 const X_AXIS = 0
 const Z_AXIS = 2
-
-const parcelSize = 16
 
 const squaredDistance = (p1: Position3D, p2: Position3D) => {
   // By default, we use XZ plane squared distance. We ignore "height"
@@ -62,40 +58,6 @@ type InternalIsland = Island & {
   _recalculateGeometryIfNeeded: () => void
 }
 
-interface ConnectionGenerator {
-  generate(peerId: string, islandId: string): string
-}
-
-class WsConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string, private secret: string) {}
-
-  generate(peerId: string, islandId: string): string {
-    const token = jwt.sign({ peerId }, this.secret, {
-      audience: this.url
-    })
-
-    return `ws-room:${this.url}/${islandId}?access_token=${token}`
-  }
-}
-
-class LivekitConnectionGenerator implements ConnectionGenerator {
-  constructor(private url: string, private apiKey: string, private apiSecret: string) {}
-
-  generate(peerId: string, islandId: string): string {
-    const token = new AccessToken(this.apiKey, this.apiSecret, {
-      identity: peerId
-    })
-    token.addGrant({ roomJoin: true, roomCreate: true, room: islandId })
-    return `livekit:${this.url}?access_token=${token.toJwt()}`
-  }
-}
-
-class P2PConnectionGenerator implements ConnectionGenerator {
-  generate(peerId: string, islandId: string): string {
-    return `p2p:${islandId}.${peerId}`
-  }
-}
-
 export class Archipelago implements IArchipelago {
   private peers: Map<string, PeerData> = new Map()
   private islands: Map<string, InternalIsland> = new Map()
@@ -104,30 +66,12 @@ export class Archipelago implements IArchipelago {
 
   private currentSequence: number = 0
 
-  private connectionGenerators = new Map<Transport, ConnectionGenerator>()
-
   private generateId(): string {
     return this.options.islandIdGenerator.generateId()
   }
 
   constructor(options: ArchipelagoParameters) {
     this.options = { ...defaultOptions(), ...options }
-
-    if (this.options.livekit) {
-      const generator = new LivekitConnectionGenerator(
-        this.options.livekit.url,
-        this.options.livekit.apiKey,
-        this.options.livekit.apiSecret
-      )
-      this.connectionGenerators.set('livekit', generator)
-    }
-
-    if (this.options.wsRoomService) {
-      const generator = new WsConnectionGenerator(this.options.wsRoomService.url, this.options.wsRoomService.secret)
-      this.connectionGenerators.set('ws', generator)
-    }
-
-    this.connectionGenerators.set('p2p', new P2PConnectionGenerator())
   }
 
   modifyOptions(options: UpdatableArchipelagoParameters): IslandUpdates {
@@ -393,8 +337,7 @@ export class Archipelago implements IArchipelago {
   private createIsland(group: PeerData[], updates: IslandUpdates, affectedIslands: Set<string>): IslandUpdates {
     const newIslandId = this.generateId()
 
-    const connectionGenerators = this.connectionGenerators
-    let transport: Transport | null = null
+    const transport: Transport = 'p2p'
 
     const island: InternalIsland = {
       id: newIslandId,
@@ -419,22 +362,6 @@ export class Archipelago implements IArchipelago {
         return this._radius!
       },
       get transport() {
-        if (transport) {
-          return transport
-        }
-
-        transport = 'p2p'
-
-        const arbitraryLimit = 100 * parcelSize
-        if (this.center[Z_AXIS] > arbitraryLimit) {
-          const x = this.center[X_AXIS]
-          if (x > arbitraryLimit && connectionGenerators.has('livekit')) {
-            transport = 'livekit'
-          } else if (x < arbitraryLimit && connectionGenerators.has('ws')) {
-            transport = 'ws'
-          }
-        }
-
         return transport
       }
     }
@@ -446,12 +373,10 @@ export class Archipelago implements IArchipelago {
   }
 
   private setPeersIsland(islandId: string, peers: PeerData[], updates: IslandUpdates): IslandUpdates {
-    const island = this.getIsland(islandId)
-    const generator = this.connectionGenerators.get(island ? island.transport : 'p2p')
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = islandId
-      const connStr = generator!.generate(peer.id, islandId)
+      const connStr = `p2p:${peer.islandId}.${peer.id}`
       updates[peer.id] = { action: 'changeTo', islandId, fromIslandId: previousIslandId, connStr }
     }
 

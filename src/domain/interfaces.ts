@@ -5,7 +5,7 @@ import {
   ArchipelagoMetrics,
   PeerData,
   UpdatableArchipelagoParameters
-} from '../interfaces'
+} from '../types'
 
 export interface IArchipelago {
   getIslandsCount(): number

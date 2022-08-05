@@ -24,12 +24,13 @@ async function initComponents(): Promise<TestComponents> {
   process.env.ARCHIPELAGO_WORKER_SRC_PATH = './dist/logic/worker.js'
 
   const components = await originalInitComponents()
+  const { config } = components
 
-  const { config, logs } = components
+  const nats = await createLocalNatsComponent()
 
   return {
     ...components,
     localFetch: await createLocalFetchCompoment(config),
-    nats: await createLocalNatsComponent({ config, logs })
+    nats: nats
   }
 }

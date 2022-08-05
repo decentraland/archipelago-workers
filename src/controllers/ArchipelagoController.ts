@@ -1,5 +1,4 @@
 import {
-  ArchipelagoControllerOptions,
   ArchipelagoMetrics,
   ArchipelagoParameters,
   Island,
@@ -7,7 +6,7 @@ import {
   PeerPositionChange,
   UpdatableArchipelagoParameters,
   UpdateSubscriber
-} from '../interfaces'
+} from '../types'
 
 import { fork, ChildProcess } from 'child_process'
 import {
@@ -23,6 +22,15 @@ import {
 } from '../messageTypes'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
 import { ILoggerComponent } from '@well-known-components/interfaces'
+
+export type ArchipelagoControllerOptions = {
+  flushFrequency?: number
+  archipelagoParameters: ArchipelagoParameters
+  workerSrcPath?: string
+  components: {
+    logs?: ILoggerComponent
+  }
+}
 
 type SetPositionUpdate = { type: 'set-position' } & PeerPositionChange
 type ClearUpdate = { type: 'clear' }
@@ -107,7 +115,7 @@ class WorkerController {
   }
 }
 
-export class ArchipelagoComponent {
+export class ArchipelagoController {
   pendingUpdates: Map<string, PeerUpdate> = new Map()
 
   updatesSubscribers: Set<UpdateSubscriber> = new Set()

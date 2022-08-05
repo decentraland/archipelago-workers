@@ -1,4 +1,4 @@
-import { Position3D } from '../../src/interfaces'
+import { Position3D } from '../../src/types'
 
 export function createRandomizer(generator: () => number = Math.random) {
   const randomizer = {

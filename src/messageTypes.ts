@@ -5,7 +5,7 @@ import {
   IslandUpdates,
   PeerData,
   UpdatableArchipelagoParameters
-} from './interfaces'
+} from './types'
 
 export type ApplyUpdates = {
   type: 'apply-updates'

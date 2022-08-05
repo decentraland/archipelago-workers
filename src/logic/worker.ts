@@ -3,7 +3,7 @@ import { WorkerOptions } from '../controllers/ArchipelagoController'
 import { Archipelago } from '../domain/Archipelago'
 import { IArchipelago } from '../domain/interfaces'
 import { NullLogger } from '../misc/utils'
-import { IslandUpdates, PeerData } from '../interfaces'
+import { IslandUpdates, PeerData } from '../types'
 import {
   CalculateMetricsResponse,
   DisposeResponse,
