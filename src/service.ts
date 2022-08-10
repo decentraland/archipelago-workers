@@ -1,5 +1,6 @@
 import { Lifecycle } from '@well-known-components/interfaces'
 import { setupIslandsStatusReporting } from './controllers/islands-status-report'
+import { setupListener } from './controllers/listener'
 import { setupMetrics } from './controllers/metrics'
 import { setupPublishing } from './controllers/publish'
 import { setupRouter } from './controllers/routes'
@@ -36,6 +37,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     await start()
   }
 
+  await setupListener({ nats, archipelago, config, logs })
   await setupPublishing({ nats, archipelago })
   await start(setupServiceDiscovery({ nats, logs, config }))
   await start(setupMetrics({ config, logs, metrics, archipelago }))
