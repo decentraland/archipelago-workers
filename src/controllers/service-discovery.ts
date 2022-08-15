@@ -1,12 +1,11 @@
 import { AppComponents, ServiceDiscoveryMessage } from '../types'
-import { JSONCodec } from '@well-known-components/nats-component'
+import { encodeJson } from '@well-known-components/nats-component'
 
 const DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL = 10000
 
 export async function setupServiceDiscovery({ nats, logs, config }: Pick<AppComponents, 'nats' | 'logs' | 'config'>) {
   const logger = logs.getLogger('Status discovery')
 
-  const jsonCodec = JSONCodec()
   const freq =
     (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL
   const commitHash = await config.getString('COMMIT_HASH')
@@ -20,7 +19,7 @@ export async function setupServiceDiscovery({ nats, logs, config }: Pick<AppComp
       serverName: 'archipelago',
       status
     }
-    const encodedMsg = jsonCodec.encode(serviceDiscoveryMessage)
+    const encodedMsg = encodeJson(serviceDiscoveryMessage)
     nats.publish('service.discovery', encodedMsg)
   }
 

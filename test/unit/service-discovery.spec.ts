@@ -1,10 +1,8 @@
-import { createLocalNatsComponent } from '@well-known-components/nats-component'
-import { IslandStatusMessage } from '../../src/controllers/proto/archipelago'
-import { Island, ServiceDiscoveryMessage } from '../../src/types'
+import { createLocalNatsComponent, decodeJson } from '@well-known-components/nats-component'
+import { ServiceDiscoveryMessage } from '../../src/types'
 import { setupServiceDiscovery } from '../../src/controllers/service-discovery'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
-import { JSONCodec } from '@well-known-components/nats-component'
 
 describe('service-discovery', () => {
   it('should publish to NATS', async () => {
@@ -18,7 +16,6 @@ describe('service-discovery', () => {
     })
     const logs = await createLogComponent({})
 
-    const jsonCodec = JSONCodec()
     const s = nats.subscribe('service.discovery')
 
     const { publishServiceDiscovery } = await setupServiceDiscovery({ nats, logs, config })
@@ -26,7 +23,7 @@ describe('service-discovery', () => {
     publishServiceDiscovery()
 
     for await (const message of s.generator) {
-      const data: ServiceDiscoveryMessage = jsonCodec.decode(message.data) as any
+      const data: ServiceDiscoveryMessage = decodeJson(message.data) as any
       expect(data).toEqual(
         expect.objectContaining({
           serverName: 'archipelago',
