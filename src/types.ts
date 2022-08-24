@@ -8,10 +8,11 @@ import type {
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
-import { IdGenerator } from './misc/idGenerator'
+import { ITransportRegistryComponent } from './ports/transport-registry'
+import { IPublisherComponent } from './ports/publisher'
 
 export type Position3D = [number, number, number]
-export type Transport = 'livekit' | 'ws' | 'p2p'
+export type TransportType = 'livekit' | 'ws' | 'p2p'
 
 export type PeerData = {
   id: string
@@ -27,21 +28,11 @@ export type Island = {
   center: Position3D
   radius: number
   sequenceId: number
-  transport: Transport
+  transportId: number
+  _center?: Position3D
+  _radius?: number
+  _geometryDirty: boolean
 }
-
-export type ArchipelagoOptions = {
-  maxPeersPerIsland: number
-  joinDistance: number
-  leaveDistance: number
-  islandIdGenerator: IdGenerator
-}
-
-export type MandatoryArchipelagoOptions = Pick<ArchipelagoOptions, 'joinDistance' | 'leaveDistance'>
-
-export type ArchipelagoParameters = MandatoryArchipelagoOptions & Partial<ArchipelagoOptions>
-
-export type UpdatableArchipelagoParameters = Partial<Omit<ArchipelagoOptions, 'islandIdGenerator'>>
 
 export type PeerPositionChange = { id: string; position: Position3D; preferedIslandId?: string }
 
@@ -57,32 +48,14 @@ export type LeaveIslandUpdate = {
   islandId: string
 }
 
-export type IslandUpdate = ChangeToIslandUpdate | LeaveIslandUpdate
-export type IslandUpdates = Record<string, IslandUpdate>
-export type UpdateSubscriber = (updates: IslandUpdates) => any
+export type IslandUpdates = Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>
 
-export type ArchipelagoMetricPerTransport = {
-  transport: {
-    livekit: number
-    ws: number
-    p2p: number
-  }
-}
-
-export type ArchipelagoMetrics = {
-  peers: ArchipelagoMetricPerTransport
-  islands: ArchipelagoMetricPerTransport
-}
-
-export { IdGenerator } from './misc/idGenerator'
-
-export type ArchipelagoComponent = {
-  calculateMetrics(): Promise<ArchipelagoMetrics>
-  clearPeers(...ids: string[]): void
-  setPeersPositions(...requests: PeerPositionChange[]): void
-  subscribeToUpdates(subscriber: UpdateSubscriber): void
-  getIslands(): Promise<Island[]>
-  getIsland(id: string): Promise<Island | undefined>
+export type Transport = {
+  id: number
+  availableSeats: number
+  usersCount: number
+  maxIslandSize: number
+  getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>>
 }
 
 export type GlobalContext = {
@@ -97,7 +70,8 @@ export type BaseComponents = {
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
-  archipelago: ArchipelagoComponent
+  transportRegistry: ITransportRegistryComponent
+  publisher: IPublisherComponent
 }
 
 // components used in runtime
@@ -123,10 +97,5 @@ export type HandlerContextWithPath<
 >
 
 export type Parcel = [number, number]
-
-export type ServiceDiscoveryMessage = {
-  serverName: string
-  status: any
-}
 
 export type Context<Path extends string = any> = IHttpServerComponent.PathAwareContext<GlobalContext, Path>

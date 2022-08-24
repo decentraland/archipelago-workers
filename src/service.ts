@@ -1,15 +1,11 @@
 import { Lifecycle } from '@well-known-components/interfaces'
-import { setupIslandsStatusReporting } from './controllers/islands-status-report'
 import { setupListener } from './controllers/listener'
-import { setupMetrics } from './controllers/metrics'
-import { setupPublishing } from './controllers/publish'
 import { setupRouter } from './controllers/routes'
-import { setupServiceDiscovery } from './controllers/service-discovery'
+import { ArchipelagoController } from './controllers/archipelago'
 import { AppComponents, GlobalContext, TestComponents } from './types'
 
-type Startable = {
-  start(): Promise<void>
-}
+const DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL = 1000 * 60 * 2 // 2 min
+const DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL = 10000
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
 export async function main(program: Lifecycle.EntryPointParameters<AppComponents | TestComponents>) {
@@ -30,16 +26,46 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { nats, config, logs, metrics, archipelago } = components
+  const { nats, config, logs, transportRegistry, publisher } = components
 
-  const start = async (s: Promise<Startable>) => {
-    const { start } = await s
-    await start()
-  }
+  const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
+  const joinDistance = await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE')
+  const leaveDistance = await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE')
 
-  await setupListener({ nats, archipelago, config, logs })
-  await setupPublishing({ nats, archipelago })
-  await start(setupServiceDiscovery({ nats, logs, config }))
-  await start(setupMetrics({ config, logs, metrics, archipelago }))
-  await start(setupIslandsStatusReporting({ nats, logs, config, archipelago }))
+  const logger = logs.getLogger('service')
+
+  const archipelago = new ArchipelagoController({
+    components: { logs, publisher },
+    flushFrequency,
+    parameters: {
+      joinDistance,
+      leaveDistance
+    }
+  })
+
+  transportRegistry.setListener(archipelago)
+
+  const islandsStatusUpdateFreq =
+    (await config.getNumber('ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL')) ??
+    DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL
+  setInterval(() => {
+    try {
+      publisher.publishIslandsReport(archipelago.getIslands())
+    } catch (err: any) {
+      logger.error(err)
+    }
+  }, islandsStatusUpdateFreq)
+
+  const serviceDiscoveryUpdateFreq =
+    (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL
+
+  setInterval(() => {
+    try {
+      publisher.publishServiceDiscoveryMessage()
+    } catch (err: any) {
+      logger.error(err)
+    }
+  }, serviceDiscoveryUpdateFreq)
+
+  await setupListener(archipelago, { nats, config, logs })
 }

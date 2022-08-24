@@ -1,12 +1,12 @@
 import { Reader } from 'protobufjs/minimal'
-import { AppComponents, ArchipelagoComponent, PeerPositionChange } from '../types'
+import { AppComponents, PeerPositionChange } from '../types'
+import { ArchipelagoController } from './archipelago'
 import { HeartbeatMessage } from './proto/archipelago'
 
-type Components = Pick<AppComponents, 'nats' | 'logs' | 'config'> & {
-  archipelago: Pick<ArchipelagoComponent, 'clearPeers' | 'setPeersPositions'>
-}
-
-export async function setupListener({ nats, archipelago, config, logs }: Components) {
+export async function setupListener(
+  archipelago: Pick<ArchipelagoController, 'onPeerRemoved' | 'onPeerPositionsUpdate'>,
+  { nats, logs, config }: Pick<AppComponents, 'nats' | 'logs' | 'config'>
+) {
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
   const logger = logs.getLogger('NATS listener')
 
@@ -16,12 +16,12 @@ export async function setupListener({ nats, archipelago, config, logs }: Compone
   const peerExpirationInterval = setInterval(() => {
     const expiredHeartbeatTime = Date.now() - checkHeartbeatInterval
 
-    const inactivePeers = Array.from(lastPeerHeartbeats)
-      .filter(([_, lastHearbeat]) => lastHearbeat < expiredHeartbeatTime)
-      .map(([peerId, _]) => peerId)
-
-    inactivePeers.forEach((peerId) => lastPeerHeartbeats.delete(peerId))
-    archipelago.clearPeers(...inactivePeers)
+    for (const [peerId, lastHeartbeat] of lastPeerHeartbeats) {
+      if (lastHeartbeat < expiredHeartbeatTime) {
+        lastPeerHeartbeats.delete(peerId)
+        archipelago.onPeerRemoved(peerId)
+      }
+    }
   }, checkHeartbeatInterval)
 
   const connectSubscription = nats.subscribe('peer.*.connect')
@@ -29,7 +29,7 @@ export async function setupListener({ nats, archipelago, config, logs }: Compone
     for await (const message of connectSubscription.generator) {
       try {
         const id = message.subject.split('.')[1]
-        archipelago.clearPeers(id)
+        archipelago.onPeerRemoved(id)
       } catch (err: any) {
         logger.error(`cannot process peer_connect message ${err.message}`)
       }
@@ -41,7 +41,7 @@ export async function setupListener({ nats, archipelago, config, logs }: Compone
     for await (const message of disconnectSubscription.generator) {
       try {
         const id = message.subject.split('.')[1]
-        archipelago.clearPeers(id)
+        archipelago.onPeerRemoved(id)
       } catch (err: any) {
         logger.error(`cannot process peer_disconnect message ${err.message}`)
       }
@@ -62,7 +62,7 @@ export async function setupListener({ nats, archipelago, config, logs }: Compone
         }
 
         lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
-        archipelago.setPeersPositions(peerPositionChange)
+        archipelago.onPeerPositionsUpdate([peerPositionChange])
       } catch (err: any) {
         logger.error(`cannot process heartbeat message ${err.message}`)
       }

@@ -1,20 +1,14 @@
-import { ArchipelagoController } from '../../src/controllers/ArchipelagoController'
-import { ArchipelagoOptions, Island, PeerPositionChange, Position3D } from '../../src/types'
-import { Archipelago } from '../../src/domain/Archipelago'
+import { Island, PeerPositionChange, Position3D, ChangeToIslandUpdate } from '../../src/types'
+import { ArchipelagoController } from '../../src/controllers/archipelago'
 import { BaseClosure, evaluate } from 'tiny-clojure'
 import { NodeError } from 'tiny-clojure/dist/types'
 import assert from 'assert'
 import get from 'lodash.get'
 import { createRandomizer } from '../helpers/random'
 import { IdGenerator, sequentialIdGenerator } from '../../src/misc/idGenerator'
+import { createLogComponent } from '@well-known-components/logger'
 
-export const defaultArchipelagoOptions = {
-  joinDistance: 64,
-  leaveDistance: 80,
-  wsRoomService: { url: 'test_url', secret: '123456' }
-}
-
-export function expectIslandWith(archipelago: Archipelago, ...ids: string[]) {
+export function expectIslandWith(archipelago: ArchipelagoController, ...ids: string[]) {
   assert(Array.isArray(ids))
   assert('getIslands' in archipelago)
   const islands = archipelago.getIslands()
@@ -34,7 +28,7 @@ function expectIslandWithPeerIdsIn(ids: string[], islands: Island[]) {
   }
 }
 
-export function expectIslandsWith(archipelago: Archipelago, ...islandIds: string[][]) {
+export function expectIslandsWith(archipelago: ArchipelagoController, ...islandIds: string[][]) {
   assert('getIslands' in archipelago)
   assert(Array.isArray(islandIds))
   islandIds.forEach((ids) => expectIslandWith(archipelago, ...ids))
@@ -42,19 +36,19 @@ export function expectIslandsWith(archipelago: Archipelago, ...islandIds: string
 }
 
 export async function expectIslandInControllerWith(archipelago: ArchipelagoController, ...peerIds: string[]) {
-  expectIslandWithPeerIdsIn(peerIds, await archipelago.getIslands())
+  expectIslandWithPeerIdsIn(peerIds, archipelago.getIslands())
 }
 
 export async function expectIslandsInControllerWith(archipelago: ArchipelagoController, ...peerGroups: string[][]) {
   await Promise.all(peerGroups.map((ids) => expectIslandInControllerWith(archipelago, ...ids)))
 }
 
-export function expectIslandsCount(archipelago: Archipelago, count: number) {
+export function expectIslandsCount(archipelago: ArchipelagoController, count: number) {
   assert.strictEqual(archipelago.getIslands().length, count)
 }
 
-export function setMultiplePeersAround(
-  archipelago: Archipelago,
+export async function setMultiplePeersAround(
+  archipelago: ArchipelagoController,
   position: Position3D,
   qty: number,
   idGenerator: IdGenerator = sequentialIdGenerator('P'),
@@ -66,68 +60,135 @@ export function setMultiplePeersAround(
     requests.push({ id: idGenerator.generateId(), position: randomizer.generatePositionAround(position, offset) })
   }
 
-  archipelago.setPeersPositions(requests)
+  archipelago.onPeerPositionsUpdate(requests)
+  await archipelago.flush()
 
   return requests
 }
 
 export function configureLibs(closure: BaseClosure) {
   // (configure { options })
-  closure.defJsFunction('configure', (options?: ArchipelagoOptions) => {
-    closure.def('archipelago', new Archipelago(options ?? defaultArchipelagoOptions))
+  closure.defJsFunction('configure', async () => {
+    const logs = await createLogComponent({})
+    const publisher = {
+      onChangeToIsland: (peerId: string, island: Island, change: ChangeToIslandUpdate) => {},
+      onPeerLeft: (peerId: string, islandId: string) => {}
+    }
+
+    const archipelago = new ArchipelagoController({
+      components: { logs, publisher },
+      parameters: {
+        joinDistance: 64,
+        leaveDistance: 80
+      }
+    })
+    closure.def('archipelago', archipelago)
+  })
+
+  closure.defJsFunction('configureTransports', (args: [number, number, number, number][]) => {
+    const archipelago = closure.get('archipelago') as ArchipelagoController
+
+    for (const [id, availableSeats, usersCount, maxIslandSize] of args) {
+      archipelago.onTransportConnected({
+        id,
+        availableSeats,
+        usersCount,
+        maxIslandSize,
+        getConnectionStrings: (userIds: string[], roomId: string): Promise<Record<string, string>> => {
+          const connStrs: Record<string, string> = {}
+          for (const userId of userIds) {
+            connStrs[userId] = `p2p:${roomId}.${userId}`
+          }
+          return Promise.resolve(connStrs)
+        }
+      })
+    }
+
+    return archipelago.flush()
+  })
+
+  closure.defJsFunction('removeTransports', (args: number[]) => {
+    const archipelago = closure.get('archipelago') as ArchipelagoController
+
+    for (const id of args) {
+      archipelago.onTransportDisconnected(id)
+    }
+
+    return archipelago.flush()
   })
 
   // (move ...[peer x y z])
   closure.defJsFunction('move', (...args: [string, number, number, number][]) => {
-    const archipelago = closure.get('archipelago') as Archipelago
-    archipelago.setPeersPositions(args.map(([id, ...position]) => ({ id, position })))
+    const archipelago = closure.get('archipelago') as ArchipelagoController
+    archipelago.onPeerPositionsUpdate(args.map(([id, ...position]) => ({ id, position })))
+    return archipelago.flush()
   })
 
   // (getIslands archipelago?)
   closure.defJsFunction('getIslands', (arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     return archipelago.getIslands()
   })
 
   // (getIsland id archipelago?)
   closure.defJsFunction('getIsland', (id, arch?) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     console.assert(typeof id == 'string', 'getIsland(islandId) islandId must be a string')
     return archipelago.getIsland(id)
   })
 
   // (expectIslandWith [...ids] arch?)
   closure.defJsFunction('expectIslandWith', (ids, arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     expectIslandWith(archipelago, ...ids)
   })
 
   // (expectIslandsWith [...ids] arch?)
   closure.defJsFunction('expectIslandsWith', (ids, arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     expectIslandsWith(archipelago, ...ids)
   })
 
   // (ensureIslandsCount count arch?)
   closure.defJsFunction('ensureIslandsCount', (count: number, arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     expectIslandsCount(archipelago, count)
   })
 
+  closure.defJsFunction('ensureIslandsCountWithTransport', (expectedCount: number, transportId: number, arch) => {
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
+    let count = 0
+    for (const island of archipelago.getIslands()) {
+      if (transportId === island.transportId) {
+        count++
+      }
+    }
+    assert(expectedCount === count)
+  })
+
   // (disconnect [...ids] arch?)
-  closure.defJsFunction('disconnect', (ids, arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Archipelago
+  closure.defJsFunction('disconnect', async (ids, arch) => {
+    const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     if (typeof ids == 'string') {
-      assert(archipelago.clearPeers([ids])[ids].action === 'leave', `Peer ${ids} must be deleted`)
+      archipelago.onPeerRemoved(ids)
+      const updates = await archipelago.flush()
+      assert(updates.get(ids).action === 'leave', `Peer ${ids} must be deleted`)
     } else if (Array.isArray(ids)) {
-      const updates = archipelago.clearPeers(ids)
-      ids.forEach(($: any) => assert(updates[$].action === 'leave', `Peer ${$} must be deleted`))
-    } else throw new Error('Invalid argument')
+      ids.forEach((id) => archipelago.onPeerRemoved(id))
+      const updates = await archipelago.flush()
+      ids.forEach(($: any) => assert(updates.get($).action === 'leave', `Peer ${$} must be deleted`))
+    } else {
+      throw new Error('Invalid argument')
+    }
   })
 
   // (get obj ...path)
   closure.defJsFunction('get', (obj, ...path: string[]) => {
     return get(obj, path)
+  })
+
+  closure.defJsFunction('echo', (args: any) => {
+    console.log(args)
   })
 
   // (* ...args)

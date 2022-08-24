@@ -1,5 +1,3 @@
-import { ILoggerComponent } from '@well-known-components/interfaces'
-
 /**
  * Finds the index of the element that is first according to the provided ordering
  * @param array the array in which to look up the index
@@ -50,22 +48,4 @@ export function popMax<T>(array: T[], criteria: (t: T) => number) {
  */
 export function popFirstByOrder<T>(array: T[], ordering: (t1: T, t2: T) => number) {
   return popIndex(array, findIndexOfFirstByOrder(array, ordering))
-}
-
-export function isEmpty(obj: Record<any, any>) {
-  for (const prop in obj) {
-    if (obj.hasOwnProperty(prop)) {
-      return false
-    }
-  }
-
-  return JSON.stringify(obj) === JSON.stringify({})
-}
-
-export const NullLogger: ILoggerComponent.ILogger = {
-  info(_?: any, ...__: any[]) {},
-  log(_?: any, ...__: any[]) {},
-  error(_?: any, ...__: any[]) {},
-  warn(_?: any, ...__: any[]) {},
-  debug(_?: any, ...__: any[]) {}
 }
