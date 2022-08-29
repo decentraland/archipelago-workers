@@ -24,6 +24,10 @@ export async function setupListener(
     }
   }, checkHeartbeatInterval)
 
+  // NOTE we are using callbacks instead of async, for NATS subscriptions
+  // there are some risk associated with this pattern so we should keep the callbacks small and fast
+  // see https://github.com/nats-io/nats.js/#async-vs-callbacks
+
   nats.subscribe('peer.*.connect', (err, message) => {
     if (err) {
       logger.error(err)
