@@ -24,50 +24,56 @@ export async function setupListener(
     }
   }, checkHeartbeatInterval)
 
-  const connectSubscription = nats.subscribe('peer.*.connect')
-  ;(async () => {
-    for await (const message of connectSubscription.generator) {
-      try {
-        const id = message.subject.split('.')[1]
-        archipelago.onPeerRemoved(id)
-      } catch (err: any) {
-        logger.error(`cannot process peer_connect message ${err.message}`)
-      }
+  nats.subscribe('peer.*.connect', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
     }
-  })().catch((err: any) => logger.error(`error processing subscription message; ${err.message}`))
 
-  const disconnectSubscription = nats.subscribe('peer.*.disconnect')
-  ;(async () => {
-    for await (const message of disconnectSubscription.generator) {
-      try {
-        const id = message.subject.split('.')[1]
-        archipelago.onPeerRemoved(id)
-      } catch (err: any) {
-        logger.error(`cannot process peer_disconnect message ${err.message}`)
-      }
+    try {
+      const id = message.subject.split('.')[1]
+      archipelago.onPeerRemoved(id)
+    } catch (err: any) {
+      logger.error(`cannot process peer_connect message ${err.message}`)
     }
-  })().catch((err: any) => logger.error(`error processing subscription message; ${err.message}`))
+  })
 
-  const heartbeatSubscription = nats.subscribe('client-proto.peer.*.heartbeat')
-  ;(async () => {
-    for await (const message of heartbeatSubscription.generator) {
-      try {
-        const id = message.subject.split('.')[2]
-        const decodedMessage = HeartbeatMessage.decode(Reader.create(message.data))
-        const position = decodedMessage.position!
-
-        const peerPositionChange: PeerPositionChange = {
-          id,
-          position: [position.x, position.y, position.z]
-        }
-
-        lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
-        archipelago.onPeerPositionsUpdate([peerPositionChange])
-      } catch (err: any) {
-        logger.error(`cannot process heartbeat message ${err.message}`)
-      }
+  nats.subscribe('peer.*.disconnect', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
     }
-  })().catch((err: any) => logger.error(`error processing subscription message; ${err.message}`))
+
+    try {
+      const id = message.subject.split('.')[1]
+      archipelago.onPeerRemoved(id)
+    } catch (err: any) {
+      logger.error(`cannot process peer_disconnect message ${err.message}`)
+    }
+  })
+
+  nats.subscribe('client-proto.peer.*.heartbeat', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
+    }
+
+    try {
+      const id = message.subject.split('.')[2]
+      const decodedMessage = HeartbeatMessage.decode(Reader.create(message.data))
+      const position = decodedMessage.position!
+
+      const peerPositionChange: PeerPositionChange = {
+        id,
+        position: [position.x, position.y, position.z]
+      }
+
+      lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
+      archipelago.onPeerPositionsUpdate([peerPositionChange])
+    } catch (err: any) {
+      logger.error(`cannot process heartbeat message ${err.message}`)
+    }
+  })
 
   return {
     stop: () => clearInterval(peerExpirationInterval)
