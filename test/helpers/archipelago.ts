@@ -7,6 +7,8 @@ import get from 'lodash.get'
 import { createRandomizer } from '../helpers/random'
 import { IdGenerator, sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { createLogComponent } from '@well-known-components/logger'
+import { createTestMetricsComponent } from '@well-known-components/metrics'
+import { metricDeclarations } from '../../src/metrics'
 
 export function expectIslandWith(archipelago: ArchipelagoController, ...ids: string[]) {
   assert(Array.isArray(ids))
@@ -75,8 +77,9 @@ export function configureLibs(closure: BaseClosure) {
       onPeerLeft: (peerId: string, islandId: string) => {}
     }
 
+    const metrics = createTestMetricsComponent(metricDeclarations)
     const archipelago = new ArchipelagoController({
-      components: { logs, publisher },
+      components: { logs, publisher, metrics },
       parameters: {
         joinDistance: 64,
         leaveDistance: 80
@@ -89,8 +92,9 @@ export function configureLibs(closure: BaseClosure) {
     const archipelago = closure.get('archipelago') as ArchipelagoController
 
     for (const [id, availableSeats, usersCount, maxIslandSize] of args) {
-      archipelago.onTransportConnected({
+      archipelago.onTransportHeartbeat({
         id,
+        type: 'p2p',
         availableSeats,
         usersCount,
         maxIslandSize,

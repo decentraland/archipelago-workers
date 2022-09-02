@@ -26,7 +26,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { nats, config, logs, transportRegistry, publisher } = components
+  const { nats, metrics, config, logs, transportRegistry, publisher } = components
 
   const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
   const joinDistance = await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE')
@@ -35,7 +35,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   const logger = logs.getLogger('service')
 
   const archipelago = new ArchipelagoController({
-    components: { logs, publisher },
+    components: { logs, publisher, metrics },
     flushFrequency,
     parameters: {
       joinDistance,

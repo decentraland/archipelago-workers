@@ -2,24 +2,23 @@ import { IBaseComponent } from '@well-known-components/interfaces'
 import { Transport } from '../types'
 
 export type TransportListener = {
-  onTransportConnected(transport: Transport): void
+  onTransportHeartbeat(transport: Transport): void
   onTransportDisconnected(id: number): void
 }
 
-export type ITransportRegistryComponent = IBaseComponent & {
-  onTransportConnected(transport: Transport): void
-  onTransportDisconnected(id: number): void
-  setListener(listener: TransportListener): void
-}
+export type ITransportRegistryComponent = IBaseComponent &
+  TransportListener & {
+    setListener(listener: TransportListener): void
+  }
 
 export async function createTransportRegistryComponent(): Promise<ITransportRegistryComponent> {
   let listener: TransportListener | undefined = undefined
 
-  function onTransportConnected(transport: Transport) {
+  function onTransportHeartbeat(transport: Transport) {
     if (!listener) {
       throw new Error('No listener defined')
     }
-    listener.onTransportConnected(transport)
+    listener.onTransportHeartbeat(transport)
   }
 
   function onTransportDisconnected(id: number) {
@@ -34,7 +33,7 @@ export async function createTransportRegistryComponent(): Promise<ITransportRegi
   }
 
   return {
-    onTransportConnected,
+    onTransportHeartbeat,
     onTransportDisconnected,
     setListener
   }

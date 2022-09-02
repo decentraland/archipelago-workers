@@ -5,6 +5,8 @@ import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate, Island } from 
 import { sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../helpers/archipelago'
 import { createLogComponent } from '@well-known-components/logger'
+import { createTestMetricsComponent } from '@well-known-components/metrics'
+import { metricDeclarations } from '../../src/metrics'
 
 type PositionWithId = [string, number, number, number]
 
@@ -17,16 +19,19 @@ describe('archipelago', () => {
     }
 
     const logs = await createLogComponent({})
+    const metrics = createTestMetricsComponent(metricDeclarations)
+
     archipelago = new ArchipelagoController({
-      components: { logs, publisher },
+      components: { logs, publisher, metrics },
       parameters: {
         joinDistance: 64,
         leaveDistance: 80
       }
     })
 
-    archipelago.onTransportConnected({
+    archipelago.onTransportHeartbeat({
       id: 0,
+      type: 'p2p',
       availableSeats: -1,
       usersCount: -1,
       maxIslandSize: 200,

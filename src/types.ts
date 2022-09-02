@@ -12,7 +12,7 @@ import { ITransportRegistryComponent } from './ports/transport-registry'
 import { IPublisherComponent } from './ports/publisher'
 
 export type Position3D = [number, number, number]
-export type TransportType = 'livekit' | 'ws' | 'p2p'
+export type TransportType = 'unknown' | 'livekit' | 'ws' | 'p2p'
 
 export type PeerData = {
   id: string
@@ -52,6 +52,7 @@ export type IslandUpdates = Map<string, ChangeToIslandUpdate | LeaveIslandUpdate
 
 export type Transport = {
   id: number
+  type: TransportType
   availableSeats: number
   usersCount: number
   maxIslandSize: number

@@ -7,18 +7,25 @@ import {
   BaseComponents,
   ChangeToIslandUpdate,
   LeaveIslandUpdate,
-  IslandUpdates
+  IslandUpdates,
+  TransportType
 } from '../types'
 
+import { metricDeclarations } from '../metrics'
 import { findMax, popMax } from '../misc/utils'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
-import { ILoggerComponent } from '@well-known-components/interfaces'
+import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import { IPublisherComponent } from '../ports/publisher'
 
 type Publisher = Pick<IPublisherComponent, 'onPeerLeft' | 'onChangeToIsland'>
 
+type Metrics = {
+  peersCount: 0
+  islandsCount: 0
+}
+
 export type Options = {
-  components: Pick<BaseComponents, 'logs'> & {
+  components: Pick<BaseComponents, 'logs' | 'metrics'> & {
     publisher: Publisher
   }
   flushFrequency?: number
@@ -76,6 +83,7 @@ export class ArchipelagoController {
   private leaveDistance: number
   private islandIdGenerator = sequentialIdGenerator('I')
   private publisher: Publisher
+  private metrics: IMetricsComponent<keyof typeof metricDeclarations>
 
   private pendingNewPeers = new Map<string, PeerData>()
   private pendingUpdates = new Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>()
@@ -88,11 +96,12 @@ export class ArchipelagoController {
   disposed: boolean = false
 
   constructor({
-    components: { logs, publisher },
+    components: { logs, publisher, metrics },
     flushFrequency,
     parameters: { joinDistance, leaveDistance }
   }: Options) {
     this.logger = logs.getLogger('Archipelago')
+    this.metrics = metrics
     this.publisher = publisher
 
     this.flushFrequency = flushFrequency ?? 2
@@ -101,6 +110,7 @@ export class ArchipelagoController {
 
     this.transports.set(0, {
       id: 0,
+      type: 'p2p',
       availableSeats: 0,
       usersCount: 0,
       maxIslandSize: 100,
@@ -127,12 +137,21 @@ export class ArchipelagoController {
     loop()
   }
 
-  onTransportConnected(transport: Transport): void {
+  onTransportHeartbeat(transport: Transport): void {
+    if (!this.transports.has(transport.id)) {
+      this.metrics.increment('dcl_archipelago_transports_count', { transport: transport.type })
+    }
+
     this.transports.set(transport.id, transport)
   }
 
   onTransportDisconnected(id: number): void {
-    this.transports.delete(id)
+    const transport = this.transports.get(id)
+    if (transport) {
+      this.transports.delete(id)
+      this.metrics.decrement('dcl_archipelago_transports_count', { transport: transport.type })
+    }
+
     // NOTE(hugo): we don't recreate islands, this will happen naturally if
     // the transport is actually down, but we don't want to assign new peers
     // there
@@ -239,12 +258,34 @@ export class ArchipelagoController {
       }
     }
 
+    const metricsByTransporType = new Map<TransportType, Metrics>()
+    for (const island of this.islands.values()) {
+      const transport = this.transports.get(island.transportId)
+      if (!transport) {
+        continue
+      }
+
+      const metrics = metricsByTransporType.get(transport.type) || {
+        peersCount: 0,
+        islandsCount: 0
+      }
+      metrics.peersCount += island.peers.length
+      metrics.islandsCount += 1
+      metricsByTransporType.set(transport.type, metrics)
+    }
+
+    for (const [transport, metrics] of metricsByTransporType) {
+      this.metrics.observe('dcl_archipelago_islands_count', { transport }, metrics.islandsCount)
+      this.metrics.observe('dcl_archipelago_peers_count', { transport }, metrics.peersCount)
+    }
+
     const updates = new Map(this.pendingUpdates)
     this.pendingUpdates.clear()
 
     for (const [peerId, update] of updates) {
       if (update.action === 'changeTo') {
         const island = this.islands.get(update.islandId)!
+        this.logger.debug(`Publishing island change for ${peerId}`)
         this.publisher.onChangeToIsland(peerId, island, update)
       } else if (update.action === 'leave') {
         this.publisher.onPeerLeft(peerId, update.islandId)

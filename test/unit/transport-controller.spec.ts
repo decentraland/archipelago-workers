@@ -10,7 +10,7 @@ describe('transport-controller-unit', () => {
     const transportRegistry = await createTransportRegistryComponent()
     const transports = new Map<number, Transport>()
     transportRegistry.setListener({
-      onTransportConnected: (t: Transport) => {
+      onTransportHeartbeat: (t: Transport) => {
         transports.set(t.id, t)
       },
       onTransportDisconnected: (id: number) => {

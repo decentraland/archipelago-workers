@@ -6,6 +6,7 @@ import { GlobalContext, Transport } from '../../types'
 import { v4 } from 'uuid'
 import { TransportMessage } from '../proto/archipelago'
 import { ITransportRegistryComponent } from '../../ports/transport-registry'
+import { verify } from 'jsonwebtoken'
 
 const PENDING_AUTH_TIMEOUT_MS = 1000
 
@@ -27,6 +28,7 @@ export function handleUpgrade(
 
   const transport: Transport = {
     id,
+    type: 'unknown',
     availableSeats: 0,
     usersCount: 0,
     maxIslandSize: 0,
@@ -69,6 +71,7 @@ export function handleUpgrade(
         const {
           init: { maxIslandSize, type }
         } = transportMessage.message
+        transport.type = type === 0 ? 'livekit' : 'ws'
         transport.maxIslandSize = maxIslandSize
         logger.info(`New transport Connection: ${id}, type: ${type}`)
         break
@@ -80,7 +83,7 @@ export function handleUpgrade(
 
         transport.availableSeats = availableSeats
         transport.usersCount = usersCount
-        transportRegistry.onTransportConnected(transport)
+        transportRegistry.onTransportHeartbeat(transport)
         break
       }
       case 'authResponse': {
@@ -133,9 +136,12 @@ export function handleUpgrade(
 
 export async function transportHandler(context: IHttpServerComponent.DefaultContext<GlobalContext>) {
   const {
-    components: { logs, transportRegistry }
+    components: { logs, transportRegistry, config }
   } = context
   const logger = logs.getLogger('Transport Handler')
+  const secret = await config.requireString('TRANSPORT_REGISTRATION_SECRET')
+
+  const token = context.url.searchParams.get('access_token') as string
 
   logger.info('request to transportHandler')
   let count = 0
@@ -143,6 +149,16 @@ export async function transportHandler(context: IHttpServerComponent.DefaultCont
   return upgradeWebSocketResponse((socket) => {
     const ws = socket as any as WebSocket
     count++
+
+    try {
+      verify(token, secret) as any
+    } catch (err) {
+      logger.info('closing ws, access_token is invalid or not provided')
+      logger.error(err as Error)
+      ws.close()
+      return
+    }
+
     handleUpgrade(logger, transportRegistry, ws, count)
   })
 }

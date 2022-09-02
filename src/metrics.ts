@@ -16,6 +16,11 @@ export const metricDeclarations = {
     help: 'Number of live islands',
     type: IMetricsComponent.GaugeType,
     labelNames: ['transport'] // transport=(livekit|ws|p2p)
+  },
+  dcl_archipelago_transports_count: {
+    help: 'Number of registered transports',
+    type: IMetricsComponent.GaugeType,
+    labelNames: ['transport'] // transport=(livekit|ws|p2p)
   }
 }
 
