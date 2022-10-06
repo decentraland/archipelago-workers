@@ -3,7 +3,7 @@ import { ILoggerComponent } from '@well-known-components/interfaces'
 import { createLogComponent } from '@well-known-components/logger'
 import { createLocalNatsComponent } from '@well-known-components/nats-component'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
-import { HeartbeatMessage } from '../../src/controllers/proto/archipelago'
+import { Heartbeat } from '../../src/controllers/proto/bff/comms-director-service'
 import { setupListener } from '../../src/controllers/listener'
 import { PeerPositionChange } from '../../src/types'
 import { delay } from '../helpers/archipelago'
@@ -59,7 +59,7 @@ describe('nats listener', () => {
     listener = await setupListener(archipelago, { logs, nats, config })
     nats.publish(
       'client-proto.peer.peer1.heartbeat',
-      HeartbeatMessage.encode({
+      Heartbeat.encode({
         position: {
           x: 0,
           y: 0,

@@ -5,4 +5,4 @@ coverage
 .env
 
 protoc3
-src/controllers/proto/*.ts
+src/controllers/proto/**/*.ts

@@ -1,7 +1,6 @@
-import { Reader } from 'protobufjs/minimal'
 import { AppComponents, PeerPositionChange } from '../types'
 import { ArchipelagoController } from './archipelago'
-import { HeartbeatMessage } from './proto/archipelago'
+import { Heartbeat } from './proto/bff/comms-director-service'
 
 export async function setupListener(
   archipelago: Pick<ArchipelagoController, 'onPeerRemoved' | 'onPeerPositionsUpdate'>,
@@ -64,7 +63,7 @@ export async function setupListener(
 
     try {
       const id = message.subject.split('.')[2]
-      const decodedMessage = HeartbeatMessage.decode(Reader.create(message.data))
+      const decodedMessage = Heartbeat.decode(message.data)
       const position = decodedMessage.position!
 
       const peerPositionChange: PeerPositionChange = {

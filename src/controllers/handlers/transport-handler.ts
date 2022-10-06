@@ -1,6 +1,5 @@
 import { upgradeWebSocketResponse } from '@well-known-components/http-server/dist/ws'
 import { IHttpServerComponent, ILoggerComponent } from '@well-known-components/interfaces'
-import { Reader } from 'protobufjs/minimal'
 import { WebSocket } from 'ws'
 import { GlobalContext, Transport } from '../../types'
 import { v4 } from 'uuid'
@@ -64,7 +63,7 @@ export function handleUpgrade(
     }
   }
   ws.on('message', (message) => {
-    const transportMessage = TransportMessage.decode(Reader.create(message as Buffer))
+    const transportMessage = TransportMessage.decode(message as Buffer)
 
     switch (transportMessage.message?.$case) {
       case 'init': {
