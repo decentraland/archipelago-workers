@@ -46,7 +46,7 @@
     "protocVersion": "21.6"
   },
   "dependencies": {
-    "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-3198500420.commit-0f49299.tgz",
+    "@dcl/protocol": "^1.0.0-3199494715.commit-f3c7422",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/http-server": "^1.1.2",
     "@well-known-components/interfaces": "^1.1.2",

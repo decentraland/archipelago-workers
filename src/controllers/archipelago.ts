@@ -330,16 +330,6 @@ export class ArchipelagoController {
   private async createIsland(group: PeerData[]): Promise<string> {
     const newIslandId = this.islandIdGenerator.generateId()
 
-    const reservedSeatsPerTransport = new Map<number, number>()
-    for (const island of this.islands.values()) {
-      if (island.transportId === 0) {
-        continue
-      }
-
-      const reserved = reservedSeatsPerTransport.get(island.transportId) || 0
-      reservedSeatsPerTransport.set(island.transportId, reserved + (island.maxPeers - island.peers.length))
-    }
-
     const p2pTransport = this.transports.get(0)!
     let transport = p2pTransport
 
@@ -348,9 +338,9 @@ export class ArchipelagoController {
         continue
       }
 
-      const reservedSeats = reservedSeatsPerTransport.get(transport.id) || 0
-      if (t.availableSeats - reservedSeats >= t.maxIslandSize) {
+      if (t.availableSeats > 0) {
         transport = t
+        break
       }
     }
 
