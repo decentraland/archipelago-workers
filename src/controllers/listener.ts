@@ -68,7 +68,8 @@ export async function setupListener(
 
       const peerPositionChange: PeerPositionChange = {
         id,
-        position: [position.x, position.y, position.z]
+        position: [position.x, position.y, position.z],
+        preferedIslandId: decodedMessage.desiredRoom
       }
 
       lastPeerHeartbeats.set(peerPositionChange.id, Date.now())
