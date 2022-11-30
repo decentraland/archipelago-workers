@@ -1,7 +1,11 @@
 ; initialize the archipelago
 (configure)
+
+(removeTransports [0])
+
 (configureTransports [
      [1 6 0 3] 
+     [2 6 0 3] 
   ])
 
 ; test case 1
@@ -16,4 +20,4 @@
 (move ["3" 16 0 16])
 (ensureIslandsCount 2)
 (ensureIslandsCountWithTransport 1 1)
-(ensureIslandsCountWithTransport 1 0)
+(ensureIslandsCountWithTransport 1 2)

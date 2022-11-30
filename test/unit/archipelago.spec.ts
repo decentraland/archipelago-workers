@@ -32,8 +32,8 @@ describe('archipelago', () => {
     archipelago.onTransportHeartbeat({
       id: 0,
       type: 'p2p',
-      availableSeats: -1,
-      usersCount: -1,
+      availableSeats: 500,
+      usersCount: 0,
       maxIslandSize: 200,
       getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
         const connStrs: Record<string, string> = {}
@@ -231,6 +231,7 @@ describe('archipelago', () => {
 
   it('enforces max peers per island limit', async () => {
     const idGenerator = sequentialIdGenerator('P')
+    expect.strictEqual(archipelago.getIslands().length, 0)
     const firstRequests = await setMultiplePeersAround(archipelago, [0, 0, 0], 190, idGenerator)
 
     expect.strictEqual(archipelago.getIslands().length, 1)

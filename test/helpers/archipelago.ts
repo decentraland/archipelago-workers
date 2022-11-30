@@ -85,6 +85,22 @@ export function configureLibs(closure: BaseClosure) {
         leaveDistance: 80
       }
     })
+
+    archipelago.onTransportHeartbeat({
+      id: 0,
+      type: 'p2p',
+      availableSeats: 300,
+      usersCount: 0,
+      maxIslandSize: 100,
+      getConnectionStrings: (userIds: string[], roomId: string): Promise<Record<string, string>> => {
+        const connStrs: Record<string, string> = {}
+        for (const userId of userIds) {
+          connStrs[userId] = `p2p:${roomId}.${userId}`
+        }
+        return Promise.resolve(connStrs)
+      }
+    })
+
     closure.def('archipelago', archipelago)
   })
 

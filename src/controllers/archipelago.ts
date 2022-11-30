@@ -108,21 +108,6 @@ export class ArchipelagoController {
     this.joinDistance = joinDistance
     this.leaveDistance = leaveDistance
 
-    this.transports.set(0, {
-      id: 0,
-      type: 'p2p',
-      availableSeats: 0,
-      usersCount: 0,
-      maxIslandSize: 100,
-      async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
-        const connStrs: Record<string, string> = {}
-        for (const userId of userIds) {
-          connStrs[userId] = `p2p:${roomId}:${userId}`
-        }
-        return connStrs
-      }
-    })
-
     const loop = () => {
       if (!this.disposed) {
         const startTime = Date.now()
@@ -224,7 +209,11 @@ export class ArchipelagoController {
   async flush(): Promise<IslandUpdates> {
     for (const [id, change] of this.pendingNewPeers) {
       this.peers.set(id, change)
-      await this.createIsland([change])
+      try {
+        await this.createIsland([change])
+      } catch (err: any) {
+        this.logger.error(err)
+      }
     }
     this.pendingNewPeers.clear()
 
@@ -322,7 +311,11 @@ export class ArchipelagoController {
       island._geometryDirty = true
 
       for (const group of peerGroups) {
-        affectedIslands.add(await this.createIsland(group))
+        try {
+          affectedIslands.add(await this.createIsland(group))
+        } catch (err: any) {
+          this.logger.error(err)
+        }
       }
     }
   }
@@ -330,31 +323,21 @@ export class ArchipelagoController {
   private async createIsland(group: PeerData[]): Promise<string> {
     const newIslandId = this.islandIdGenerator.generateId()
 
-    const p2pTransport = this.transports.get(0)!
-    let transport = p2pTransport
+    let transport = undefined
 
-    for (const [id, t] of this.transports) {
-      if (id === p2pTransport.id) {
-        continue
-      }
-
+    for (const t of this.transports.values()) {
       if (t.availableSeats > 0) {
         transport = t
         break
       }
     }
 
-    let connStrs: Record<string, string>
-    const peerIds = group.map((p) => p.id)
-    try {
-      connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
-    } catch (err: any) {
-      this.logger.warn(err)
-      transport = p2pTransport
-
-      // NOTE: this won't fail
-      connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
+    if (!transport) {
+      throw new Error('Cannot create island, no available transport')
     }
+
+    const peerIds = group.map((p) => p.id)
+    const connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
 
     const island: Island = {
       id: newIslandId,
