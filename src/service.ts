@@ -1,7 +1,7 @@
 import { Lifecycle } from '@well-known-components/interfaces'
 import { setupListener } from './controllers/listener'
 import { setupRouter } from './controllers/routes'
-import { ArchipelagoController } from './controllers/archipelago'
+import { ArchipelagoController, Options } from './controllers/archipelago'
 import { AppComponents, GlobalContext, TestComponents } from './types'
 
 const DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL = 1000 * 60 * 2 // 2 min
@@ -28,20 +28,28 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const { nats, metrics, config, logs, transportRegistry, publisher } = components
 
-  const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
-  const joinDistance = await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE')
-  const leaveDistance = await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE')
+  const archipelagoConfig: Options = {
+    components: { logs, publisher, metrics },
+    flushFrequency: await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY'),
+    joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
+    leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
+    roomPrefix: await config.getString('ROOM_PREFIX')
+  }
+
+  const livekitApiKey = await config.getString('LIVEKIT_API_KEY')
+  const livekitApiSecret = await config.getString('LIVEKIT_API_SECRET')
+  const livekitHost = await config.getString('LIVEKIT_HOST')
+  if (livekitApiKey && livekitApiSecret && livekitHost) {
+    archipelagoConfig.livekit = {
+      apiKey: livekitApiKey,
+      apiSecret: livekitApiSecret,
+      host: livekitHost
+    }
+  }
 
   const logger = logs.getLogger('service')
 
-  const archipelago = new ArchipelagoController({
-    components: { logs, publisher, metrics },
-    flushFrequency,
-    parameters: {
-      joinDistance,
-      leaveDistance
-    }
-  })
+  const archipelago = new ArchipelagoController(archipelagoConfig)
 
   transportRegistry.setListener(archipelago)
 

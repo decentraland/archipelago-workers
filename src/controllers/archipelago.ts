@@ -16,6 +16,7 @@ import { findMax, popMax } from '../misc/utils'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
 import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import { IPublisherComponent } from '../ports/publisher'
+import { AccessToken } from 'livekit-server-sdk'
 
 type Publisher = Pick<IPublisherComponent, 'onPeerLeft' | 'onChangeToIsland'>
 
@@ -29,9 +30,13 @@ export type Options = {
     publisher: Publisher
   }
   flushFrequency?: number
-  parameters: {
-    joinDistance: number
-    leaveDistance: number
+  roomPrefix?: string
+  joinDistance: number
+  leaveDistance: number
+  livekit?: {
+    apiKey: string
+    apiSecret: string
+    host: string
   }
 }
 
@@ -81,7 +86,7 @@ export class ArchipelagoController {
   private currentSequence: number = 0
   private joinDistance: number
   private leaveDistance: number
-  private islandIdGenerator = sequentialIdGenerator('I')
+  private islandIdGenerator: IdGenerator
   private publisher: Publisher
   private metrics: IMetricsComponent<keyof typeof metricDeclarations>
 
@@ -91,14 +96,15 @@ export class ArchipelagoController {
   flushFrequency: number
   logger: ILoggerComponent.ILogger
 
-  requestIdGenerator: IdGenerator = sequentialIdGenerator('')
-
   disposed: boolean = false
 
   constructor({
     components: { logs, publisher, metrics },
     flushFrequency,
-    parameters: { joinDistance, leaveDistance }
+    joinDistance,
+    leaveDistance,
+    livekit,
+    roomPrefix
   }: Options) {
     this.logger = logs.getLogger('Archipelago')
     this.metrics = metrics
@@ -107,6 +113,28 @@ export class ArchipelagoController {
     this.flushFrequency = flushFrequency ?? 2
     this.joinDistance = joinDistance
     this.leaveDistance = leaveDistance
+    this.islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
+
+    if (livekit) {
+      this.transports.set(0, {
+        id: 0,
+        type: 'livekit',
+        availableSeats: -1,
+        usersCount: 0,
+        maxIslandSize: 100,
+        async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+          const connStrs: Record<string, string> = {}
+          for (const userId of userIds) {
+            const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
+              identity: userId
+            })
+            token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
+            connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
+          }
+          return connStrs
+        }
+      })
+    }
 
     const loop = () => {
       if (!this.disposed) {
@@ -326,7 +354,7 @@ export class ArchipelagoController {
     let transport = undefined
 
     for (const t of this.transports.values()) {
-      if (t.availableSeats > 0) {
+      if (t.availableSeats === -1 || t.availableSeats > 0) {
         transport = t
         break
       }

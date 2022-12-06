@@ -80,10 +80,8 @@ export function configureLibs(closure: BaseClosure) {
     const metrics = createTestMetricsComponent(metricDeclarations)
     const archipelago = new ArchipelagoController({
       components: { logs, publisher, metrics },
-      parameters: {
-        joinDistance: 64,
-        leaveDistance: 80
-      }
+      joinDistance: 64,
+      leaveDistance: 80
     })
 
     archipelago.onTransportHeartbeat({
