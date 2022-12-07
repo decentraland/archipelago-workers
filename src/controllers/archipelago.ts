@@ -37,6 +37,7 @@ export type Options = {
     apiKey: string
     apiSecret: string
     host: string
+    islandSize?: number
   }
 }
 
@@ -121,7 +122,7 @@ export class ArchipelagoController {
         type: 'livekit',
         availableSeats: -1,
         usersCount: 0,
-        maxIslandSize: 100,
+        maxIslandSize: livekit.islandSize || 100,
         async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
           const connStrs: Record<string, string> = {}
           for (const userId of userIds) {

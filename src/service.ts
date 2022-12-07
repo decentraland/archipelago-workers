@@ -43,7 +43,8 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     archipelagoConfig.livekit = {
       apiKey: livekitApiKey,
       apiSecret: livekitApiSecret,
-      host: livekitHost
+      host: livekitHost,
+      islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
     }
   }
 
