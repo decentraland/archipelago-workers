@@ -127,7 +127,8 @@ export class ArchipelagoController {
           const connStrs: Record<string, string> = {}
           for (const userId of userIds) {
             const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
-              identity: userId
+              identity: userId,
+              ttl: 5 * 60 // 5 minutes
             })
             token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
             connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
