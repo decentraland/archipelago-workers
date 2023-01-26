@@ -1,9 +1,8 @@
 import { handleUpgrade } from '../../src/controllers/handlers/transport-handler'
-import { TransportMessage, TransportType } from '../../src/controllers/proto/archipelago'
+import { TransportMessage, TransportType } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { createTransportRegistryComponent } from '../../src/ports/transport-registry'
 import { Transport } from '../../src/types'
 import { Reader } from 'protobufjs/minimal'
-import { delay } from '../helpers/archipelago'
 
 describe('transport-controller-unit', () => {
   it('handling transport', async () => {
@@ -49,7 +48,7 @@ describe('transport-controller-unit', () => {
           $case: 'init',
           init: {
             maxIslandSize: 300,
-            type: TransportType.TRANSPORT_LIVEKIT
+            type: TransportType.TT_LIVEKIT
           }
         }
       }).finish()

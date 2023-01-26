@@ -7,7 +7,7 @@ import {
   LeftIslandMessage,
   IslandStatusMessage,
   IslandData
-} from '../controllers/proto/archipelago'
+} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
 import { IBaseComponent } from '@well-known-components/interfaces'
 

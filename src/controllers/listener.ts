@@ -1,6 +1,6 @@
 import { AppComponents, PeerPositionChange } from '../types'
 import { ArchipelagoController } from './archipelago'
-import { Heartbeat } from './proto/bff/comms-director-service'
+import { Heartbeat } from '@dcl/protocol/out-js/decentraland/bff/comms_director_service.gen'
 
 export async function setupListener(
   archipelago: Pick<ArchipelagoController, 'onPeerRemoved' | 'onPeerPositionsUpdate'>,

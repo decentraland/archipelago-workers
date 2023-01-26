@@ -6,7 +6,7 @@ import {
   IslandStatusMessage,
   JoinIslandMessage,
   LeftIslandMessage
-} from '../../src/controllers/proto/archipelago'
+} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { createPublisherComponent, ServiceDiscoveryMessage } from '../../src/ports/publisher'
 import { Island } from '../../src/types'
 import { INatsComponent, NatsMsg } from '@well-known-components/nats-component/dist/types'

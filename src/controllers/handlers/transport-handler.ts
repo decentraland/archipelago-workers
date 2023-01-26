@@ -2,12 +2,13 @@ import { upgradeWebSocketResponse } from '@well-known-components/http-server/dis
 import { IHttpServerComponent, ILoggerComponent } from '@well-known-components/interfaces'
 import { WebSocket } from 'ws'
 import { GlobalContext, Transport } from '../../types'
-import { v4 } from 'uuid'
-import { TransportMessage } from '../proto/archipelago'
+import { TransportMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { ITransportRegistryComponent } from '../../ports/transport-registry'
 import { verify } from 'jsonwebtoken'
 
 const PENDING_AUTH_TIMEOUT_MS = 1000
+
+let requestIndex = 0
 
 type PendingAuthRequest = {
   started: number
@@ -33,7 +34,7 @@ export function handleUpgrade(
     maxIslandSize: 0,
     getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
       return new Promise<Record<string, string>>((resolve, reject) => {
-        const requestId = v4()
+        const requestId = `${requestIndex++}`
         pendingAuthRequests.set(requestId, {
           started: Date.now(),
           resolve,
