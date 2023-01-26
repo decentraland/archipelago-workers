@@ -15,7 +15,7 @@ RUN chmod +x /tini
 
 # install dependencies
 COPY package.json /app/package.json
-COPY package-lock.json /app/package-lock.json
+COPY yarn.lock /app/yarn.lock
 RUN yarn install --frozen-lockfile
 
 
