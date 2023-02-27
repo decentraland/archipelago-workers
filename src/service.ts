@@ -33,17 +33,11 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     flushFrequency: await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY'),
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
-    roomPrefix: await config.getString('ROOM_PREFIX')
-  }
-
-  const livekitApiKey = await config.getString('LIVEKIT_API_KEY')
-  const livekitApiSecret = await config.getString('LIVEKIT_API_SECRET')
-  const livekitHost = await config.getString('LIVEKIT_HOST')
-  if (livekitApiKey && livekitApiSecret && livekitHost) {
-    archipelagoConfig.livekit = {
-      apiKey: livekitApiKey,
-      apiSecret: livekitApiSecret,
-      host: livekitHost,
+    roomPrefix: await config.getString('ROOM_PREFIX'),
+    livekit: {
+      apiKey: await config.requireString('LIVEKIT_API_KEY'),
+      apiSecret: await config.requireString('LIVEKIT_API_SECRET'),
+      host: await config.requireString('LIVEKIT_HOST'),
       islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
     }
   }
