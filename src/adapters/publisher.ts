@@ -1,12 +1,11 @@
 import { encodeJson } from '@well-known-components/nats-component'
-
-import { BaseComponents, ChangeToIslandUpdate, PeerData, Island } from '../types'
+import { BaseComponents, ChangeToIslandUpdate, Island, PeerData } from '../types'
 import {
+  IslandStatusMessage,
+  IslandData,
   IslandChangedMessage,
   JoinIslandMessage,
-  LeftIslandMessage,
-  IslandStatusMessage,
-  IslandData
+  LeftIslandMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
 import { IBaseComponent } from '@well-known-components/interfaces'
@@ -18,15 +17,15 @@ export type ServiceDiscoveryMessage = {
 
 export type IPublisherComponent = IBaseComponent & {
   onChangeToIsland(peerId: string, island: Island, change: ChangeToIslandUpdate): void
-  onPeerLeft(peerId: string, islandId: string): void
   publishServiceDiscoveryMessage(): void
   publishIslandsReport(islands: Island[]): void
 }
 
 export async function createPublisherComponent({
   nats,
-  config
-}: Pick<BaseComponents, 'config' | 'nats'>): Promise<IPublisherComponent> {
+  config,
+  peersRegistry
+}: Pick<BaseComponents, 'config' | 'nats' | 'peersRegistry'>): Promise<IPublisherComponent> {
   const commitHash = await config.getString('COMMIT_HASH')
 
   function onChangeToIsland(peerId: string, toIsland: Island, update: ChangeToIslandUpdate) {
@@ -57,20 +56,11 @@ export async function createPublisherComponent({
     )
   }
 
-  function onPeerLeft(peerId: string, islandId: string) {
-    nats.publish(
-      `client-proto.island.${islandId}.peer_left`,
-      LeftIslandMessage.encode({
-        islandId: islandId,
-        peerId
-      }).finish()
-    )
-  }
-
   function publishServiceDiscoveryMessage() {
     const status = {
       currentTime: Date.now(),
-      commitHash
+      commitHash,
+      userCount: peersRegistry.getPeerCount()
     }
     const serviceDiscoveryMessage: ServiceDiscoveryMessage = {
       serverName: 'archipelago',
@@ -100,7 +90,6 @@ export async function createPublisherComponent({
 
   return {
     onChangeToIsland,
-    onPeerLeft,
     publishServiceDiscoveryMessage,
     publishIslandsReport
   }

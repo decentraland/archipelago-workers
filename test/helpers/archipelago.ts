@@ -9,6 +9,8 @@ import { IdGenerator, sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@well-known-components/metrics'
 import { metricDeclarations } from '../../src/metrics'
+import { createPeersRegistry } from '../../src/adapters/peers-registry'
+import { createConfigComponent } from '@well-known-components/env-config-provider'
 
 export function expectIslandWith(archipelago: ArchipelagoController, ...ids: string[]) {
   assert(Array.isArray(ids))
@@ -71,15 +73,17 @@ export async function setMultiplePeersAround(
 export function configureLibs(closure: BaseClosure) {
   // (configure { options })
   closure.defJsFunction('configure', async () => {
-    const logs = await createLogComponent({})
-    const publisher = {
-      onChangeToIsland: (peerId: string, island: Island, change: ChangeToIslandUpdate) => {},
-      onPeerLeft: (peerId: string, islandId: string) => {}
-    }
-
+    const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+    const logs = await createLogComponent({ config })
     const metrics = createTestMetricsComponent(metricDeclarations)
+    const peersRegistry = await createPeersRegistry({
+      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
+    })
+    const publisher = {
+      onChangeToIsland: (_peerId: string, _island: Island, _change: ChangeToIslandUpdate) => {}
+    }
     const archipelago = new ArchipelagoController({
-      components: { logs, publisher, metrics },
+      components: { logs, peersRegistry, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80
     })
@@ -188,11 +192,11 @@ export function configureLibs(closure: BaseClosure) {
   closure.defJsFunction('disconnect', async (ids, arch) => {
     const archipelago = (arch || closure.get('archipelago')) as ArchipelagoController
     if (typeof ids == 'string') {
-      archipelago.onPeerRemoved(ids)
+      archipelago.onPeerDisconnected(ids)
       const updates = await archipelago.flush()
       assert(updates.get(ids).action === 'leave', `Peer ${ids} must be deleted`)
     } else if (Array.isArray(ids)) {
-      ids.forEach((id) => archipelago.onPeerRemoved(id))
+      ids.forEach((id) => archipelago.onPeerDisconnected(id))
       const updates = await archipelago.flush()
       ids.forEach(($: any) => assert(updates.get($).action === 'leave', `Peer ${$} must be deleted`))
     } else {

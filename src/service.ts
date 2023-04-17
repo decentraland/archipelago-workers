@@ -1,8 +1,8 @@
 import { Lifecycle } from '@well-known-components/interfaces'
-import { setupListener } from './controllers/listener'
 import { setupRouter } from './controllers/routes'
 import { ArchipelagoController, Options } from './controllers/archipelago'
 import { AppComponents, GlobalContext, TestComponents } from './types'
+import { setupListener } from './controllers/listener'
 
 const DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL = 1000 * 60 * 2 // 2 min
 const DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL = 10000
@@ -26,10 +26,10 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { nats, metrics, config, logs, transportRegistry, publisher } = components
+  const { nats, metrics, config, logs, peersRegistry, publisher } = components
 
   const archipelagoConfig: Options = {
-    components: { logs, publisher, metrics },
+    components: { logs, peersRegistry, metrics, publisher },
     flushFrequency: await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY'),
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
@@ -46,7 +46,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const archipelago = new ArchipelagoController(archipelagoConfig)
 
-  transportRegistry.setListener(archipelago)
+  peersRegistry.setAdapter(archipelago)
 
   const islandsStatusUpdateFreq =
     (await config.getNumber('ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL')) ??

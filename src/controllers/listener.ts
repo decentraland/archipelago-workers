@@ -1,9 +1,9 @@
+import { Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { AppComponents, PeerPositionChange } from '../types'
 import { ArchipelagoController } from './archipelago'
-import { Heartbeat } from '@dcl/protocol/out-js/decentraland/bff/comms_director_service.gen'
 
 export async function setupListener(
-  archipelago: Pick<ArchipelagoController, 'onPeerRemoved' | 'onPeerPositionsUpdate'>,
+  archipelago: Pick<ArchipelagoController, 'onPeerDisconnected' | 'onPeerPositionsUpdate'>,
   { nats, logs, config }: Pick<AppComponents, 'nats' | 'logs' | 'config'>
 ) {
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
@@ -18,7 +18,7 @@ export async function setupListener(
     for (const [peerId, lastHeartbeat] of lastPeerHeartbeats) {
       if (lastHeartbeat < expiredHeartbeatTime) {
         lastPeerHeartbeats.delete(peerId)
-        archipelago.onPeerRemoved(peerId)
+        archipelago.onPeerDisconnected(peerId)
       }
     }
   }, checkHeartbeatInterval)
@@ -35,7 +35,7 @@ export async function setupListener(
 
     try {
       const id = message.subject.split('.')[1]
-      archipelago.onPeerRemoved(id)
+      archipelago.onPeerDisconnected(id)
     } catch (err: any) {
       logger.error(`cannot process peer_connect message ${err.message}`)
     }
@@ -49,7 +49,7 @@ export async function setupListener(
 
     try {
       const id = message.subject.split('.')[1]
-      archipelago.onPeerRemoved(id)
+      archipelago.onPeerDisconnected(id)
     } catch (err: any) {
       logger.error(`cannot process peer_disconnect message ${err.message}`)
     }

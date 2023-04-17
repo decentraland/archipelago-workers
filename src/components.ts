@@ -1,14 +1,17 @@
+import { HTTPProvider } from 'eth-connect'
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
+import { createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
-import { createFetchComponent } from './ports/fetch'
+import { createFetchComponent } from './adapters/fetch'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
-import { createTransportRegistryComponent } from './ports/transport-registry'
-import { WebSocketServer } from 'ws'
-import { createPublisherComponent } from './ports/publisher'
+import { createUwsHttpServer } from '@well-known-components/http-server/dist/uws'
+import { createPublisherComponent } from './adapters/publisher'
+import { createPeersRegistry } from './adapters/peers-registry'
+import { getUnderlyingServer } from '@well-known-components/http-server'
+import { TemplatedApp } from 'uWebSockets.js'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -16,17 +19,23 @@ export async function initComponents(): Promise<AppComponents> {
 
   const logs = await createLogComponent({})
 
-  const wss = new WebSocketServer({ noServer: true })
   const metrics = await createMetricsComponent(metricDeclarations, { config })
-  const server = await createServerComponent<GlobalContext>({ config, logs, ws: wss }, {})
+  const server = await createUwsHttpServer<GlobalContext>({ config, logs }, { compression: false })
+  const uws = await getUnderlyingServer<TemplatedApp>(server)
 
   await instrumentHttpServerWithMetrics({ server, metrics, config })
 
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
   const nats = await createNatsComponent({ config, logs })
-  const transportRegistry = await createTransportRegistryComponent()
-  const publisher = await createPublisherComponent({ config, nats })
+  const peersRegistry = await createPeersRegistry(uws)
+  const publisher = await createPublisherComponent({ config, nats, peersRegistry })
+
+  const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'goerli'
+  const ethereumProvider = new HTTPProvider(
+    `https://rpc.decentraland.org/${encodeURIComponent(ethNetwork)}?project=archipelago`,
+    { fetch: fetch.fetch }
+  )
 
   return {
     config,
@@ -36,7 +45,8 @@ export async function initComponents(): Promise<AppComponents> {
     fetch,
     metrics,
     nats,
-    transportRegistry,
-    publisher
+    peersRegistry,
+    publisher,
+    ethereumProvider
   }
 }

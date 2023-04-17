@@ -7,22 +7,27 @@ import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@well-known-components/metrics'
 import { metricDeclarations } from '../../src/metrics'
+import { createConfigComponent } from '@well-known-components/env-config-provider'
+import { createPeersRegistry } from '../../src/adapters/peers-registry'
 
 type PositionWithId = [string, number, number, number]
 
 describe('archipelago', () => {
   let archipelago: ArchipelagoController
   beforeEach(async () => {
-    const publisher = {
-      onChangeToIsland: (peerId: string, island: Island, change: ChangeToIslandUpdate) => {},
-      onPeerLeft: (peerId: string, islandId: string) => {}
-    }
-
-    const logs = await createLogComponent({})
+    const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+    const logs = await createLogComponent({ config })
     const metrics = createTestMetricsComponent(metricDeclarations)
 
+    const peersRegistry = await createPeersRegistry({
+      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
+    })
+
+    const publisher = {
+      onChangeToIsland: (_peerId: string, _island: Island, _change: ChangeToIslandUpdate) => {}
+    }
     archipelago = new ArchipelagoController({
-      components: { logs, publisher, metrics },
+      components: { logs, peersRegistry, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80
     })
@@ -133,7 +138,7 @@ describe('archipelago', () => {
 
     expectIslandsWith(archipelago, ['1', '2', '3', '4'])
 
-    archipelago.onPeerRemoved('4')
+    archipelago.onPeerDisconnected('4')
     await archipelago.flush()
 
     expectIslandsWith(archipelago, ['1', '2'], ['3'])
@@ -144,8 +149,8 @@ describe('archipelago', () => {
 
     expectIslandsWith(archipelago, ['1', '2'])
 
-    archipelago.onPeerRemoved('1')
-    archipelago.onPeerRemoved('2')
+    archipelago.onPeerDisconnected('1')
+    archipelago.onPeerDisconnected('2')
     await archipelago.flush()
 
     await setPositionArrays(['1', 0, 0, 0])
@@ -200,7 +205,7 @@ describe('archipelago', () => {
     await setPositionArrays(['1', 0, 0, 0], ['2', 50, 0, 0], ['3', 100, 0, 0])
 
     expectIslandsWith(archipelago, ['1', '2', '3'])
-    archipelago.onPeerRemoved('2')
+    archipelago.onPeerDisconnected('2')
 
     const updates = await archipelago.flush()
 
@@ -248,7 +253,7 @@ describe('archipelago', () => {
     expectIslandWith(archipelago, ...firstRequests.map((it) => it.id))
     expectIslandWith(archipelago, ...peerRequests.map((it) => it.id))
 
-    peerRequests.slice(0, 10).forEach((it) => archipelago.onPeerRemoved(it.id))
+    peerRequests.slice(0, 10).forEach((it) => archipelago.onPeerDisconnected(it.id))
     await archipelago.flush()
 
     expect.strictEqual(archipelago.getIslands().length, 1)
