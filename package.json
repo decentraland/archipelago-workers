@@ -43,7 +43,7 @@
     "protocVersion": "21.6"
   },
   "dependencies": {
-    "@dcl/crypto": "^3.3.1",
+    "@dcl/crypto": "^3.4.0",
     "@dcl/protocol": "^1.0.0-4721150054.commit-85597a5",
     "@dcl/schemas": "^6.16.0",
     "@well-known-components/env-config-provider": "^1.2.0",
