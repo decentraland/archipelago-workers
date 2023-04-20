@@ -20,10 +20,9 @@ export const metricDeclarations = {
     type: IMetricsComponent.GaugeType,
     labelNames: ['transport'] // transport=(livekit|ws|p2p)
   },
-  dcl_archipelago_transports_count: {
-    help: 'Number of registered transports',
-    type: IMetricsComponent.GaugeType,
-    labelNames: ['transport'] // transport=(livekit|ws|p2p)
+  dcl_archipelago_change_island_count: {
+    help: 'Count change island messages',
+    type: IMetricsComponent.CounterType
   }
 }
 

@@ -4,8 +4,7 @@ import {
   IslandStatusMessage,
   IslandData,
   IslandChangedMessage,
-  JoinIslandMessage,
-  LeftIslandMessage
+  JoinIslandMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
 import { IBaseComponent } from '@well-known-components/interfaces'

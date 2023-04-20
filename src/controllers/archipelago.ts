@@ -155,10 +155,6 @@ export class ArchipelagoController {
   }
 
   onTransportHeartbeat(transport: Transport): void {
-    if (!this.transports.has(transport.id)) {
-      this.metrics.increment('dcl_archipelago_transports_count', { transport: transport.type })
-    }
-
     this.transports.set(transport.id, transport)
   }
 
@@ -166,7 +162,6 @@ export class ArchipelagoController {
     const transport = this.transports.get(id)
     if (transport) {
       this.transports.delete(id)
-      this.metrics.decrement('dcl_archipelago_transports_count', { transport: transport.type })
     }
 
     // NOTE(hugo): we don't recreate islands, this will happen naturally if
@@ -311,6 +306,7 @@ export class ArchipelagoController {
       if (update.action === 'changeTo') {
         const island = this.islands.get(update.islandId)!
         this.logger.debug(`Publishing island change for ${peerId}`)
+        this.metrics.increment('dcl_archipelago_change_island_count', {})
         this.peersRegistry.onChangeToIsland(peerId, island, update)
         this.publisher.onChangeToIsland(peerId, island, update)
       } else if (update.action === 'leave') {
