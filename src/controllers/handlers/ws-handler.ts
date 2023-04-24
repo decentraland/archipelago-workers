@@ -1,13 +1,13 @@
-import { ClientPacket } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { ClientPacket, Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { upgradeWebSocketResponse } from '@well-known-components/http-server/dist/ws'
 import { craftMessage } from '../../logic/craft-message'
 import { handleSocketLinearProtocol } from '../../logic/handle-linear-protocol'
 import { HandlerContextWithPath, Stage, InternalWebSocket, PeerPositionChange } from '../../types'
 
 export async function websocketHandler(
-  context: HandlerContextWithPath<'logs' | 'ethereumProvider' | 'peersRegistry', '/ws'>
+  context: HandlerContextWithPath<'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
 ) {
-  const { logs, peersRegistry } = context.components
+  const { logs, peersRegistry, nats } = context.components
   const logger = logs.getLogger('Websocket Handler')
 
   return upgradeWebSocketResponse((socket) => {
@@ -48,6 +48,7 @@ export async function websocketHandler(
         ws.on('close', () => {
           if (ws.address) {
             peersRegistry.onPeerDisconnected(ws.address)
+            nats.publish(`archipelago.peer.${ws.address}.disconnect`)
           }
         })
 
@@ -72,6 +73,12 @@ export async function websocketHandler(
                     preferedIslandId: desiredRoom
                   }
 
+                  nats.publish(
+                    `archipelago.peer.${ws.address!}.heartbeat`,
+                    Heartbeat.encode({
+                      position
+                    }).finish()
+                  )
                   peersRegistry.onPeerPositionsUpdate([peerPositionChange])
                   break
                 }
