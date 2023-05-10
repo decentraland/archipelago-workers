@@ -6,6 +6,8 @@ import { normalizeAddress } from './address'
 import { craftMessage } from './craft-message'
 import { ClientPacket, KickedReason } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
+const timeout_ms = 60 * 1000 // 1 min
+
 export async function handleSocketLinearProtocol(
   { logs, ethereumProvider, peersRegistry }: Pick<AppComponents, 'logs' | 'peersRegistry' | 'ethereumProvider'>,
   socket: InternalWebSocket
@@ -17,7 +19,7 @@ export async function handleSocketLinearProtocol(
   try {
     // process the messages
     /// 1. the remote client sends their authentication message
-    let packet = await channel.yield(1000, 'Timed out waiting for challengeRequest')
+    let packet = await channel.yield(timeout_ms, 'Timed out waiting for challengeRequest')
 
     if (!packet.message || packet.message.$case !== 'challengeRequest') {
       throw new Error('Invalid protocol. challengeRequest packet missed')
@@ -51,7 +53,7 @@ export async function handleSocketLinearProtocol(
     }
 
     /// 3. wait for the confirmation message
-    packet = await channel.yield(1000, 'Timed out waiting for signed challenge response')
+    packet = await channel.yield(timeout_ms, 'Timed out waiting for signed challenge response')
 
     if (!packet.message || packet.message.$case !== 'signedChallenge') {
       throw new Error('Invalid protocol. signedChallengeForServer packet missed')
