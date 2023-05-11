@@ -5,7 +5,7 @@ import { handleSocketLinearProtocol } from '../../logic/handle-linear-protocol'
 import { HandlerContextWithPath, Stage, InternalWebSocket, PeerPositionChange } from '../../types'
 
 export async function websocketHandler(
-  context: HandlerContextWithPath<'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
+  context: HandlerContextWithPath<'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
 ) {
   const { logs, peersRegistry, nats } = context.components
   const logger = logs.getLogger('Websocket Handler')

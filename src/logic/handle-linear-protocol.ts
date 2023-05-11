@@ -6,12 +6,17 @@ import { normalizeAddress } from './address'
 import { craftMessage } from './craft-message'
 import { ClientPacket, KickedReason } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
-const timeout_ms = 60 * 1000 // 1 min
-
 export async function handleSocketLinearProtocol(
-  { logs, ethereumProvider, peersRegistry }: Pick<AppComponents, 'logs' | 'peersRegistry' | 'ethereumProvider'>,
+  {
+    config,
+    logs,
+    ethereumProvider,
+    peersRegistry
+  }: Pick<AppComponents, 'logs' | 'peersRegistry' | 'ethereumProvider' | 'config'>,
   socket: InternalWebSocket
 ) {
+  const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
+
   const logger = logs.getLogger('LinearProtocol')
   // Wire the socket to a pushable channel
   const channel = wsAsAsyncChannel<ClientPacket>(socket, ClientPacket.decode)

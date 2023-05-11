@@ -326,14 +326,23 @@
     eslint-plugin-prettier "^4.2.1"
     prettier "^2.8.3"
 
-"@dcl/protocol@^1.0.0-4786533111.commit-32cf19f":
-  version "1.0.0-4786533111.commit-32cf19f"
-  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-4786533111.commit-32cf19f.tgz#5b8e6e018de0270def76bffc7ac8ddcdd0225b71"
-  integrity sha512-ZnxW2Pq+k2wi2FqKtL68nli3XkVLuOglksJyyrnSQl1KDMyT3iNIvqhX2kFofVQ+p610qGaxBmC6hbZF3KuZRw==
+"@dcl/protocol@^1.0.0-4896874496.commit-2ebeae0":
+  version "1.0.0-4896874496.commit-2ebeae0"
+  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-4896874496.commit-2ebeae0.tgz#ec5bf0e9afe19866435f811a81b59e21cd3f3aa0"
+  integrity sha512-fiAcVqlXRX58hEO6uXbx6VX/nUAd7YjeWqcvOy0caZ7HKJPmsWl495XEoN7DxqyQuAGDYA2xQuopZVDpU6+swg==
   dependencies:
     ts-proto "^1.146.0"
 
-"@dcl/schemas@^6.17.0", "@dcl/schemas@^6.4.2":
+"@dcl/schemas@^6.18.2":
+  version "6.18.2"
+  resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-6.18.2.tgz#8ba37742471e0ce3ac9f169b8c98917d5e66a593"
+  integrity sha512-zZyEftmj3FbeOwAHYQpEhj3jWnw/lqzSq0UXR+xF2AP/UT/PB8ryEwQNF26vdwiIDVFNFd8Ov3m6MWaQRrVwtQ==
+  dependencies:
+    ajv "^8.11.0"
+    ajv-errors "^3.0.0"
+    ajv-keywords "^5.1.0"
+
+"@dcl/schemas@^6.4.2":
   version "6.17.0"
   resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-6.17.0.tgz#61a54deda7e739abe3b08964adf4b5d92d79aaaa"
   integrity sha512-03mUwh8GmaU3wueVM64JF86acS4NvELKY2aZFBATWq/wUZ/KpaMedY7XFiB1eUmusWBVHmVRnsbbOZ1cw3CCFw==
@@ -1670,10 +1679,10 @@
   dependencies:
     dotenv "^16.0.1"
 
-"@well-known-components/http-server@^2.0.0-20230216161243.commit-bfe3f0a":
-  version "2.0.0-20230216161243.commit-bfe3f0a"
-  resolved "https://registry.yarnpkg.com/@well-known-components/http-server/-/http-server-2.0.0-20230216161243.commit-bfe3f0a.tgz#d32b3f201d2f0399e83df8399d06f93c50f6f6be"
-  integrity sha512-u4HAT+f/z6GKGQWFAaXojSjyzubSc7GXbYJP83gDLP40/ioQfima9vC9BVzZhYYEFwJWq4YZ2CyMmDbngY1zAQ==
+"@well-known-components/http-server@^2.0.0-20230501134558.commit-be9a25d":
+  version "2.0.0-20230501134558.commit-be9a25d"
+  resolved "https://registry.yarnpkg.com/@well-known-components/http-server/-/http-server-2.0.0-20230501134558.commit-be9a25d.tgz#3097c4009796737fd4d0d2e4cfc59c5f94d81287"
+  integrity sha512-EHnkQQNTBmyrc5TixTUpJfmhIKHanr6sYIwUgpdp2NV3XhQRQSCPHaiMKnZgE0pQMvKD8k6LnDyGjqsIm5jH8w==
   dependencies:
     "@types/http-errors" "^1.8.1"
     destroy "^1.2.0"
@@ -1683,13 +1692,20 @@
     node-fetch "^2.6.9"
     on-finished "^2.4.1"
     path-to-regexp "^6.2.1"
-  optionalDependencies:
-    uWebSockets.js "github:uNetworking/uWebSockets.js#v20.10.0"
 
-"@well-known-components/interfaces@^1.1.1", "@well-known-components/interfaces@^1.3.0":
+"@well-known-components/interfaces@^1.1.1":
   version "1.3.0"
   resolved "https://registry.yarnpkg.com/@well-known-components/interfaces/-/interfaces-1.3.0.tgz#e1ff8feceb22f0af29e100f7f24ad2e5331810bb"
   integrity sha512-h5upEQJXwNo1ZQQlElBqVUAyIzzBqTnLmkaiNEwv/wZ0kR/mqLzlXcl2KRB/tKuK6Sr7NbKLaXLHy2hT5DY42g==
+  dependencies:
+    "@types/node" "^16.11.19"
+    "@types/node-fetch" "^2.5.12"
+    typed-url-params "^1.0.1"
+
+"@well-known-components/interfaces@^1.4.0":
+  version "1.4.0"
+  resolved "https://registry.yarnpkg.com/@well-known-components/interfaces/-/interfaces-1.4.0.tgz#5621e1b687788274f54a6cf781b2a7f4bf6c8d0a"
+  integrity sha512-9MQ7ajKWTs7HWmXaE5sn4sM0HOuRDkVuBrCixTPlAFrrr61Ge5SOZZ5OsOacKoq8RZ80C9bpPjieKcmHQuGWug==
   dependencies:
     "@types/node" "^16.11.19"
     "@types/node-fetch" "^2.5.12"

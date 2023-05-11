@@ -31,7 +31,8 @@ async function initComponents(): Promise<TestComponents> {
     LIVEKIT_API_SECRET: 'secret',
     LIVEKIT_HOST: 'wss://test-livekit',
     ...process.env,
-    LOG_LEVEL: 'INFO'
+    LOG_LEVEL: 'INFO',
+    HANDSHAKE_TIMEOUT: '100'
   })
 
   const nats = await createLocalNatsComponent()
