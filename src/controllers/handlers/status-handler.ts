@@ -13,6 +13,9 @@ export async function statusHandler(
   ])
 
   return {
+    headers: {
+      'Access-Control-Allow-Origin': '*'
+    },
     body: {
       version: version ?? '',
       currentTime: Date.now(),
