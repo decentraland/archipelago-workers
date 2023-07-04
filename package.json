@@ -1,7 +1,7 @@
 {
   "name": "archipelago-service",
   "private": true,
-  "workspaces": ["core", "ws-connector"],
+  "workspaces": ["core", "ws-connector", "stats"],
   "scripts": {
     "build": "yarn workspaces run build",
     "test": "yarn workspaces run test",
