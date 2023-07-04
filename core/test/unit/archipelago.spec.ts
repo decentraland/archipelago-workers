@@ -1,6 +1,6 @@
 import expect from 'assert'
 import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate, Island, Engine } from '../../src/types'
-import { sequentialIdGenerator } from '../../src/misc/idGenerator'
+import { sequentialIdGenerator } from '../../src/logic/idGenerator'
 import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../helpers/archipelago'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@well-known-components/metrics'

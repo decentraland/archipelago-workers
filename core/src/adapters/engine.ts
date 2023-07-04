@@ -1,6 +1,5 @@
 import {
   PeerData,
-  Position3D,
   Island,
   PeerPositionChange,
   Transport,
@@ -12,10 +11,11 @@ import {
   Engine
 } from '../types'
 
-import { findMax, popMax } from '../misc/utils'
-import { sequentialIdGenerator } from '../misc/idGenerator'
+import { intersectPeerGroup, popMax } from '../logic/islands'
+import { sequentialIdGenerator } from '../logic/idGenerator'
 import { AccessToken } from 'livekit-server-sdk'
 import { IPublisherComponent } from '../adapters/publisher'
+import { intersectIslands, islandGeometryCalculator } from '../logic/islands'
 
 type Publisher = Pick<IPublisherComponent, 'onChangeToIsland'>
 
@@ -38,32 +38,6 @@ export type Options = {
   }
 }
 
-const X_AXIS = 0
-const Z_AXIS = 2
-
-function squaredDistance(p1: Position3D, p2: Position3D) {
-  // By default, we use XZ plane squared distance. We ignore "height"
-  const xDiff = p2[X_AXIS] - p1[X_AXIS]
-  const zDiff = p2[Z_AXIS] - p1[Z_AXIS]
-
-  return xDiff * xDiff + zDiff * zDiff
-}
-
-function islandGeometryCalculator(peers: PeerData[]): [Position3D, number] {
-  if (peers.length === 0) return [[0, 0, 0], 0]
-  const sum = peers.reduce<Position3D>(
-    (current, peer) => [current[X_AXIS] + peer.position[X_AXIS], 0, current[Z_AXIS] + peer.position[Z_AXIS]],
-    [0, 0, 0]
-  )
-
-  const center = sum.map((it) => it / peers.length) as Position3D
-  const farthest = findMax(peers, (peer) => squaredDistance(peer.position, center))!
-
-  const radius = Math.sqrt(squaredDistance(farthest.position, center))
-
-  return [center, radius]
-}
-
 function recalculateGeometryIfNeeded(island: Island) {
   if (island.peers.length > 0 && (island._geometryDirty || !island._radius || !island._center)) {
     const [center, radius] = islandGeometryCalculator(island.peers)
@@ -71,10 +45,6 @@ function recalculateGeometryIfNeeded(island: Island) {
     island._radius = radius
     island._geometryDirty = false
   }
-}
-
-function squared(n: number) {
-  return n * n
 }
 
 export function createArchipelagoEngine({
@@ -453,24 +423,6 @@ export function createArchipelagoEngine({
     }
 
     return mostVoted
-  }
-
-  function intersectIslands(anIsland: Island, otherIsland: Island, intersectDistance: number) {
-    const intersectIslandGeometry =
-      squaredDistance(anIsland.center, otherIsland.center) <=
-      squared(anIsland.radius + otherIsland.radius + intersectDistance)
-
-    return (
-      intersectIslandGeometry &&
-      anIsland.peers.some((it) => intersectPeerGroup(it, otherIsland.peers, intersectDistance))
-    )
-  }
-
-  function intersectPeerGroup(peer: PeerData, group: PeerData[], intersectDistance: number) {
-    const intersectPeers = (aPeer: PeerData, otherPeer: PeerData) => {
-      return squaredDistance(aPeer.position, otherPeer.position) <= squared(intersectDistance)
-    }
-    return group.some((it) => intersectPeers(peer, it))
   }
 
   return {
