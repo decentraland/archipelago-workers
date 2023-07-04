@@ -9,7 +9,7 @@ import {
   LeaveIslandUpdate,
   IslandUpdates,
   TransportType,
-  EngineComponent
+  Engine
 } from '../types'
 
 import { findMax, popMax } from '../misc/utils'
@@ -41,7 +41,7 @@ export type Options = {
 const X_AXIS = 0
 const Z_AXIS = 2
 
-const squaredDistance = (p1: Position3D, p2: Position3D) => {
+function squaredDistance(p1: Position3D, p2: Position3D) {
   // By default, we use XZ plane squared distance. We ignore "height"
   const xDiff = p2[X_AXIS] - p1[X_AXIS]
   const zDiff = p2[Z_AXIS] - p1[Z_AXIS]
@@ -84,7 +84,7 @@ export function createArchipelagoEngine({
   leaveDistance,
   livekit,
   roomPrefix
-}: Options): EngineComponent {
+}: Options): Engine {
   const logger = logs.getLogger('Archipelago')
   const transports = new Map<number, Transport>()
   const peers = new Map<string, PeerData>()
@@ -128,11 +128,11 @@ export function createArchipelagoEngine({
     }
   }
 
-  function start() {
+  async function start(): Promise<void> {
     loop()
   }
 
-  function stop() {
+  async function stop(): Promise<void> {
     disposed = true
   }
 
@@ -493,10 +493,13 @@ export function createArchipelagoEngine({
     start,
     stop,
     onTransportHeartbeat,
-    onTransportDisconnected,
+    flush,
+    // onTransportDisconnected,
     onPeerPositionsUpdate,
     getPeerCount,
     onPeerDisconnected,
-    getIslands
+    getIslands,
+    getIsland,
+    getPeerData
   }
 }

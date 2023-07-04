@@ -1,5 +1,5 @@
 import expect from 'assert'
-import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate, Island, EngineComponent } from '../../src/types'
+import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate, Island, Engine } from '../../src/types'
 import { sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../helpers/archipelago'
 import { createLogComponent } from '@well-known-components/logger'
@@ -11,7 +11,7 @@ import { createArchipelagoEngine } from '../../src/adapters/engine'
 type PositionWithId = [string, number, number, number]
 
 describe('engine', () => {
-  let engine: EngineComponent
+  let engine: Engine
 
   beforeEach(async () => {
     const config = createConfigComponent({ LOG_LEVEL: 'INFO' })

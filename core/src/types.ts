@@ -58,7 +58,7 @@ export type Transport = {
   getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>>
 }
 
-export type EngineComponent = {
+export type Engine = IBaseComponent & {
   onPeerDisconnected(id: string): void
   onPeerPositionsUpdate(changes: PeerPositionChange[]): void
   getIslands(): Island[]
@@ -66,7 +66,9 @@ export type EngineComponent = {
 
   // TODO: this are only for testing purposes
   onTransportHeartbeat(transport: Transport): void
-  flush(): Promise<void>
+  flush(): Promise<IslandUpdates>
+  getIsland(id: string): Island | undefined
+  getPeerData(id: string): PeerData | undefined
 }
 
 export type GlobalContext = {
@@ -81,7 +83,7 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
   publisher: IPublisherComponent
-  engine: EngineComponent
+  engine: Engine
 }
 
 // components used in runtime
