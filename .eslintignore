@@ -4,5 +4,4 @@ dist/
 *.d.ts
 *.json
 
-src/controllers/proto
-src/index.ts
+**/src/index.ts

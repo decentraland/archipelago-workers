@@ -16,7 +16,7 @@ export type IPeersRegistryComponent = IBaseComponent & {
   // onPeerLeft(peerId: string, islandId: string): void
 }
 
-export async function createPeersRegistry(uws: WsApp): Promise<IPeersRegistryComponent> {
+export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
   const connectedPeers = new Map<string, InternalWebSocket>()
 
   function onPeerConnected(id: string, ws: InternalWebSocket): void {
@@ -26,9 +26,6 @@ export async function createPeersRegistry(uws: WsApp): Promise<IPeersRegistryCom
   function onPeerDisconnected(id: string): void {
     connectedPeers.delete(id)
   }
-
-  // function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
-  // }
 
   function getPeerWs(id: string): InternalWebSocket | undefined {
     return connectedPeers.get(id)

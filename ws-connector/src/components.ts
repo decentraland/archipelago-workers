@@ -9,8 +9,6 @@ import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createUwsHttpServer } from '@well-known-components/http-server/dist/uws'
 import { createPeersRegistry } from './adapters/peers-registry'
-import { getUnderlyingServer } from '@well-known-components/http-server'
-import { TemplatedApp } from 'uWebSockets.js'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -20,14 +18,12 @@ export async function initComponents(): Promise<AppComponents> {
 
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const server = await createUwsHttpServer<GlobalContext>({ config, logs }, { compression: false })
-  const uws = await getUnderlyingServer<TemplatedApp>(server)
-
   await instrumentHttpServerWithMetrics({ server, metrics, config })
 
   const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = await createFetchComponent()
   const nats = await createNatsComponent({ config, logs })
-  const peersRegistry = await createPeersRegistry(uws)
+  const peersRegistry = await createPeersRegistry()
 
   const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'goerli'
   const ethereumProvider = new HTTPProvider(
