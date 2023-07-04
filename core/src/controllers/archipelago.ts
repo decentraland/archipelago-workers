@@ -210,10 +210,6 @@ export class ArchipelagoController {
     return this.peers.size
   }
 
-  isPeerConnected(id: string): boolean {
-    return this.peers.has(id)
-  }
-
   onPeerDisconnected(id: string): void {
     const peer = this.peers.get(id)
 
