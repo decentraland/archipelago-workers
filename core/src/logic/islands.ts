@@ -36,12 +36,25 @@ export function islandGeometryCalculator(peers: PeerData[]): [Position3D, number
 }
 
 /**
+ * Removes the "max" element by criteria and returns it. Mutates the array.
+ */
+export function popMax<T>(array: T[], criteria: (t: T) => number) {
+  const i = findMaxIndex(array, criteria)
+  if (i === undefined) {
+    return undefined
+  }
+
+  const [max] = array.splice(i, 1)
+  return max
+}
+
+/**
  * Finds the index of the element that is first according to the provided ordering
  * @param array the array in which to look up the index
  * @param ordering a function returning -1 if the element on the left goes first, 0 if they are the equivalent, and 1 if right goes first
  * @returns
  */
-export function findIndexOfFirstByOrder<T>(array: T[], ordering: (t1: T, t2: T) => number) {
+function findIndexOfFirstByOrder<T>(array: T[], ordering: (t1: T, t2: T) => number) {
   if (array.length === 0) return undefined
 
   let biggestIndex = 0
@@ -55,29 +68,13 @@ export function findIndexOfFirstByOrder<T>(array: T[], ordering: (t1: T, t2: T) 
   return biggestIndex
 }
 
-export function findMaxIndex<T>(array: T[], criteria: (t: T) => number) {
+function findMaxIndex<T>(array: T[], criteria: (t: T) => number) {
   return findIndexOfFirstByOrder(array, (t1, t2) => Math.sign(criteria(t2) - criteria(t1)))
 }
 
-export function findMax<T>(array: T[], criteria: (t: T) => number) {
+function findMax<T>(array: T[], criteria: (t: T) => number) {
   const index = findMaxIndex(array, criteria)
   return typeof index !== 'undefined' ? array[index] : undefined
-}
-
-export function popIndex<T>(array: T[], index: number | undefined) {
-  if (typeof index !== 'undefined') {
-    const [max] = array.splice(index, 1)
-    return max
-  } else {
-    return undefined
-  }
-}
-
-/**
- * Removes the "max" element by criteria and returns it. Mutates the array.
- */
-export function popMax<T>(array: T[], criteria: (t: T) => number) {
-  return popIndex(array, findMaxIndex(array, criteria))
 }
 
 function squaredDistance(p1: Position3D, p2: Position3D) {
