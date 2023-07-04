@@ -8,13 +8,12 @@ import {
   ChangeToIslandUpdate,
   LeaveIslandUpdate,
   IslandUpdates,
-  TransportType
+  TransportType,
+  EngineComponent
 } from '../types'
 
-import { metricDeclarations } from '../metrics'
 import { findMax, popMax } from '../misc/utils'
-import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
-import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
+import { sequentialIdGenerator } from '../misc/idGenerator'
 import { AccessToken } from 'livekit-server-sdk'
 import { IPublisherComponent } from '../adapters/publisher'
 
@@ -27,7 +26,7 @@ type Metrics = {
 
 export type Options = {
   components: Pick<BaseComponents, 'logs' | 'metrics'> & { publisher: Publisher }
-  flushFrequency?: number
+  flushFrequency: number
   roomPrefix?: string
   joinDistance: number
   leaveDistance: number
@@ -78,106 +77,92 @@ function squared(n: number) {
   return n * n
 }
 
-export class ArchipelagoController {
-  private publisher: Publisher
+export function createArchipelagoEngine({
+  components: { logs, metrics, publisher },
+  flushFrequency,
+  joinDistance,
+  leaveDistance,
+  livekit,
+  roomPrefix
+}: Options): EngineComponent {
+  const logger = logs.getLogger('Archipelago')
+  const transports = new Map<number, Transport>()
+  const peers = new Map<string, PeerData>()
+  const islands = new Map<string, Island>()
+  const pendingNewPeers = new Map<string, PeerData>()
+  const pendingUpdates = new Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>()
+  const islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
+  let currentSequence = 0
+  let disposed = false
 
-  private transports = new Map<number, Transport>()
-  private peers: Map<string, PeerData> = new Map()
-  private islands: Map<string, Island> = new Map()
-  private currentSequence: number = 0
-  private joinDistance: number
-  private leaveDistance: number
-  private islandIdGenerator: IdGenerator
-  private metrics: IMetricsComponent<keyof typeof metricDeclarations>
-
-  private pendingNewPeers = new Map<string, PeerData>()
-  private pendingUpdates = new Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>()
-
-  flushFrequency: number
-  logger: ILoggerComponent.ILogger
-
-  disposed: boolean = false
-
-  constructor({
-    components: { logs, metrics, publisher },
-    flushFrequency,
-    joinDistance,
-    leaveDistance,
-    livekit,
-    roomPrefix
-  }: Options) {
-    this.logger = logs.getLogger('Archipelago')
-    this.metrics = metrics
-    this.publisher = publisher
-
-    this.flushFrequency = flushFrequency ?? 2
-    this.joinDistance = joinDistance
-    this.leaveDistance = leaveDistance
-    this.islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
-
-    if (livekit) {
-      this.transports.set(0, {
-        id: 0,
-        type: 'livekit',
-        availableSeats: -1,
-        usersCount: 0,
-        maxIslandSize: livekit.islandSize || 100,
-        async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
-          const connStrs: Record<string, string> = {}
-          for (const userId of userIds) {
-            const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
-              identity: userId,
-              ttl: 5 * 60 // 5 minutes
-            })
-            token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
-            connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
-          }
-          return connStrs
+  if (livekit) {
+    transports.set(0, {
+      id: 0,
+      type: 'livekit',
+      availableSeats: -1,
+      usersCount: 0,
+      maxIslandSize: livekit.islandSize || 100,
+      async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+        const connStrs: Record<string, string> = {}
+        for (const userId of userIds) {
+          const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
+            identity: userId,
+            ttl: 5 * 60 // 5 minutes
+          })
+          token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
+          connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
         }
-      })
-    }
-
-    const loop = () => {
-      if (!this.disposed) {
-        const startTime = Date.now()
-        this.flush().catch((err) => {
-          this.logger.error(err)
-        })
-        const flushElapsed = Date.now() - startTime
-        setTimeout(loop, Math.max(this.flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
+        return connStrs
       }
-    }
+    })
+  }
 
+  function loop() {
+    if (!disposed) {
+      const startTime = Date.now()
+      flush().catch((err) => {
+        logger.error(err)
+      })
+      const flushElapsed = Date.now() - startTime
+      setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
+    }
+  }
+
+  function start() {
     loop()
   }
 
-  onTransportHeartbeat(transport: Transport): void {
-    this.transports.set(transport.id, transport)
+  function stop() {
+    disposed = true
   }
 
-  onTransportDisconnected(id: number): void {
-    const transport = this.transports.get(id)
+  function onTransportHeartbeat(transport: Transport): void {
+    transports.set(transport.id, transport)
+  }
+
+  function onTransportDisconnected(id: number): void {
+    const transport = transports.get(id)
     if (transport) {
-      this.transports.delete(id)
+      transports.delete(id)
     }
 
     // NOTE(hugo): we don't recreate islands, this will happen naturally if
     // the transport is actually down, but we don't want to assign new peers
     // there
-    for (const island of this.islands.values()) {
+    for (const island of islands.values()) {
       if (island.transportId === id) {
         island.maxPeers = 0
       }
     }
   }
 
-  onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
+  function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
     for (const change of changes) {
       const { id, position, preferedIslandId } = change
-      if (!this.peers.has(id)) {
-        this.pendingNewPeers.set(id, change)
+      if (!peers.has(id)) {
+        pendingNewPeers.set(id, change)
       } else {
-        const peer = this.peers.get(id)!
+        const peer = peers.get(id)!
         peer.position = position
 
         // We can set the prefered island to undefined by explicitly providing the key but no value.
@@ -187,36 +172,36 @@ export class ArchipelagoController {
         }
 
         if (peer.islandId) {
-          const island = this.islands.get(peer.islandId)!
+          const island = islands.get(peer.islandId)!
           island._geometryDirty = true
         }
       }
     }
   }
 
-  getIslands(): Island[] {
-    return Array.from(this.islands.values())
+  function getIslands(): Island[] {
+    return Array.from(islands.values())
   }
 
-  getIsland(id: string): Island | undefined {
-    return this.islands.get(id)
+  function getIsland(id: string): Island | undefined {
+    return islands.get(id)
   }
 
-  getPeerData(id: string): PeerData | undefined {
-    return this.peers.get(id)
+  function getPeerData(id: string): PeerData | undefined {
+    return peers.get(id)
   }
 
-  getPeerCount(): number {
-    return this.peers.size
+  function getPeerCount(): number {
+    return peers.size
   }
 
-  onPeerDisconnected(id: string): void {
-    const peer = this.peers.get(id)
+  function onPeerDisconnected(id: string): void {
+    const peer = peers.get(id)
 
     if (peer) {
-      this.peers.delete(id)
+      peers.delete(id)
       if (peer.islandId) {
-        const island = this.islands.get(peer.islandId)!
+        const island = islands.get(peer.islandId)!
 
         const idx = island.peers.findIndex((it) => it.id === id)
         if (idx >= 0) {
@@ -224,60 +209,60 @@ export class ArchipelagoController {
         }
 
         if (island.peers.length === 0) {
-          this.islands.delete(island.id)
+          islands.delete(island.id)
         }
 
         island._geometryDirty = true
 
-        this.pendingUpdates.set(peer.id, { action: 'leave', islandId: peer.islandId })
+        pendingUpdates.set(peer.id, { action: 'leave', islandId: peer.islandId })
       }
     }
   }
 
-  async flush(): Promise<IslandUpdates> {
-    for (const [id, change] of this.pendingNewPeers) {
-      this.peers.set(id, change)
+  async function flush(): Promise<IslandUpdates> {
+    for (const [id, change] of pendingNewPeers) {
+      peers.set(id, change)
       try {
-        await this.createIsland([change])
+        await createIsland([change])
       } catch (err: any) {
-        this.logger.error(err)
+        logger.error(err)
       }
     }
-    this.pendingNewPeers.clear()
+    pendingNewPeers.clear()
 
     const affectedIslands = new Set<string>()
-    for (const island of this.islands.values()) {
+    for (const island of islands.values()) {
       if (island._geometryDirty) {
         affectedIslands.add(island.id)
       }
     }
 
     for (const islandId of affectedIslands) {
-      await this.checkSplitIsland(this.islands.get(islandId)!, affectedIslands)
+      await checkSplitIsland(islands.get(islandId)!, affectedIslands)
     }
 
     // NOTE: check if islands can be merged
     const processedIslands: Record<string, boolean> = {}
 
     for (const islandId of affectedIslands) {
-      if (!processedIslands[islandId] && this.islands.has(islandId)) {
-        const island = this.islands.get(islandId)!
+      if (!processedIslands[islandId] && islands.has(islandId)) {
+        const island = islands.get(islandId)!
         const islandsIntersected: Island[] = []
-        for (const [, otherIsland] of this.islands) {
-          if (islandId !== otherIsland.id && this.intersectIslands(island, otherIsland, this.joinDistance)) {
+        for (const [, otherIsland] of islands) {
+          if (islandId !== otherIsland.id && intersectIslands(island, otherIsland, joinDistance)) {
             islandsIntersected.push(otherIsland)
             processedIslands[islandId] = true
           }
         }
         if (islandsIntersected.length > 0) {
-          await this.mergeIslands(island, ...islandsIntersected)
+          await mergeIslands(island, ...islandsIntersected)
         }
       }
     }
 
     const metricsByTransporType = new Map<TransportType, Metrics>()
-    for (const island of this.islands.values()) {
-      const transport = this.transports.get(island.transportId)
+    for (const island of islands.values()) {
+      const transport = transports.get(island.transportId)
       if (!transport) {
         continue
       }
@@ -291,33 +276,33 @@ export class ArchipelagoController {
       metricsByTransporType.set(transport.type, metrics)
     }
 
-    for (const [transport, metrics] of metricsByTransporType) {
-      this.metrics.observe('dcl_archipelago_islands_count', { transport }, metrics.islandsCount)
-      this.metrics.observe('dcl_archipelago_peers_count', { transport }, metrics.peersCount)
+    for (const [transport, stats] of metricsByTransporType) {
+      metrics.observe('dcl_archipelago_islands_count', { transport }, stats.islandsCount)
+      metrics.observe('dcl_archipelago_peers_count', { transport }, stats.peersCount)
     }
 
-    const updates = new Map(this.pendingUpdates)
-    this.pendingUpdates.clear()
+    const updates = new Map(pendingUpdates)
+    pendingUpdates.clear()
 
     for (const [peerId, update] of updates) {
       if (update.action === 'changeTo') {
-        const island = this.islands.get(update.islandId)!
-        this.logger.debug(`Publishing island change for ${peerId}`)
-        this.metrics.increment('dcl_archipelago_change_island_count', {})
-        this.publisher.onChangeToIsland(peerId, island, update)
+        const island = islands.get(update.islandId)!
+        logger.debug(`Publishing island change for ${peerId}`)
+        metrics.increment('dcl_archipelago_change_island_count', {})
+        publisher.onChangeToIsland(peerId, island, update)
       } else if (update.action === 'leave') {
         // TODO
-        // this.peersRegistry.onPeerLeft(peerId, update.islandId)
+        // publisher.onPeerLeft(peerId, update.islandId)
       }
     }
     return updates
   }
 
-  private async checkSplitIsland(island: Island, affectedIslands: Set<string>) {
+  async function checkSplitIsland(island: Island, affectedIslands: Set<string>) {
     const peerGroups: PeerData[][] = []
 
     for (const peer of island.peers) {
-      const groupsIntersected = peerGroups.filter((it) => this.intersectPeerGroup(peer, it, this.leaveDistance))
+      const groupsIntersected = peerGroups.filter((it) => intersectPeerGroup(peer, it, leaveDistance))
       if (groupsIntersected.length === 0) {
         peerGroups.push([peer])
       } else {
@@ -342,20 +327,20 @@ export class ArchipelagoController {
 
       for (const group of peerGroups) {
         try {
-          affectedIslands.add(await this.createIsland(group))
+          affectedIslands.add(await createIsland(group))
         } catch (err: any) {
-          this.logger.error(err)
+          logger.error(err)
         }
       }
     }
   }
 
-  private async createIsland(group: PeerData[]): Promise<string> {
-    const newIslandId = this.islandIdGenerator.generateId()
+  async function createIsland(group: PeerData[]): Promise<string> {
+    const newIslandId = islandIdGenerator.generateId()
 
     let transport = undefined
 
-    for (const t of this.transports.values()) {
+    for (const t of transports.values()) {
       if (t.availableSeats === -1 || t.availableSeats > 0) {
         transport = t
         break
@@ -374,7 +359,7 @@ export class ArchipelagoController {
       transportId: transport.id,
       peers: group,
       maxPeers: transport.maxIslandSize,
-      sequenceId: ++this.currentSequence,
+      sequenceId: ++currentSequence,
       _geometryDirty: true,
       get center() {
         recalculateGeometryIfNeeded(this)
@@ -386,20 +371,20 @@ export class ArchipelagoController {
       }
     }
 
-    this.islands.set(newIslandId, island)
+    islands.set(newIslandId, island)
 
-    this.setPeersIsland(island, group, connStrs)
+    setPeersIsland(island, group, connStrs)
 
     return newIslandId
   }
 
-  private async mergeIntoIfPossible(islandToMergeInto: Island, anIsland: Island) {
+  async function mergeIntoIfPossible(islandToMergeInto: Island, anIsland: Island) {
     const canMerge = islandToMergeInto.peers.length + anIsland.peers.length <= islandToMergeInto.maxPeers
     if (!canMerge) {
       return false
     }
 
-    const transport = this.transports.get(islandToMergeInto.transportId)
+    const transport = transports.get(islandToMergeInto.transportId)
     if (!transport) {
       return false
     }
@@ -411,18 +396,18 @@ export class ArchipelagoController {
       )
 
       islandToMergeInto.peers.push(...anIsland.peers)
-      this.setPeersIsland(islandToMergeInto, anIsland.peers, connStrs)
-      this.islands.delete(anIsland.id)
+      setPeersIsland(islandToMergeInto, anIsland.peers, connStrs)
+      islands.delete(anIsland.id)
       islandToMergeInto._geometryDirty = true
 
       return true
     } catch (err: any) {
-      this.logger.warn(err)
+      logger.warn(err)
       return false
     }
   }
 
-  private async mergeIslands(...islands: Island[]) {
+  async function mergeIslands(...islands: Island[]) {
     const sortedIslands = islands.sort((i1, i2) =>
       i1.peers.length === i2.peers.length
         ? Math.sign(i1.sequenceId - i2.sequenceId)
@@ -436,18 +421,18 @@ export class ArchipelagoController {
     while ((anIsland = sortedIslands.shift())) {
       let merged = false
 
-      const preferedIslandId = this.getPreferedIslandFor(anIsland)
+      const preferedIslandId = getPreferedIslandFor(anIsland)
 
       // We only support prefered islands for islands bigger and/or older than the one we are currently processing.
       // It would be very unlikely that there is a valid use case for the other possibilities
       const preferedIsland = preferedIslandId ? biggestIslands.find((it) => it.id === preferedIslandId) : undefined
 
       if (preferedIsland) {
-        merged = await this.mergeIntoIfPossible(preferedIsland, anIsland)
+        merged = await mergeIntoIfPossible(preferedIsland, anIsland)
       }
 
       for (let i = 0; !merged && i < biggestIslands.length; i++) {
-        merged = await this.mergeIntoIfPossible(biggestIslands[i], anIsland)
+        merged = await mergeIntoIfPossible(biggestIslands[i], anIsland)
       }
 
       if (!merged) {
@@ -456,11 +441,11 @@ export class ArchipelagoController {
     }
   }
 
-  private setPeersIsland(island: Island, peers: PeerData[], connStrs: Record<string, string>) {
+  function setPeersIsland(island: Island, peers: PeerData[], connStrs: Record<string, string>) {
     for (const peer of peers) {
       const previousIslandId = peer.islandId
       peer.islandId = island.id
-      this.pendingUpdates.set(peer.id, {
+      pendingUpdates.set(peer.id, {
         action: 'changeTo',
         islandId: island.id,
         fromIslandId: previousIslandId,
@@ -469,7 +454,7 @@ export class ArchipelagoController {
     }
   }
 
-  private getPreferedIslandFor(anIsland: Island) {
+  function getPreferedIslandFor(anIsland: Island) {
     const votes: Record<string, number> = {}
     let mostVoted: string | undefined
 
@@ -486,25 +471,32 @@ export class ArchipelagoController {
     return mostVoted
   }
 
-  private intersectIslands(anIsland: Island, otherIsland: Island, intersectDistance: number) {
+  function intersectIslands(anIsland: Island, otherIsland: Island, intersectDistance: number) {
     const intersectIslandGeometry =
       squaredDistance(anIsland.center, otherIsland.center) <=
       squared(anIsland.radius + otherIsland.radius + intersectDistance)
 
     return (
       intersectIslandGeometry &&
-      anIsland.peers.some((it) => this.intersectPeerGroup(it, otherIsland.peers, intersectDistance))
+      anIsland.peers.some((it) => intersectPeerGroup(it, otherIsland.peers, intersectDistance))
     )
   }
 
-  private intersectPeerGroup(peer: PeerData, group: PeerData[], intersectDistance: number) {
+  function intersectPeerGroup(peer: PeerData, group: PeerData[], intersectDistance: number) {
     const intersectPeers = (aPeer: PeerData, otherPeer: PeerData) => {
       return squaredDistance(aPeer.position, otherPeer.position) <= squared(intersectDistance)
     }
     return group.some((it) => intersectPeers(peer, it))
   }
 
-  async dispose() {
-    this.disposed = true
+  return {
+    start,
+    stop,
+    onTransportHeartbeat,
+    onTransportDisconnected,
+    onPeerPositionsUpdate,
+    getPeerCount,
+    onPeerDisconnected,
+    getIslands
   }
 }

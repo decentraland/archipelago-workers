@@ -6,6 +6,7 @@ import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPublisherComponent } from './adapters/publisher'
+import { createArchipelagoEngine } from './adapters/engine'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -21,6 +22,20 @@ export async function initComponents(): Promise<AppComponents> {
   const nats = await createNatsComponent({ config, logs })
   const publisher = await createPublisherComponent({ config, nats })
 
+  const engine = createArchipelagoEngine({
+    components: { logs, metrics, publisher },
+    flushFrequency: await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY'),
+    joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
+    leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
+    roomPrefix: await config.getString('ROOM_PREFIX'),
+    livekit: {
+      apiKey: await config.requireString('LIVEKIT_API_KEY'),
+      apiSecret: await config.requireString('LIVEKIT_API_SECRET'),
+      host: await config.requireString('LIVEKIT_HOST'),
+      islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
+    }
+  })
+
   return {
     config,
     logs,
@@ -28,6 +43,7 @@ export async function initComponents(): Promise<AppComponents> {
     statusChecks,
     metrics,
     nats,
-    publisher
+    publisher,
+    engine
   }
 }

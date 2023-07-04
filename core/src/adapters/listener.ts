@@ -1,9 +1,8 @@
 import { Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { AppComponents, PeerPositionChange } from '../types'
-import { ArchipelagoController } from './archipelago'
+import { AppComponents, PeerPositionChange, EngineComponent } from '../types'
 
 export async function setupListener(
-  archipelago: Pick<ArchipelagoController, 'onPeerDisconnected' | 'onPeerPositionsUpdate'>,
+  archipelago: Pick<EngineComponent, 'onPeerDisconnected' | 'onPeerPositionsUpdate'>,
   { nats, logs, config }: Pick<AppComponents, 'nats' | 'logs' | 'config'>
 ) {
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
