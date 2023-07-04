@@ -3,11 +3,10 @@
   "private": true,
   "workspaces": ["core", "ws-connector"],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
-    "test": "jest --forceExit --detectOpenHandles --coverage --verbose",
-    "lint:check": "npx eslint . --ext .ts",
-    "lint:fix": "npx eslint . --ext .ts --fix"
+    "build": "yarn workspaces run build",
+    "test": "yarn workspaces run test",
+    "lint:check": "eslint '**/*.{js,ts}'",
+    "lint:fix": "eslint . --ext .ts --fix"
   },
   "license": "Apache-2.0"
 }
