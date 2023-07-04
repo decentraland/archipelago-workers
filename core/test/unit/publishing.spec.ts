@@ -5,7 +5,6 @@ import { IslandStatusMessage } from '@dcl/protocol/out-js/decentraland/kernel/co
 import { createPublisherComponent, ServiceDiscoveryMessage } from '../../src/adapters/publisher'
 import { Island } from '../../src/types'
 import { INatsComponent, NatsMsg } from '@well-known-components/nats-component/dist/types'
-import { createPeersRegistry } from '../../src/adapters/peers-registry'
 
 function takeOneSubscription(nats: INatsComponent, topic: string) {
   return new Promise<NatsMsg>((resolve, reject) => {
@@ -30,11 +29,8 @@ describe('publishing', () => {
     Date.now = jest.fn(() => now)
     const nats = await createLocalNatsComponent()
     const s = takeOneSubscription(nats, 'service.discovery')
-    const peersRegistry = await createPeersRegistry({
-      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
-    })
-    const { publishServiceDiscoveryMessage } = await createPublisherComponent({ nats, config, peersRegistry })
-    publishServiceDiscoveryMessage()
+    const { publishServiceDiscoveryMessage } = await createPublisherComponent({ nats, config })
+    publishServiceDiscoveryMessage(10)
     const message = await s
     const data: ServiceDiscoveryMessage = decodeJson(message.data) as any
     expect(data).toEqual(
@@ -43,7 +39,7 @@ describe('publishing', () => {
         status: {
           currentTime: now,
           commitHash,
-          userCount: 0
+          userCount: 10
         }
       })
     )
@@ -63,10 +59,7 @@ describe('publishing', () => {
       }
     ]
     const s = takeOneSubscription(nats, 'archipelago.islands')
-    const peersRegistry = await createPeersRegistry({
-      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
-    })
-    const { publishIslandsReport } = await createPublisherComponent({ nats, config, peersRegistry })
+    const { publishIslandsReport } = await createPublisherComponent({ nats, config })
     publishIslandsReport(islands)
     const message = await s
     const { data } = IslandStatusMessage.decode(Reader.create(message.data))

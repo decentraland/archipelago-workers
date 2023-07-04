@@ -2,7 +2,7 @@ import { ClientPacket, Heartbeat } from '@dcl/protocol/out-js/decentraland/kerne
 import { upgradeWebSocketResponse } from '@well-known-components/http-server/dist/ws'
 import { craftMessage } from '../../logic/craft-message'
 import { handleSocketLinearProtocol } from '../../logic/handle-linear-protocol'
-import { HandlerContextWithPath, Stage, InternalWebSocket, PeerPositionChange } from '../../types'
+import { HandlerContextWithPath, Stage, InternalWebSocket } from '../../types'
 
 export async function websocketHandler(
   context: HandlerContextWithPath<'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
@@ -67,19 +67,13 @@ export async function websocketHandler(
                 case 'heartbeat': {
                   const { position, desiredRoom } = message.heartbeat
 
-                  const peerPositionChange: PeerPositionChange = {
-                    id: ws.address!,
-                    position: [position!.x, position!.y, position!.z],
-                    preferedIslandId: desiredRoom
-                  }
-
                   nats.publish(
                     `archipelago.peer.${ws.address!}.heartbeat`,
                     Heartbeat.encode({
-                      position
+                      position,
+                      desiredRoom
                     }).finish()
                   )
-                  peersRegistry.onPeerPositionsUpdate([peerPositionChange])
                   break
                 }
               }

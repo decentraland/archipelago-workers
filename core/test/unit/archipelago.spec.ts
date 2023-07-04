@@ -8,7 +8,6 @@ import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@well-known-components/metrics'
 import { metricDeclarations } from '../../src/metrics'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
-import { createPeersRegistry } from '../../src/adapters/peers-registry'
 
 type PositionWithId = [string, number, number, number]
 
@@ -19,15 +18,11 @@ describe('archipelago', () => {
     const logs = await createLogComponent({ config })
     const metrics = createTestMetricsComponent(metricDeclarations)
 
-    const peersRegistry = await createPeersRegistry({
-      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
-    })
-
     const publisher = {
       onChangeToIsland: (_peerId: string, _island: Island, _change: ChangeToIslandUpdate) => {}
     }
     archipelago = new ArchipelagoController({
-      components: { logs, peersRegistry, metrics, publisher },
+      components: { logs, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80
     })

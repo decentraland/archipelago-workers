@@ -9,57 +9,11 @@ import type {
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
-import { IPublisherComponent } from './adapters/publisher'
 import { WsUserData } from '@well-known-components/http-server/dist/uws'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
 
 export type Position3D = [number, number, number]
 export type TransportType = 'unknown' | 'livekit' | 'ws' | 'p2p'
-
-export type PeerData = {
-  id: string
-  position: Position3D
-  preferedIslandId?: string
-  islandId?: string
-}
-
-export type Island = {
-  id: string
-  peers: PeerData[]
-  maxPeers: number
-  center: Position3D
-  radius: number
-  sequenceId: number
-  transportId: number
-  _center?: Position3D
-  _radius?: number
-  _geometryDirty: boolean
-}
-
-export type PeerPositionChange = { id: string; position: Position3D; preferedIslandId?: string }
-
-export type ChangeToIslandUpdate = {
-  action: 'changeTo'
-  islandId: string
-  connStr: string
-  fromIslandId?: string
-}
-
-export type LeaveIslandUpdate = {
-  action: 'leave'
-  islandId: string
-}
-
-export type IslandUpdates = Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>
-
-export type Transport = {
-  id: number
-  type: TransportType
-  availableSeats: number
-  usersCount: number
-  maxIslandSize: number
-  getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>>
-}
 
 export type GlobalContext = {
   components: BaseComponents
@@ -74,7 +28,6 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
   peersRegistry: IPeersRegistryComponent
-  publisher: IPublisherComponent
   ethereumProvider: HTTPProvider
 }
 

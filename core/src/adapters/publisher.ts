@@ -11,20 +11,23 @@ import { IBaseComponent } from '@well-known-components/interfaces'
 
 export type ServiceDiscoveryMessage = {
   serverName: string
-  status: any
+  status: {
+    currentTime: number
+    commitHash?: string
+    userCount: number
+  }
 }
 
 export type IPublisherComponent = IBaseComponent & {
   onChangeToIsland(peerId: string, island: Island, change: ChangeToIslandUpdate): void
-  publishServiceDiscoveryMessage(): void
+  publishServiceDiscoveryMessage(userCount: number): void
   publishIslandsReport(islands: Island[]): void
 }
 
 export async function createPublisherComponent({
   nats,
-  config,
-  peersRegistry
-}: Pick<BaseComponents, 'config' | 'nats' | 'peersRegistry'>): Promise<IPublisherComponent> {
+  config
+}: Pick<BaseComponents, 'config' | 'nats'>): Promise<IPublisherComponent> {
   const commitHash = await config.getString('COMMIT_HASH')
 
   function onChangeToIsland(peerId: string, toIsland: Island, update: ChangeToIslandUpdate) {
@@ -55,15 +58,14 @@ export async function createPublisherComponent({
     )
   }
 
-  function publishServiceDiscoveryMessage() {
-    const status = {
-      currentTime: Date.now(),
-      commitHash,
-      userCount: peersRegistry.getPeerCount()
-    }
+  function publishServiceDiscoveryMessage(userCount: number) {
     const serviceDiscoveryMessage: ServiceDiscoveryMessage = {
       serverName: 'archipelago',
-      status
+      status: {
+        currentTime: Date.now(),
+        commitHash,
+        userCount
+      }
     }
     const encodedMsg = encodeJson(serviceDiscoveryMessage)
     nats.publish('service.discovery', encodedMsg)

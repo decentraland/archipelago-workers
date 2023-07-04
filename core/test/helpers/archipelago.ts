@@ -9,7 +9,6 @@ import { IdGenerator, sequentialIdGenerator } from '../../src/misc/idGenerator'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@well-known-components/metrics'
 import { metricDeclarations } from '../../src/metrics'
-import { createPeersRegistry } from '../../src/adapters/peers-registry'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 
 export function expectIslandWith(archipelago: ArchipelagoController, ...ids: string[]) {
@@ -76,14 +75,11 @@ export function configureLibs(closure: BaseClosure) {
     const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
     const logs = await createLogComponent({ config })
     const metrics = createTestMetricsComponent(metricDeclarations)
-    const peersRegistry = await createPeersRegistry({
-      publish: (_topic: string, _payload: Uint8Array, _binary: boolean) => {}
-    })
     const publisher = {
       onChangeToIsland: (_peerId: string, _island: Island, _change: ChangeToIslandUpdate) => {}
     }
     const archipelago = new ArchipelagoController({
-      components: { logs, peersRegistry, metrics, publisher },
+      components: { logs, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80
     })

@@ -16,7 +16,6 @@ import { findMax, popMax } from '../misc/utils'
 import { IdGenerator, sequentialIdGenerator } from '../misc/idGenerator'
 import { ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import { AccessToken } from 'livekit-server-sdk'
-import { IPeersRegistryComponent } from '../adapters/peers-registry'
 import { IPublisherComponent } from '../adapters/publisher'
 
 type Publisher = Pick<IPublisherComponent, 'onChangeToIsland'>
@@ -27,7 +26,7 @@ type Metrics = {
 }
 
 export type Options = {
-  components: Pick<BaseComponents, 'logs' | 'metrics' | 'peersRegistry'> & { publisher: Publisher }
+  components: Pick<BaseComponents, 'logs' | 'metrics'> & { publisher: Publisher }
   flushFrequency?: number
   roomPrefix?: string
   joinDistance: number
@@ -81,7 +80,6 @@ function squared(n: number) {
 
 export class ArchipelagoController {
   private publisher: Publisher
-  private peersRegistry: IPeersRegistryComponent
 
   private transports = new Map<number, Transport>()
   private peers: Map<string, PeerData> = new Map()
@@ -101,7 +99,7 @@ export class ArchipelagoController {
   disposed: boolean = false
 
   constructor({
-    components: { logs, peersRegistry, metrics, publisher },
+    components: { logs, metrics, publisher },
     flushFrequency,
     joinDistance,
     leaveDistance,
@@ -110,7 +108,6 @@ export class ArchipelagoController {
   }: Options) {
     this.logger = logs.getLogger('Archipelago')
     this.metrics = metrics
-    this.peersRegistry = peersRegistry
     this.publisher = publisher
 
     this.flushFrequency = flushFrequency ?? 2
@@ -207,6 +204,10 @@ export class ArchipelagoController {
 
   getPeerData(id: string): PeerData | undefined {
     return this.peers.get(id)
+  }
+
+  getPeerCount(): number {
+    return this.peers.size
   }
 
   isPeerConnected(id: string): boolean {
@@ -307,10 +308,10 @@ export class ArchipelagoController {
         const island = this.islands.get(update.islandId)!
         this.logger.debug(`Publishing island change for ${peerId}`)
         this.metrics.increment('dcl_archipelago_change_island_count', {})
-        this.peersRegistry.onChangeToIsland(peerId, island, update)
         this.publisher.onChangeToIsland(peerId, island, update)
       } else if (update.action === 'leave') {
-        this.peersRegistry.onPeerLeft(peerId, update.islandId)
+        // TODO
+        // this.peersRegistry.onPeerLeft(peerId, update.islandId)
       }
     }
     return updates
