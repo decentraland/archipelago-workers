@@ -126,16 +126,6 @@ export function configureLibs(closure: BaseClosure) {
     return archipelago.flush()
   })
 
-  closure.defJsFunction('removeTransports', (args: number[]) => {
-    const archipelago = closure.get('archipelago') as Engine
-
-    for (const id of args) {
-      archipelago.onTransportDisconnected(id)
-    }
-
-    return archipelago.flush()
-  })
-
   // (move ...[peer x y z])
   closure.defJsFunction('move', (...args: [string, number, number, number][]) => {
     const archipelago = closure.get('archipelago') as Engine

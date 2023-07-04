@@ -5,7 +5,7 @@ module.exports = {
   },
   coverageDirectory: "coverage",
   collectCoverageFrom: ["src/**/*.ts", "src/**/*.js"],
-  coveragePathIgnorePatterns: ["/node_modules/", "/src/controllers/proto/"],
+  coveragePathIgnorePatterns: ["/node_modules/"],
   testMatch: ["**/*.spec.(ts)"],
   testEnvironment: "node",
 }

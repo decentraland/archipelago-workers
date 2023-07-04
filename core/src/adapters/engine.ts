@@ -140,22 +140,6 @@ export function createArchipelagoEngine({
     transports.set(transport.id, transport)
   }
 
-  function onTransportDisconnected(id: number): void {
-    const transport = transports.get(id)
-    if (transport) {
-      transports.delete(id)
-    }
-
-    // NOTE(hugo): we don't recreate islands, this will happen naturally if
-    // the transport is actually down, but we don't want to assign new peers
-    // there
-    for (const island of islands.values()) {
-      if (island.transportId === id) {
-        island.maxPeers = 0
-      }
-    }
-  }
-
   function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
     for (const change of changes) {
       const { id, position, preferedIslandId } = change
@@ -494,7 +478,6 @@ export function createArchipelagoEngine({
     stop,
     onTransportHeartbeat,
     flush,
-    // onTransportDisconnected,
     onPeerPositionsUpdate,
     getPeerCount,
     onPeerDisconnected,
