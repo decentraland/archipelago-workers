@@ -103,29 +103,6 @@ export function configureLibs(closure: BaseClosure) {
     closure.def('archipelago', archipelago)
   })
 
-  closure.defJsFunction('configureTransports', (args: [number, number, number, number][]) => {
-    const archipelago = closure.get('archipelago') as Engine
-
-    for (const [id, availableSeats, usersCount, maxIslandSize] of args) {
-      archipelago.onTransportHeartbeat({
-        id,
-        type: 'p2p',
-        availableSeats,
-        usersCount,
-        maxIslandSize,
-        getConnectionStrings: (userIds: string[], roomId: string): Promise<Record<string, string>> => {
-          const connStrs: Record<string, string> = {}
-          for (const userId of userIds) {
-            connStrs[userId] = `p2p:${roomId}.${userId}`
-          }
-          return Promise.resolve(connStrs)
-        }
-      })
-    }
-
-    return archipelago.flush()
-  })
-
   // (move ...[peer x y z])
   closure.defJsFunction('move', (...args: [string, number, number, number][]) => {
     const archipelago = closure.get('archipelago') as Engine
