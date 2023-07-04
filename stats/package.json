@@ -1,5 +1,5 @@
 {
-  "name": "archipelago-stats",
+  "name": "stats",
   "version": "0.0.0",
   "scripts": {
     "build": "tsc -p tsconfig.json",
