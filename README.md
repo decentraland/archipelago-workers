@@ -13,7 +13,7 @@
 Install Node dependencies:
 
 ```
-npm install
+yarn install
 ```
 
 ### Usage
@@ -21,8 +21,8 @@ npm install
 Build and start the project:
 
 ```
-make build
-npm run start
+yarn build
+yarn start:local
 ```
 
 ### Test
@@ -30,8 +30,7 @@ npm run start
 Run unit and integration tests:
 
 ```
-make build
-npm run test
+yarn test
 ```
 
 ### Environment Variables
@@ -45,7 +44,7 @@ npm run test
 - `HTTP_SERVER_PORT`: (Defaults to 5000)
 - `HTTP_SERVER_HOST`: (Defaults to 0.0.0.0)
 
-#### Archipelago
+#### Archipelago core
 
 - `ARCHIPELAGO_FLUSH_FREQUENCY`: Frequency in seconds for islands/peers updates in Archipelago (Defaults to 2.0)
 - `ARCHIPELAGO_JOIN_DISTANCE`: (Defaults to 64)
