@@ -10,5 +10,4 @@ jobs:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:
       service-name: archipelago-service
-      dockerfile-url: https://raw.githubusercontent.com/decentraland/platform-actions/main/Dockerfile.ubuntu
     secrets: inherit
