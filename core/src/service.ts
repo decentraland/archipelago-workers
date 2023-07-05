@@ -9,11 +9,11 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { nats, config, logs, publisher, engine } = components
+  const { nats, config, logs, metrics, publisher, engine } = components
 
   const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
-  const logger = logs.getLogger('service')
+  const logger = logs.getLogger('core')
 
   setInterval(() => {
     try {
@@ -36,7 +36,17 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
 
     try {
-      await engine.flush()
+      const updates = await engine.flush()
+      for (const [peerId, update] of updates) {
+        if (update.action === 'changeTo') {
+          const island = engine.getIsland(update.islandId)!
+          logger.debug(`Publishing island change for ${peerId}`)
+          metrics.increment('dcl_archipelago_change_island_count', {})
+          publisher.onChangeToIsland(peerId, island, update)
+        } else if (update.action === 'leave') {
+          // NOTE: we are not sending join/leave messages anymore
+        }
+      }
       publisher.publishIslandsReport(engine.getIslands())
     } catch (err: any) {
       logger.error(err)
@@ -77,14 +87,14 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
   })
 
-  nats.subscribe('client-proto.peer.*.heartbeat', (err, message) => {
+  nats.subscribe('peer.*.heartbeat', (err, message) => {
     if (err) {
       logger.error(err)
       return
     }
 
     try {
-      const id = message.subject.split('.')[2]
+      const id = message.subject.split('.')[1]
       const decodedMessage = Heartbeat.decode(message.data)
       const position = decodedMessage.position!
 

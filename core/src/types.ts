@@ -59,10 +59,10 @@ export type Engine = IBaseComponent & {
   flush(): Promise<IslandUpdates>
 
   getIslands(): Island[]
+  getIsland(id: string): Island | undefined
   getPeerCount(): number
 
-  // NOTE: these are only for testing purposes
-  getIsland(id: string): Island | undefined
+  // NOTE: only for testing purposes
   getPeerData(id: string): PeerData | undefined
 }
 

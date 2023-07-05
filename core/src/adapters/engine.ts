@@ -168,18 +168,6 @@ export function createArchipelagoEngine({
 
     const updates = new Map(pendingUpdates)
     pendingUpdates.clear()
-
-    for (const [peerId, update] of updates) {
-      if (update.action === 'changeTo') {
-        const island = islands.get(update.islandId)!
-        logger.debug(`Publishing island change for ${peerId}`)
-        metrics.increment('dcl_archipelago_change_island_count', {})
-        publisher.onChangeToIsland(peerId, island, update)
-      } else if (update.action === 'leave') {
-        // TODO
-        // publisher.onPeerLeft(peerId, update.islandId)
-      }
-    }
     return updates
   }
 

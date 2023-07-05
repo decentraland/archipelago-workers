@@ -47,15 +47,7 @@ export async function createPublisherComponent({
     if (update.fromIslandId) {
       islandChangedMessage.fromIslandId = update.fromIslandId
     }
-    nats.publish(`client-proto.${peerId}.island_changed`, IslandChangedMessage.encode(islandChangedMessage).finish())
-
-    nats.publish(
-      `client-proto.island.${update.islandId}.peer_join`,
-      JoinIslandMessage.encode({
-        islandId: update.islandId,
-        peerId
-      }).finish()
-    )
+    nats.publish(`engine.peer.${peerId}.island_changed`, IslandChangedMessage.encode(islandChangedMessage).finish())
   }
 
   function publishServiceDiscoveryMessage(userCount: number) {
@@ -67,8 +59,7 @@ export async function createPublisherComponent({
         userCount
       }
     }
-    const encodedMsg = encodeJson(serviceDiscoveryMessage)
-    nats.publish('service.discovery', encodedMsg)
+    nats.publish('engine.discovery', encodeJson(serviceDiscoveryMessage))
   }
 
   function publishIslandsReport(islands: Island[]) {
@@ -85,8 +76,7 @@ export async function createPublisherComponent({
         peers: i.peers.map((p) => p.id)
       }
     })
-    const message = IslandStatusMessage.encode({ data }).finish()
-    nats.publish('archipelago.islands', message)
+    nats.publish('engine.islands', IslandStatusMessage.encode({ data }).finish())
   }
 
   return {

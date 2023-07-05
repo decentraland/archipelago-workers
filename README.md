@@ -46,11 +46,17 @@ yarn test
 
 #### Archipelago core
 
-- `ARCHIPELAGO_FLUSH_FREQUENCY`: Frequency in seconds for islands/peers updates in Archipelago (Defaults to 2.0)
 - `ARCHIPELAGO_JOIN_DISTANCE`: (Defaults to 64)
 - `ARCHIPELAGO_LEAVE_DISTANCE`: (Defaults to 80)
 - `ARCHIPELAGO_MAX_PEERS_PER_ISLAND`: (Defaults to 100)
 - `ARCHIPELAGO_PARCEL_SIZE`: (Defaults to 16)
 - `ARCHIPELAGO_METRICS_INTERVAL`: Frequency in milliseconds for updating Prometheus metrics (Defaults to 10000)
 - `ARCHIPELAGO_STATUS_UPDATE_INTERVAL`: Frequency in milliseconds for updating Archipelago status information (Defaults to 10000)
-- `CHECK_HEARTBEAT_INTERVAL`: Frequency in milliseconds for checking the last peer update and assume it is active (Defaults to 60000)
+
+### Nats messages:
+
+- `peer.${address}.heartbeat`
+- `peer.${address}.disconnect`
+- `engine.peer.${address}.island_changed`
+- `engine.discovery`
+- `engine.islands`

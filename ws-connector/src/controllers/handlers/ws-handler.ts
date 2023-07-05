@@ -48,7 +48,7 @@ export async function websocketHandler(
         ws.on('close', () => {
           if (ws.address) {
             peersRegistry.onPeerDisconnected(ws.address)
-            nats.publish(`archipelago.peer.${ws.address}.disconnect`)
+            nats.publish(`peer.${ws.address}.disconnect`)
           }
         })
 
@@ -65,10 +65,7 @@ export async function websocketHandler(
               }
               switch (message.$case) {
                 case 'heartbeat': {
-                  nats.publish(
-                    `archipelago.peer.${ws.address!}.heartbeat`,
-                    Heartbeat.encode(message.heartbeat).finish()
-                  )
+                  nats.publish(`peer.${ws.address!}.heartbeat`, Heartbeat.encode(message.heartbeat).finish())
                   break
                 }
               }
