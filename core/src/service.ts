@@ -28,14 +28,14 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     const startTime = Date.now()
     const expiredHeartbeatTime = Date.now() - checkHeartbeatInterval
 
-    for (const [peerId, lastHeartbeat] of lastPeerHeartbeats) {
-      if (lastHeartbeat < expiredHeartbeatTime) {
-        lastPeerHeartbeats.delete(peerId)
-        engine.onPeerDisconnected(peerId)
-      }
-    }
-
     try {
+      for (const [peerId, lastHeartbeat] of lastPeerHeartbeats) {
+        if (lastHeartbeat < expiredHeartbeatTime) {
+          lastPeerHeartbeats.delete(peerId)
+          engine.onPeerDisconnected(peerId)
+        }
+      }
+
       const updates = await engine.flush()
       for (const [peerId, update] of updates) {
         if (update.action === 'changeTo') {
@@ -50,10 +50,10 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       publisher.publishIslandsReport(engine.getIslands())
     } catch (err: any) {
       logger.error(err)
+    } finally {
+      const flushElapsed = Date.now() - startTime
+      setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
     }
-
-    const flushElapsed = Date.now() - startTime
-    setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
   }
 
   // NOTE we are using callbacks instead of async, for NATS subscriptions
@@ -111,5 +111,5 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
   })
 
-  loop()
+  loop().catch((err) => logger.error(err))
 }

@@ -50,7 +50,7 @@ export async function initComponents(): Promise<AppComponents> {
   const publisher = await createPublisherComponent({ config, nats })
 
   const engine = createArchipelagoEngine({
-    components: { logs, metrics, publisher },
+    components: { logs, metrics },
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
     roomPrefix: await config.getString('ROOM_PREFIX'),

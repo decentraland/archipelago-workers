@@ -75,11 +75,8 @@ export function configureLibs(closure: BaseClosure) {
     const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
     const logs = await createLogComponent({ config })
     const metrics = createTestMetricsComponent(metricDeclarations)
-    const publisher = {
-      onChangeToIsland: (_peerId: string, _island: Island, _change: ChangeToIslandUpdate) => {}
-    }
     const archipelago = createArchipelagoEngine({
-      components: { logs, metrics, publisher },
+      components: { logs, metrics },
       joinDistance: 64,
       leaveDistance: 80,
       transport: {

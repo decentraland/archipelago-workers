@@ -12,13 +12,10 @@ import {
 
 import { intersectPeerGroup, popMax } from '../logic/islands'
 import { sequentialIdGenerator } from '../logic/idGenerator'
-import { IPublisherComponent } from '../adapters/publisher'
 import { intersectIslands, islandGeometryCalculator } from '../logic/islands'
 
-type Publisher = Pick<IPublisherComponent, 'onChangeToIsland'>
-
 export type Options = {
-  components: Pick<BaseComponents, 'logs' | 'metrics'> & { publisher: Publisher }
+  components: Pick<BaseComponents, 'logs' | 'metrics'>
   roomPrefix?: string
   joinDistance: number
   leaveDistance: number
@@ -35,7 +32,7 @@ function recalculateGeometryIfNeeded(island: Island) {
 }
 
 export function createArchipelagoEngine({
-  components: { logs, metrics, publisher },
+  components: { logs, metrics },
   joinDistance,
   leaveDistance,
   transport,
@@ -48,7 +45,6 @@ export function createArchipelagoEngine({
   const pendingUpdates = new Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>()
   const islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
   let currentSequence = 0
-  let disposed = false
 
   function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
     for (const change of changes) {

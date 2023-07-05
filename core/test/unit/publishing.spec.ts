@@ -28,7 +28,7 @@ describe('publishing', () => {
     const now = Date.now()
     Date.now = jest.fn(() => now)
     const nats = await createLocalNatsComponent()
-    const s = takeOneSubscription(nats, 'service.discovery')
+    const s = takeOneSubscription(nats, 'engine.discovery')
     const { publishServiceDiscoveryMessage } = await createPublisherComponent({ nats, config })
     publishServiceDiscoveryMessage(10)
     const message = await s
@@ -57,7 +57,7 @@ describe('publishing', () => {
         _geometryDirty: false
       }
     ]
-    const s = takeOneSubscription(nats, 'archipelago.islands')
+    const s = takeOneSubscription(nats, 'engine.islands')
     const { publishIslandsReport } = await createPublisherComponent({ nats, config })
     publishIslandsReport(islands)
     const message = await s
