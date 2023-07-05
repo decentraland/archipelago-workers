@@ -56,10 +56,11 @@ export type Transport = {
 export type Engine = IBaseComponent & {
   onPeerDisconnected(id: string): void
   onPeerPositionsUpdate(changes: PeerPositionChange[]): void
+
   getIslands(): Island[]
   getPeerCount(): number
 
-  // TODO: this are only for testing purposes
+  // TODO: these are only for testing purposes
   flush(): Promise<IslandUpdates>
   getIsland(id: string): Island | undefined
   getPeerData(id: string): PeerData | undefined
