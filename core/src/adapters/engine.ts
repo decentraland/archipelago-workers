@@ -19,7 +19,6 @@ type Publisher = Pick<IPublisherComponent, 'onChangeToIsland'>
 
 export type Options = {
   components: Pick<BaseComponents, 'logs' | 'metrics'> & { publisher: Publisher }
-  flushFrequency: number
   roomPrefix?: string
   joinDistance: number
   leaveDistance: number
@@ -37,7 +36,6 @@ function recalculateGeometryIfNeeded(island: Island) {
 
 export function createArchipelagoEngine({
   components: { logs, metrics, publisher },
-  flushFrequency,
   joinDistance,
   leaveDistance,
   transport,
@@ -51,25 +49,6 @@ export function createArchipelagoEngine({
   const islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
   let currentSequence = 0
   let disposed = false
-
-  function loop() {
-    if (!disposed) {
-      const startTime = Date.now()
-      flush().catch((err) => {
-        logger.error(err)
-      })
-      const flushElapsed = Date.now() - startTime
-      setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
-    }
-  }
-
-  async function start(): Promise<void> {
-    loop()
-  }
-
-  async function stop(): Promise<void> {
-    disposed = true
-  }
 
   function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
     for (const change of changes) {
@@ -358,8 +337,6 @@ export function createArchipelagoEngine({
   }
 
   return {
-    start,
-    stop,
     flush,
     onPeerPositionsUpdate,
     getPeerCount,

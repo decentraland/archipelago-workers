@@ -51,7 +51,6 @@ export async function initComponents(): Promise<AppComponents> {
 
   const engine = createArchipelagoEngine({
     components: { logs, metrics, publisher },
-    flushFrequency: await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY'),
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
     roomPrefix: await config.getString('ROOM_PREFIX'),

@@ -38,5 +38,17 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
   }, serviceDiscoveryUpdateFreq)
 
+  const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
+  function loop() {
+    const startTime = Date.now()
+    engine.flush().catch((err) => {
+      logger.error(err)
+    })
+    const flushElapsed = Date.now() - startTime
+    setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
+  }
+
+  loop()
+
   await setupListener(engine, { nats, config, logs })
 }

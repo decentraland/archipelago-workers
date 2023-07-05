@@ -82,7 +82,6 @@ export function configureLibs(closure: BaseClosure) {
       components: { logs, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80,
-      flushFrequency: 2,
       transport: {
         name: 'p2p',
         maxIslandSize: 100,
