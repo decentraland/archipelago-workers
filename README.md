@@ -33,27 +33,7 @@ Run unit and integration tests:
 yarn test
 ```
 
-### Environment Variables
-
-#### NATS
-
-- `NATS_URL` (required): URL of the NATS instance to be connected to
-
-#### Server
-
-- `HTTP_SERVER_PORT`: (Defaults to 5000)
-- `HTTP_SERVER_HOST`: (Defaults to 0.0.0.0)
-
-#### Archipelago core
-
-- `ARCHIPELAGO_JOIN_DISTANCE`: (Defaults to 64)
-- `ARCHIPELAGO_LEAVE_DISTANCE`: (Defaults to 80)
-- `ARCHIPELAGO_MAX_PEERS_PER_ISLAND`: (Defaults to 100)
-- `ARCHIPELAGO_PARCEL_SIZE`: (Defaults to 16)
-- `ARCHIPELAGO_METRICS_INTERVAL`: Frequency in milliseconds for updating Prometheus metrics (Defaults to 10000)
-- `ARCHIPELAGO_STATUS_UPDATE_INTERVAL`: Frequency in milliseconds for updating Archipelago status information (Defaults to 10000)
-
-### Nats messages:
+### NATS messages:
 
 - `peer.${address}.heartbeat`
 - `peer.${address}.disconnect`
