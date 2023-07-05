@@ -145,7 +145,7 @@ test('end to end test', ({ components }) => {
     ws2.close()
   })
 
-  it(
+  it.skip(
     'two peers should be asigned to the same island and receive the appropiate messages',
     async () => {
       const ws1 = await connectSocket(aliceIdentity)

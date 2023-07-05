@@ -65,14 +65,9 @@ export async function websocketHandler(
               }
               switch (message.$case) {
                 case 'heartbeat': {
-                  const { position, desiredRoom } = message.heartbeat
-
                   nats.publish(
                     `archipelago.peer.${ws.address!}.heartbeat`,
-                    Heartbeat.encode({
-                      position,
-                      desiredRoom
-                    }).finish()
+                    Heartbeat.encode(message.heartbeat).finish()
                   )
                   break
                 }
