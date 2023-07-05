@@ -1,9 +1,6 @@
+import { Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { Lifecycle } from '@well-known-components/interfaces'
 import { AppComponents, TestComponents } from './types'
-import { setupListener } from './adapters/listener'
-
-const DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL = 1000 * 60 * 2 // 2 min
-const DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL = 10000
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
 export async function main(program: Lifecycle.EntryPointParameters<AppComponents | TestComponents>) {
@@ -14,21 +11,9 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const { nats, config, logs, publisher, engine } = components
 
+  const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
+  const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
   const logger = logs.getLogger('service')
-
-  const islandsStatusUpdateFreq =
-    (await config.getNumber('ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL')) ??
-    DEFAULT_ARCHIPELAGO_ISLANDS_STATUS_UPDATE_INTERVAL
-  setInterval(() => {
-    try {
-      publisher.publishIslandsReport(engine.getIslands())
-    } catch (err: any) {
-      logger.error(err)
-    }
-  }, islandsStatusUpdateFreq)
-
-  const serviceDiscoveryUpdateFreq =
-    (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? DEFAULT_ARCHIPELAGO_STATUS_UPDATE_INTERVAL
 
   setInterval(() => {
     try {
@@ -36,19 +21,85 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     } catch (err: any) {
       logger.error(err)
     }
-  }, serviceDiscoveryUpdateFreq)
+  }, (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? 10000)
 
-  const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
-  function loop() {
+  const lastPeerHeartbeats = new Map<string, number>()
+  async function loop() {
     const startTime = Date.now()
-    engine.flush().catch((err) => {
+    const expiredHeartbeatTime = Date.now() - checkHeartbeatInterval
+
+    for (const [peerId, lastHeartbeat] of lastPeerHeartbeats) {
+      if (lastHeartbeat < expiredHeartbeatTime) {
+        lastPeerHeartbeats.delete(peerId)
+        engine.onPeerDisconnected(peerId)
+      }
+    }
+
+    try {
+      await engine.flush()
+      publisher.publishIslandsReport(engine.getIslands())
+    } catch (err: any) {
       logger.error(err)
-    })
+    }
+
     const flushElapsed = Date.now() - startTime
     setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
   }
 
-  loop()
+  // NOTE we are using callbacks instead of async, for NATS subscriptions
+  // there are some risk associated with this pattern so we should keep the callbacks small and fast
+  // see https://github.com/nats-io/nats.js/#async-vs-callbacks
+  nats.subscribe('peer.*.connect', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
+    }
 
-  await setupListener(engine, { nats, config, logs })
+    try {
+      const id = message.subject.split('.')[1]
+      engine.onPeerDisconnected(id)
+    } catch (err: any) {
+      logger.error(`cannot process peer_connect message ${err.message}`)
+    }
+  })
+
+  nats.subscribe('peer.*.disconnect', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
+    }
+
+    try {
+      const id = message.subject.split('.')[1]
+      engine.onPeerDisconnected(id)
+    } catch (err: any) {
+      logger.error(`cannot process peer_disconnect message ${err.message}`)
+    }
+  })
+
+  nats.subscribe('client-proto.peer.*.heartbeat', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
+    }
+
+    try {
+      const id = message.subject.split('.')[2]
+      const decodedMessage = Heartbeat.decode(message.data)
+      const position = decodedMessage.position!
+
+      lastPeerHeartbeats.set(id, Date.now())
+      engine.onPeerPositionsUpdate([
+        {
+          id,
+          position: [position.x, position.y, position.z],
+          preferedIslandId: decodedMessage.desiredRoom
+        }
+      ])
+    } catch (err: any) {
+      logger.error(`cannot process heartbeat message ${err.message}`)
+    }
+  })
+
+  loop()
 }
