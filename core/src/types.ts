@@ -11,7 +11,6 @@ import { INatsComponent } from '@well-known-components/nats-component/dist/types
 import { IPublisherComponent } from './adapters/publisher'
 
 export type Position3D = [number, number, number]
-export type TransportType = 'unknown' | 'livekit' | 'ws' | 'p2p'
 
 export type PeerData = {
   id: string
@@ -27,7 +26,6 @@ export type Island = {
   center: Position3D
   radius: number
   sequenceId: number
-  transportId: number
   _center?: Position3D
   _radius?: number
   _geometryDirty: boolean
@@ -50,10 +48,7 @@ export type LeaveIslandUpdate = {
 export type IslandUpdates = Map<string, ChangeToIslandUpdate | LeaveIslandUpdate>
 
 export type Transport = {
-  id: number
-  type: TransportType
-  availableSeats: number
-  usersCount: number
+  name: string
   maxIslandSize: number
   getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>>
 }
@@ -65,7 +60,6 @@ export type Engine = IBaseComponent & {
   getPeerCount(): number
 
   // TODO: this are only for testing purposes
-  onTransportHeartbeat(transport: Transport): void
   flush(): Promise<IslandUpdates>
   getIsland(id: string): Island | undefined
   getPeerData(id: string): PeerData | undefined

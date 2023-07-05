@@ -2,11 +2,38 @@ import { createDotEnvConfigComponent } from '@well-known-components/env-config-p
 import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
 import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
-import { AppComponents, GlobalContext } from './types'
+import { AppComponents, GlobalContext, Transport } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPublisherComponent } from './adapters/publisher'
 import { createArchipelagoEngine } from './adapters/engine'
+import { AccessToken } from 'livekit-server-sdk'
+import { IConfigComponent } from '@well-known-components/interfaces'
+
+async function createLivekitTransport(config: IConfigComponent): Promise<Transport> {
+  const livekit = {
+    apiKey: await config.requireString('LIVEKIT_API_KEY'),
+    apiSecret: await config.requireString('LIVEKIT_API_SECRET'),
+    host: await config.requireString('LIVEKIT_HOST'),
+    islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
+  }
+  return {
+    name: 'livekit',
+    maxIslandSize: 100,
+    async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+      const connStrs: Record<string, string> = {}
+      for (const userId of userIds) {
+        const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
+          identity: userId,
+          ttl: 5 * 60 // 5 minutes
+        })
+        token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
+        connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
+      }
+      return connStrs
+    }
+  }
+}
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -28,12 +55,7 @@ export async function initComponents(): Promise<AppComponents> {
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
     roomPrefix: await config.getString('ROOM_PREFIX'),
-    livekit: {
-      apiKey: await config.requireString('LIVEKIT_API_KEY'),
-      apiSecret: await config.requireString('LIVEKIT_API_SECRET'),
-      host: await config.requireString('LIVEKIT_HOST'),
-      islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
-    }
+    transport: await createLivekitTransport(config)
   })
 
   return {

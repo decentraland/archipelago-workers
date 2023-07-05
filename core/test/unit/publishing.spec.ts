@@ -54,7 +54,6 @@ describe('publishing', () => {
         maxPeers: 100,
         peers: [],
         sequenceId: 10,
-        transportId: 0,
         _geometryDirty: false
       }
     ]

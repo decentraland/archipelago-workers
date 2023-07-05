@@ -7,22 +7,15 @@ import {
   ChangeToIslandUpdate,
   LeaveIslandUpdate,
   IslandUpdates,
-  TransportType,
   Engine
 } from '../types'
 
 import { intersectPeerGroup, popMax } from '../logic/islands'
 import { sequentialIdGenerator } from '../logic/idGenerator'
-import { AccessToken } from 'livekit-server-sdk'
 import { IPublisherComponent } from '../adapters/publisher'
 import { intersectIslands, islandGeometryCalculator } from '../logic/islands'
 
 type Publisher = Pick<IPublisherComponent, 'onChangeToIsland'>
-
-type Metrics = {
-  peersCount: 0
-  islandsCount: 0
-}
 
 export type Options = {
   components: Pick<BaseComponents, 'logs' | 'metrics'> & { publisher: Publisher }
@@ -30,12 +23,7 @@ export type Options = {
   roomPrefix?: string
   joinDistance: number
   leaveDistance: number
-  livekit?: {
-    apiKey: string
-    apiSecret: string
-    host: string
-    islandSize?: number
-  }
+  transport: Transport
 }
 
 function recalculateGeometryIfNeeded(island: Island) {
@@ -52,11 +40,10 @@ export function createArchipelagoEngine({
   flushFrequency,
   joinDistance,
   leaveDistance,
-  livekit,
+  transport,
   roomPrefix
 }: Options): Engine {
   const logger = logs.getLogger('Archipelago')
-  const transports = new Map<number, Transport>()
   const peers = new Map<string, PeerData>()
   const islands = new Map<string, Island>()
   const pendingNewPeers = new Map<string, PeerData>()
@@ -64,28 +51,6 @@ export function createArchipelagoEngine({
   const islandIdGenerator = sequentialIdGenerator(roomPrefix || 'I')
   let currentSequence = 0
   let disposed = false
-
-  if (livekit) {
-    transports.set(0, {
-      id: 0,
-      type: 'livekit',
-      availableSeats: -1,
-      usersCount: 0,
-      maxIslandSize: livekit.islandSize || 100,
-      async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
-        const connStrs: Record<string, string> = {}
-        for (const userId of userIds) {
-          const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
-            identity: userId,
-            ttl: 5 * 60 // 5 minutes
-          })
-          token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
-          connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
-        }
-        return connStrs
-      }
-    })
-  }
 
   function loop() {
     if (!disposed) {
@@ -104,10 +69,6 @@ export function createArchipelagoEngine({
 
   async function stop(): Promise<void> {
     disposed = true
-  }
-
-  function onTransportHeartbeat(transport: Transport): void {
-    transports.set(transport.id, transport)
   }
 
   function onPeerPositionsUpdate(changes: PeerPositionChange[]): void {
@@ -214,26 +175,17 @@ export function createArchipelagoEngine({
       }
     }
 
-    const metricsByTransporType = new Map<TransportType, Metrics>()
+    const stats = {
+      peersCount: 0,
+      islandsCount: 0
+    }
     for (const island of islands.values()) {
-      const transport = transports.get(island.transportId)
-      if (!transport) {
-        continue
-      }
-
-      const metrics = metricsByTransporType.get(transport.type) || {
-        peersCount: 0,
-        islandsCount: 0
-      }
-      metrics.peersCount += island.peers.length
-      metrics.islandsCount += 1
-      metricsByTransporType.set(transport.type, metrics)
+      stats.peersCount += island.peers.length
+      stats.islandsCount += 1
     }
 
-    for (const [transport, stats] of metricsByTransporType) {
-      metrics.observe('dcl_archipelago_islands_count', { transport }, stats.islandsCount)
-      metrics.observe('dcl_archipelago_peers_count', { transport }, stats.peersCount)
-    }
+    metrics.observe('dcl_archipelago_islands_count', { transport: transport.name }, stats.islandsCount)
+    metrics.observe('dcl_archipelago_peers_count', { transport: transport.name }, stats.peersCount)
 
     const updates = new Map(pendingUpdates)
     pendingUpdates.clear()
@@ -291,26 +243,11 @@ export function createArchipelagoEngine({
 
   async function createIsland(group: PeerData[]): Promise<string> {
     const newIslandId = islandIdGenerator.generateId()
-
-    let transport = undefined
-
-    for (const t of transports.values()) {
-      if (t.availableSeats === -1 || t.availableSeats > 0) {
-        transport = t
-        break
-      }
-    }
-
-    if (!transport) {
-      throw new Error('Cannot create island, no available transport')
-    }
-
     const peerIds = group.map((p) => p.id)
     const connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
 
     const island: Island = {
       id: newIslandId,
-      transportId: transport.id,
       peers: group,
       maxPeers: transport.maxIslandSize,
       sequenceId: ++currentSequence,
@@ -335,11 +272,6 @@ export function createArchipelagoEngine({
   async function mergeIntoIfPossible(islandToMergeInto: Island, anIsland: Island) {
     const canMerge = islandToMergeInto.peers.length + anIsland.peers.length <= islandToMergeInto.maxPeers
     if (!canMerge) {
-      return false
-    }
-
-    const transport = transports.get(islandToMergeInto.transportId)
-    if (!transport) {
       return false
     }
 
@@ -428,7 +360,6 @@ export function createArchipelagoEngine({
   return {
     start,
     stop,
-    onTransportHeartbeat,
     flush,
     onPeerPositionsUpdate,
     getPeerCount,

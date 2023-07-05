@@ -25,21 +25,17 @@ describe('engine', () => {
       components: { logs, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80,
-      flushFrequency: 2
-    })
-
-    engine.onTransportHeartbeat({
-      id: 0,
-      type: 'p2p',
-      availableSeats: 500,
-      usersCount: 0,
-      maxIslandSize: 200,
-      getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
-        const connStrs: Record<string, string> = {}
-        for (const userId of userIds) {
-          connStrs[userId] = `p2p:${roomId}.${userId}`
+      flushFrequency: 2,
+      transport: {
+        name: 'p2p',
+        maxIslandSize: 200,
+        getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+          const connStrs: Record<string, string> = {}
+          for (const userId of userIds) {
+            connStrs[userId] = `p2p:${roomId}.${userId}`
+          }
+          return Promise.resolve(connStrs)
         }
-        return Promise.resolve(connStrs)
       }
     })
   })

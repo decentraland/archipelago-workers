@@ -82,21 +82,17 @@ export function configureLibs(closure: BaseClosure) {
       components: { logs, metrics, publisher },
       joinDistance: 64,
       leaveDistance: 80,
-      flushFrequency: 2
-    })
-
-    archipelago.onTransportHeartbeat({
-      id: 0,
-      type: 'p2p',
-      availableSeats: 300,
-      usersCount: 0,
-      maxIslandSize: 100,
-      getConnectionStrings: (userIds: string[], roomId: string): Promise<Record<string, string>> => {
-        const connStrs: Record<string, string> = {}
-        for (const userId of userIds) {
-          connStrs[userId] = `p2p:${roomId}.${userId}`
+      flushFrequency: 2,
+      transport: {
+        name: 'p2p',
+        maxIslandSize: 100,
+        getConnectionStrings: (userIds: string[], roomId: string): Promise<Record<string, string>> => {
+          const connStrs: Record<string, string> = {}
+          for (const userId of userIds) {
+            connStrs[userId] = `p2p:${roomId}.${userId}`
+          }
+          return Promise.resolve(connStrs)
         }
-        return Promise.resolve(connStrs)
       }
     })
 
@@ -139,17 +135,6 @@ export function configureLibs(closure: BaseClosure) {
   closure.defJsFunction('ensureIslandsCount', (count: number, arch) => {
     const archipelago = (arch || closure.get('archipelago')) as Engine
     expectIslandsCount(archipelago, count)
-  })
-
-  closure.defJsFunction('ensureIslandsCountWithTransport', (expectedCount: number, transportId: number, arch) => {
-    const archipelago = (arch || closure.get('archipelago')) as Engine
-    let count = 0
-    for (const island of archipelago.getIslands()) {
-      if (transportId === island.transportId) {
-        count++
-      }
-    }
-    assert(expectedCount === count)
   })
 
   // (disconnect [...ids] arch?)
