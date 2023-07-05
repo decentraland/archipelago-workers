@@ -1,7 +1,6 @@
 import { Entity } from '@dcl/schemas'
 import { HotSceneInfo, hotScenesHandler } from '../../src/controllers/handlers/hot-scenes-handler'
 import { createStatsComponent } from '../../src/adapters/stats'
-import { CatalystParcelsInfo } from '../../src/types'
 
 describe('hot-scenes-handler-unit', () => {
   it('ok', async () => {

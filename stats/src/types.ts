@@ -67,28 +67,4 @@ export type IslandData = {
   radius: number
 }
 
-export type CatalystStatus = {
-  name: string
-  baseUrl: string
-}
-
-export type CatalystParcelsInfo = {
-  realmName: string
-  url: string
-  parcels: {
-    peersCount: number
-    parcel: {
-      x: number
-      y: number
-    }
-  }[]
-}
-
 export type ParcelCoord = [number, number]
-
-export type RealmInfo = {
-  serverName: string
-  url: string
-  usersCount: number
-  userParcels: ParcelCoord[]
-}

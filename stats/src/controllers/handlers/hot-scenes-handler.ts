@@ -1,14 +1,8 @@
-import { HandlerContextWithPath, RealmInfo, ParcelCoord } from '../../types'
+import { HandlerContextWithPath, ParcelCoord } from '../../types'
+import { toParcel } from '../../logic/utils'
 
 // The maximum amount of hot scenes returned
 const HOT_SCENES_LIMIT = 100
-
-type CatalystInfo = {
-  realmName: string
-  url: string
-  parcels: Map<string, number>
-  usersCount: number
-}
 
 export type HotSceneInfo = {
   id: string
@@ -20,7 +14,6 @@ export type HotSceneInfo = {
   projectId?: string
   creator?: string
   description?: string
-  realms: RealmInfo[]
 }
 
 function getCoords(coordsAsString: string): ParcelCoord {
@@ -34,34 +27,18 @@ export async function hotScenesHandler(
   const {
     components: { stats, content }
   } = context
-  const { time, info } = stats.getCatalystsParcels()
 
-  const tiles = new Set<string>()
-  const catalystsInfo: CatalystInfo[] = []
+  const peers = stats.getPeers()
 
-  for (const catalystParcelInfo of info) {
-    if (!catalystParcelInfo) {
-      continue
-    }
+  const countPerTile = new Map<string, number>()
+  for (const { x, z } of peers.values()) {
+    const [parcelX, parcelY] = toParcel(x, z)
 
-    const { url, realmName } = catalystParcelInfo
-
-    const parcels = new Map<string, number>()
-    let usersCount = 0
-    for (const {
-      peersCount,
-      parcel: { x, y }
-    } of catalystParcelInfo.parcels) {
-      usersCount += peersCount
-      const tile = `${x},${y}`
-      tiles.add(tile)
-      parcels.set(tile, peersCount)
-    }
-
-    catalystsInfo.push({ realmName, url, parcels, usersCount })
+    const tile = `${parcelX},${parcelY}`
+    countPerTile.set(tile, (countPerTile.get(tile) || 0) + 1)
   }
 
-  const scenes = await content.fetchScenes(Array.from(tiles))
+  const scenes = await content.fetchScenes(Array.from(countPerTile.keys()))
 
   const hotScenes: HotSceneInfo[] = scenes.map((scene) => {
     const result: HotSceneInfo = {
@@ -73,31 +50,21 @@ export async function hotScenesHandler(
       thumbnail: content.calculateThumbnail(scene),
       creator: scene.metadata?.contact?.name,
       projectId: scene.metadata?.source?.projectId,
-      description: scene.metadata?.display?.description,
-      realms: []
+      description: scene.metadata?.display?.description
     }
 
-    const realms = new Map<string, RealmInfo>()
-
     for (const sceneParcel of scene.metadata?.scene.parcels) {
-      for (const { realmName, url, parcels } of catalystsInfo) {
-        let usersCount = 0
-        if (parcels.has(sceneParcel)) {
-          const usersInParcel = parcels.get(sceneParcel)!
-          result.usersTotalCount += usersInParcel
-          usersCount += usersInParcel
+      if (countPerTile.has(sceneParcel)) {
+        const usersInParcel = countPerTile.get(sceneParcel) || 0
+        result.usersTotalCount += usersInParcel
 
-          const userParcels: ParcelCoord[] = []
-          const coord = getCoords(sceneParcel)
-          for (let i = 0; i < usersInParcel; i++) {
-            userParcels.push(coord)
-          }
-          realms.set(realmName, { serverName: realmName, url, usersCount, userParcels })
+        const userParcels: ParcelCoord[] = []
+        const coord = getCoords(sceneParcel)
+        for (let i = 0; i < usersInParcel; i++) {
+          userParcels.push(coord)
         }
       }
     }
-
-    result.realms = Array.from(realms.values())
 
     return result
   })
@@ -105,9 +72,6 @@ export async function hotScenesHandler(
   const value = hotScenes.sort((scene1, scene2) => scene2.usersTotalCount - scene1.usersTotalCount)
 
   return {
-    headers: {
-      'Last-Modified': new Date(time).toUTCString()
-    },
     body: value.slice(0, HOT_SCENES_LIMIT)
   }
 }

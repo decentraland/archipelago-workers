@@ -1,18 +1,11 @@
 import { IBaseComponent } from '@well-known-components/interfaces'
-import { PeerData, IslandData, CatalystParcelsInfo } from '../types'
-
-export type CatalystParcels = {
-  time: number
-  info: CatalystParcelsInfo[]
-}
+import { PeerData, IslandData } from '../types'
 
 export type IStatsComponent = IBaseComponent & {
   onPeerDisconnected(peerId: string): void
   onPeerUpdated(peerId: string, data: PeerData): void
   onIslandsDataReceived(data: IslandData[]): void
-  onCatalystsParcelsInfo(info: CatalystParcels): void
 
-  getCatalystsParcels(): CatalystParcels
   getPeers(): Map<string, PeerData>
   getIslands(): IslandData[]
 }
@@ -20,10 +13,6 @@ export type IStatsComponent = IBaseComponent & {
 export function createStatsComponent(): IStatsComponent {
   const peers = new Map<string, PeerData>()
   let islands: IslandData[] = []
-  let catalystsParcels: CatalystParcels = {
-    time: 0,
-    info: []
-  }
 
   function onPeerDisconnected(peerId: string) {
     peers.delete(peerId)
@@ -37,17 +26,7 @@ export function createStatsComponent(): IStatsComponent {
     islands = data
   }
 
-  function onCatalystsParcelsInfo(info: CatalystParcels) {
-    catalystsParcels = info
-  }
-
-  function getCatalystsParcels(): CatalystParcels {
-    return catalystsParcels
-  }
-
   return {
-    onCatalystsParcelsInfo,
-    getCatalystsParcels,
     onPeerDisconnected,
     onPeerUpdated,
     onIslandsDataReceived,
