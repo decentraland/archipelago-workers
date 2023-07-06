@@ -3,5 +3,6 @@ dist/
 *.js
 *.d.ts
 *.json
+src/index.ts
 
-**/src/index.ts
+src/proto
