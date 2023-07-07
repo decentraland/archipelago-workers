@@ -9,6 +9,6 @@ jobs:
   cd:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:
-      service-name: archipelago-service
+      service-name: archipelago-workers
       deployment-environment: dev
     secrets: inherit

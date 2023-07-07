@@ -9,5 +9,5 @@ jobs:
   cd:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-release.yml@main
     with:
-      service-name: archipelago-service
+      service-name: archipelago-workers
     secrets: inherit
