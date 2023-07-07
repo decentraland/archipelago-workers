@@ -11,3 +11,45 @@ jobs:
     with:
       service-name: archipelago-workers
     secrets: inherit
+
+  archipelago-core-deployment:
+    needs: [cd]
+    name: "Deploy to: dev"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment (archipelago-core)
+        id: deploy
+        uses: decentraland/dcl-deploy-action@main
+        with:
+          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          serviceName: archipelago-core
+          env: dev
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  archipelago-ws-connector-deployment:
+    needs: [cd]
+    name: "Deploy to: dev"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment (archipelago-ws-connector)
+        id: deploy
+        uses: decentraland/dcl-deploy-action@main
+        with:
+          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          serviceName: archipelago-ws-connector
+          env: dev
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  archipelago-stats-deployment:
+    needs: [cd]
+    name: "Deploy to: dev"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger deployment (archipelago-stats)
+        id: deploy
+        uses: decentraland/dcl-deploy-action@main
+        with:
+          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          serviceName: archipelago-stats
+          env: dev
+          token: ${{ secrets.GITHUB_TOKEN }}
