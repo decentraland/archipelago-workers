@@ -5,7 +5,7 @@ updates:
   schedule:
     interval: weekly
     day: monday
-    time: "09:00"
+    time: "10:00"
     timezone: "America/Buenos_Aires"
   allow:
     - dependency-name: "@dcl/*"
