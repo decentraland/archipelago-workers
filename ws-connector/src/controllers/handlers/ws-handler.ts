@@ -10,6 +10,7 @@ export async function websocketHandler(
   const { logs, peersRegistry, nats } = context.components
   const logger = logs.getLogger('Websocket Handler')
 
+  logger.debug('Websocket requested ')
   return upgradeWebSocketResponse((socket) => {
     logger.debug('Websocket connected')
     const ws = socket as any as InternalWebSocket
