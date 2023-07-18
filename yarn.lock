@@ -2229,10 +2229,10 @@ dataloader@^1.4.0:
   resolved "https://registry.yarnpkg.com/dataloader/-/dataloader-1.4.0.tgz#bca11d867f5d3f1b9ed9f737bd15970c65dff5c8"
   integrity sha512-68s5jYdlvasItOJnCuI2Q9s4q98g0pCyL3HrcKJu8KNugUl8ahgmZYg38ysLTgQjjXX3H8CJLkAvWrclWfcalw==
 
-dcl-catalyst-client@^21.3.0:
-  version "21.3.0"
-  resolved "https://registry.yarnpkg.com/dcl-catalyst-client/-/dcl-catalyst-client-21.3.0.tgz#38df8e66c4ad5aeae0776ebb0e09394dc7f13dd1"
-  integrity sha512-TrxG8Uzi1jskSMWNgRhP/hg8xh2EOf3rRX9MT0JZt2/TQNtOfJVR8se2Qw5mO8WHGuJHGuewYLuSt82UNLOjeg==
+dcl-catalyst-client@^21.5.0:
+  version "21.5.0"
+  resolved "https://registry.yarnpkg.com/dcl-catalyst-client/-/dcl-catalyst-client-21.5.0.tgz#1db1e480501b27d2b3a3c3598e75a627b1022c5d"
+  integrity sha512-bLfovKM/j828q/urvlBAGzPCdBF5JbYQdBqycmAvHFJf8uCGxuP5KABdYxqO4rNz635rJH7RbWdN6vMBuv9ewg==
   dependencies:
     "@dcl/catalyst-contracts" "^4.0.2"
     "@dcl/crypto" "^3.4.0"
