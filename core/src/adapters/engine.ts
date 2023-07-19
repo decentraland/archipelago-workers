@@ -90,6 +90,7 @@ export function createArchipelagoEngine({
 
     if (peer) {
       peers.delete(id)
+      pendingNewPeers.delete(id)
       if (peer.islandId) {
         const island = islands.get(peer.islandId)!
 
