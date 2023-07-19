@@ -75,6 +75,7 @@ export async function handleSocketLinearProtocol(
       logger.debug(`Authentication successful`, { address: address })
 
       if (previousWs) {
+        logger.debug('Sending kick message')
         const kickedMessage = craftMessage({
           message: {
             $case: 'kicked',

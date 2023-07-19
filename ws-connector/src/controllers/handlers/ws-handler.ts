@@ -15,6 +15,7 @@ export async function websocketHandler(
     const ws = socket as any as InternalWebSocket
 
     ws.on('error', (error) => {
+      logger.error('ws-error')
       logger.error(error)
       try {
         ws.end()
