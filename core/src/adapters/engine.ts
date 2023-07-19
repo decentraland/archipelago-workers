@@ -150,17 +150,8 @@ export function createArchipelagoEngine({
       }
     }
 
-    const stats = {
-      peersCount: 0,
-      islandsCount: 0
-    }
-    for (const island of islands.values()) {
-      stats.peersCount += island.peers.length
-      stats.islandsCount += 1
-    }
-
-    metrics.observe('dcl_archipelago_islands_count', { transport: transport.name }, stats.islandsCount)
-    metrics.observe('dcl_archipelago_peers_count', { transport: transport.name }, stats.peersCount)
+    metrics.observe('dcl_archipelago_islands_count', {}, islands.size)
+    metrics.observe('dcl_archipelago_peers_count', {}, peers.size)
 
     const updates = new Map(pendingUpdates)
     pendingUpdates.clear()
