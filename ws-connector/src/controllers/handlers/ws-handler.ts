@@ -2,7 +2,7 @@ import { ClientPacket, Heartbeat } from '@dcl/protocol/out-js/decentraland/kerne
 import { upgradeWebSocketResponse } from '@well-known-components/http-server/dist/ws'
 import { craftMessage } from '../../logic/craft-message'
 import { handleSocketLinearProtocol } from '../../logic/handle-linear-protocol'
-import { HandlerContextWithPath, Stage, InternalWebSocket } from '../../types'
+import { HandlerContextWithPath, InternalWebSocket } from '../../types'
 
 export async function websocketHandler(
   context: HandlerContextWithPath<'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
@@ -12,9 +12,7 @@ export async function websocketHandler(
 
   logger.debug('Websocket requested ')
   return upgradeWebSocketResponse((socket) => {
-    logger.debug('Websocket connected')
     const ws = socket as any as InternalWebSocket
-    ws.stage = Stage.HANDSHAKE
 
     ws.on('error', (error) => {
       logger.error(error)
@@ -44,7 +42,6 @@ export async function websocketHandler(
         }
 
         logger.debug(`Welcome sent`, { address: ws.address! })
-        ws.stage = Stage.READY
 
         ws.on('close', () => {
           if (ws.address) {
@@ -54,29 +51,20 @@ export async function websocketHandler(
         })
 
         ws.on('message', (data) => {
-          switch (ws.stage) {
-            case Stage.HANDSHAKE: {
-              ws.emit('message', Buffer.from(data))
-              break
-            }
-            case Stage.READY: {
-              const { message } = ClientPacket.decode(Buffer.from(data))
-              if (!message) {
-                return
-              }
-              switch (message.$case) {
-                case 'heartbeat': {
-                  nats.publish(`peer.${ws.address!}.heartbeat`, Heartbeat.encode(message.heartbeat).finish())
-                  break
-                }
-              }
+          const { message } = ClientPacket.decode(Buffer.from(data))
+          if (!message) {
+            return
+          }
+          switch (message.$case) {
+            case 'heartbeat': {
+              nats.publish(`peer.${ws.address!}.heartbeat`, Heartbeat.encode(message.heartbeat).finish())
               break
             }
           }
         })
       })
       .catch((err: any) => {
-        logger.info(err)
+        logger.error(err)
         try {
           ws.end()
         } catch {}

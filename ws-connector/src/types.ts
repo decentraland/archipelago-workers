@@ -60,8 +60,3 @@ export type Context<Path extends string = any> = IHttpServerComponent.PathAwareC
 export type InternalWebSocket = WsUserData & {
   address: string
 }
-
-export enum Stage {
-  HANDSHAKE,
-  READY
-}
