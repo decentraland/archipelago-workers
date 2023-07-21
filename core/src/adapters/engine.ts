@@ -87,10 +87,10 @@ export function createArchipelagoEngine({
 
   function onPeerDisconnected(id: string): void {
     const peer = peers.get(id)
+    pendingNewPeers.delete(id)
 
     if (peer) {
       peers.delete(id)
-      pendingNewPeers.delete(id)
       if (peer.islandId) {
         const island = islands.get(peer.islandId)!
 
