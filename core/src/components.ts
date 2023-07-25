@@ -7,7 +7,7 @@ import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPublisherComponent } from './adapters/publisher'
 import { createArchipelagoEngine } from './adapters/engine'
-import { AccessToken } from 'livekit-server-sdk'
+import { AccessToken, TrackSource } from 'livekit-server-sdk'
 import { IConfigComponent } from '@well-known-components/interfaces'
 
 async function createLivekitTransport(config: IConfigComponent): Promise<Transport> {
@@ -27,7 +27,15 @@ async function createLivekitTransport(config: IConfigComponent): Promise<Transpo
           identity: userId,
           ttl: 5 * 60 // 5 minutes
         })
-        token.addGrant({ roomJoin: true, room: roomId, canPublish: true, canSubscribe: true })
+        token.addGrant({
+          roomJoin: true,
+          room: roomId,
+          roomList: false,
+          canPublish: true,
+          canSubscribe: true,
+          canPublishData: true,
+          canPublishSources: [TrackSource.MICROPHONE]
+        })
         connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
       }
       return connStrs
