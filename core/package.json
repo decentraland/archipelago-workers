@@ -46,7 +46,7 @@
     "@well-known-components/nats-component": "^2.0.0",
     "eth-connect": "^6.2.1",
     "google-protobuf": "^3.20.1",
-    "livekit-server-sdk": "^1.2.1",
+    "livekit-server-sdk": "^1.2.5",
     "ts-proto": "^1.120.0"
   }
 }
