@@ -9,5 +9,8 @@
     "lint:check": "eslint '**/*.{js,ts}'",
     "lint:fix": "eslint . --ext .ts --fix"
   },
+  "resolutions": {
+    "**/make-dir/semver": "^6.3.1"
+  },
   "license": "Apache-2.0"
 }
