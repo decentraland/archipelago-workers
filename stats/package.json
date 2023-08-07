@@ -24,7 +24,7 @@
     "tabWidth": 2
   },
   "dependencies": {
-    "@dcl/protocol": "^1.0.0-5729613832.commit-9d3834a",
+    "@dcl/protocol": "^1.0.0-5752058730.commit-921fc5d",
     "@dcl/schemas": "^9.0.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/fetch-component": "^2.0.2",

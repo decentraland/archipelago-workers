@@ -347,10 +347,10 @@
   resolved "https://registry.yarnpkg.com/@dcl/hashing/-/hashing-3.0.4.tgz#4df2a4cb3a8114765aed34cb57b91c93bf33bfb3"
   integrity sha512-Cg+MoIOn+BYmQV2q8zSFnNYY+GldlnUazwBnfgrq3i66ZxOaZ65h01btd8OUtSAlfWG4VTNIOHDjtKqmuwJNBg==
 
-"@dcl/protocol@^1.0.0-5729613832.commit-9d3834a":
-  version "1.0.0-5729613832.commit-9d3834a"
-  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5729613832.commit-9d3834a.tgz#5e578e831d370ae4eb0dba89e69da8a8050c29db"
-  integrity sha512-Kpm7m1dl+QGclr2QVoMeMip1P27WIi1vqIQ1BCoVaNZ+RUaTt259dBDP6Gxj6W+JHtWYOEbz18R8SFQTnO/0iA==
+"@dcl/protocol@^1.0.0-5752058730.commit-921fc5d":
+  version "1.0.0-5752058730.commit-921fc5d"
+  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5752058730.commit-921fc5d.tgz#dc5d1f3dca0b8726696127b97be37576408e5100"
+  integrity sha512-L0/68USml0e7JgFqixASC89zW4kj0WEf1KqCRrSr6IsTMjTX7jWQW0Y2udTCcbSIvBLNvl0heRRMKH7y8NULJg==
   dependencies:
     "@dcl/ts-proto" "1.154.0"
 
@@ -4806,7 +4806,7 @@ secp256k1@^4.0.1:
     node-addon-api "^2.0.0"
     node-gyp-build "^4.2.0"
 
-semver@6.3.1, semver@^6.0.0, semver@^6.3.0:
+semver@^6.0.0, semver@^6.3.0, semver@^6.3.1:
   version "6.3.1"
   resolved "https://registry.yarnpkg.com/semver/-/semver-6.3.1.tgz#556d2ef8689146e46dcea4bfdd095f3434dffcb4"
   integrity sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==
