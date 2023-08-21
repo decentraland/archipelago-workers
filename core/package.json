@@ -35,7 +35,7 @@
     "tabWidth": 2
   },
   "dependencies": {
-    "@dcl/crypto": "^3.4.3",
+    "@dcl/crypto": "^3.4.4",
     "@dcl/protocol": "^1.0.0-5729613832.commit-9d3834a",
     "@dcl/schemas": "^9.0.0",
     "@well-known-components/env-config-provider": "^1.2.0",
