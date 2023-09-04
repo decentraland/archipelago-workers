@@ -347,10 +347,10 @@
   resolved "https://registry.yarnpkg.com/@dcl/hashing/-/hashing-3.0.4.tgz#4df2a4cb3a8114765aed34cb57b91c93bf33bfb3"
   integrity sha512-Cg+MoIOn+BYmQV2q8zSFnNYY+GldlnUazwBnfgrq3i66ZxOaZ65h01btd8OUtSAlfWG4VTNIOHDjtKqmuwJNBg==
 
-"@dcl/protocol@^1.0.0-5729613832.commit-9d3834a":
-  version "1.0.0-5729613832.commit-9d3834a"
-  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5729613832.commit-9d3834a.tgz#5e578e831d370ae4eb0dba89e69da8a8050c29db"
-  integrity sha512-Kpm7m1dl+QGclr2QVoMeMip1P27WIi1vqIQ1BCoVaNZ+RUaTt259dBDP6Gxj6W+JHtWYOEbz18R8SFQTnO/0iA==
+"@dcl/protocol@^1.0.0-5824184720.commit-b3b5ebf":
+  version "1.0.0-5824184720.commit-b3b5ebf"
+  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5824184720.commit-b3b5ebf.tgz#7d19f5440bca74bd2c5791606ca88e190fbdeb5c"
+  integrity sha512-k2p0SpJIDMiGTB+B0B2VLdgdd1ERiKVxmwQbgFrkG6jYJpjlD1DsJynoWXsk6hbvmnc1spW9uMo+DUBTpO3dcA==
   dependencies:
     "@dcl/ts-proto" "1.154.0"
 
