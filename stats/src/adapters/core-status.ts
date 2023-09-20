@@ -8,14 +8,19 @@ export type ICoreStatusComponent = IBaseComponent & {
 }
 
 export function createCoreStatusComponent(): ICoreStatusComponent {
-  let isHealthy = false
-  let userCount = 0
+  let lastMessage: ServiceDiscoveryMessage | undefined = undefined
   return {
     onServiceDiscoveryReceived(message: ServiceDiscoveryMessage) {
-      isHealthy = true
-      userCount = message.status?.userCount ?? 0
+      lastMessage = message
     },
-    isHealthy: () => isHealthy,
-    getUserCount: () => userCount
+    isHealthy: () => {
+      const now = Date.now()
+      // If last heartbeat is less than 90 seconds old, we consider the service healthy
+      if (lastMessage?.status && now - lastMessage.status.currentTime < 90000) {
+        return true
+      }
+      return false
+    },
+    getUserCount: () => lastMessage?.status?.userCount ?? 0
   }
 }
