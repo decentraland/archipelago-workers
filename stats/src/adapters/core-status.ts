@@ -13,7 +13,7 @@ export function createCoreStatusComponent(): ICoreStatusComponent {
     onServiceDiscoveryReceived(message: ServiceDiscoveryMessage) {
       lastMessage = message
     },
-    isHealthy: () => {
+    isHealthy() {
       const now = Date.now()
       // If last heartbeat is less than 90 seconds old, we consider the service healthy
       if (lastMessage?.status && now - lastMessage.status.currentTime < 90000) {
