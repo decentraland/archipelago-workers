@@ -10,7 +10,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "@dcl/eslint-config": "^1.1.8",
+    "@dcl/eslint-config": "^1.1.11",
     "@types/google-protobuf": "^3.15.6",
     "@types/node": "^14.17.33",
     "@types/ws": "^8.5.3",
@@ -29,9 +29,9 @@
     "tabWidth": 2
   },
   "dependencies": {
-    "@dcl/crypto": "^3.4.3",
-    "@dcl/protocol": "^1.0.0-5729613832.commit-9d3834a",
-    "@dcl/schemas": "^9.0.0",
+    "@dcl/crypto": "^3.4.5",
+    "@dcl/protocol": "^1.0.0-5824184720.commit-b3b5ebf",
+    "@dcl/schemas": "^9.4.1",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/http-server": "^2.0.0",
     "@well-known-components/interfaces": "^1.4.2",

@@ -312,23 +312,23 @@
   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
 
 "@dcl/catalyst-contracts@^4.0.2":
-  version "4.0.6"
-  resolved "https://registry.yarnpkg.com/@dcl/catalyst-contracts/-/catalyst-contracts-4.0.6.tgz#bb6cbcd6f51fc16ee9723f8d91d1416b19dcd9dd"
-  integrity sha512-Ti3YWU+cla43ai24cYgDYO4BvKamYKOBgFdasaRHm+zl3xuObSBRrDxJlOzDFmgIIZVjhutaICFyMUPyWWgcrw==
+  version "4.1.0"
+  resolved "https://registry.yarnpkg.com/@dcl/catalyst-contracts/-/catalyst-contracts-4.1.0.tgz#8ff60da05aba0205aa0e9f9095455b011e1c1437"
+  integrity sha512-WPs1RPKOfo8eVHV9JR5FdgTYNUro8+WdAd/BT/WWynsNBFUs/Togah9+s7EpnXb877md45caSbl8sGacIW4AEQ==
 
-"@dcl/crypto@^3.4.0", "@dcl/crypto@^3.4.3":
-  version "3.4.3"
-  resolved "https://registry.yarnpkg.com/@dcl/crypto/-/crypto-3.4.3.tgz#74f55aed699949bc2566a7b0d6a23de499019afe"
-  integrity sha512-biG8PqImY3jtVM5bPizgAD0P6X9/7VMxKuD2hxiEEeZClfB1Zi76Qk8pHaLpJ5pU3B+NogwZ8xoREhq0Po+gXQ==
+"@dcl/crypto@^3.4.0", "@dcl/crypto@^3.4.5":
+  version "3.4.5"
+  resolved "https://registry.yarnpkg.com/@dcl/crypto/-/crypto-3.4.5.tgz#95ca2beab46fa3494b4d38f009bf0d49c87ba235"
+  integrity sha512-uneyjOAOx7pi5kabZsLmPm9kSLkCk4Cok8FUsvT+6k8RquqkjKqocvkGVOMaoWsfU6S3mkLOyaeqEKmOy4ErxA==
   dependencies:
-    "@dcl/schemas" "^8.2.0"
+    "@dcl/schemas" "^9.2.0"
     eth-connect "^6.0.3"
     ethereum-cryptography "^1.0.3"
 
-"@dcl/eslint-config@^1.1.8":
-  version "1.1.8"
-  resolved "https://registry.yarnpkg.com/@dcl/eslint-config/-/eslint-config-1.1.8.tgz#e5792d832d0056e397016131142dc01b0282d980"
-  integrity sha512-CKNRtkL1y/DcHTdT9pilvWS9tmj2ZMpwWH6F5Rlyd3JfG8W4yWl9oDAO+66aMQUXlQmA6c5h1VsYNH/RCw0uAA==
+"@dcl/eslint-config@^1.1.11":
+  version "1.1.11"
+  resolved "https://registry.yarnpkg.com/@dcl/eslint-config/-/eslint-config-1.1.11.tgz#f97a54bc9df7d04f3c2c6012e2ad3d8413039170"
+  integrity sha512-pwR2QKrTXz5TlfxDfhJRSWOmBJlJAcCFVNrt8G7qc7BPhvvE7luFbHvaecJ6dYsG4o6d+IGbxugYjGjfens1aQ==
   dependencies:
     "@typescript-eslint/eslint-plugin" "^5.62.0"
     "@typescript-eslint/parser" "^5.62.0"
@@ -347,10 +347,10 @@
   resolved "https://registry.yarnpkg.com/@dcl/hashing/-/hashing-3.0.4.tgz#4df2a4cb3a8114765aed34cb57b91c93bf33bfb3"
   integrity sha512-Cg+MoIOn+BYmQV2q8zSFnNYY+GldlnUazwBnfgrq3i66ZxOaZ65h01btd8OUtSAlfWG4VTNIOHDjtKqmuwJNBg==
 
-"@dcl/protocol@^1.0.0-5729613832.commit-9d3834a":
-  version "1.0.0-5729613832.commit-9d3834a"
-  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5729613832.commit-9d3834a.tgz#5e578e831d370ae4eb0dba89e69da8a8050c29db"
-  integrity sha512-Kpm7m1dl+QGclr2QVoMeMip1P27WIi1vqIQ1BCoVaNZ+RUaTt259dBDP6Gxj6W+JHtWYOEbz18R8SFQTnO/0iA==
+"@dcl/protocol@^1.0.0-5824184720.commit-b3b5ebf":
+  version "1.0.0-5824184720.commit-b3b5ebf"
+  resolved "https://registry.yarnpkg.com/@dcl/protocol/-/protocol-1.0.0-5824184720.commit-b3b5ebf.tgz#7d19f5440bca74bd2c5791606ca88e190fbdeb5c"
+  integrity sha512-k2p0SpJIDMiGTB+B0B2VLdgdd1ERiKVxmwQbgFrkG6jYJpjlD1DsJynoWXsk6hbvmnc1spW9uMo+DUBTpO3dcA==
   dependencies:
     "@dcl/ts-proto" "1.154.0"
 
@@ -361,19 +361,10 @@
   dependencies:
     "@dcl/ts-proto" "1.154.0"
 
-"@dcl/schemas@^8.2.0":
-  version "8.2.2"
-  resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-8.2.2.tgz#31b3697ec517d4a5a6958bddf046441a969b8056"
-  integrity sha512-IZqcT1YOKxw5XWs6LW6Uw+7Ue5vHCVERPMwefAdt26jW1OTH818od0rBc1tQzzfBTwsrAvbgFJvpbZedieu00g==
-  dependencies:
-    ajv "^8.11.0"
-    ajv-errors "^3.0.0"
-    ajv-keywords "^5.1.0"
-
-"@dcl/schemas@^9.0.0":
-  version "9.0.0"
-  resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-9.0.0.tgz#557ba43b537ea1f15051ec400a536ef2761e460f"
-  integrity sha512-4/DEMiVLy3GiMEEg8EbPE1vUXIGa4jVYAznYNd9RjF7+cDxMkiG3cxvMLOwQu9BwJUJhPVsJ5iT+yRAs//Gymg==
+"@dcl/schemas@^9.0.0", "@dcl/schemas@^9.2.0", "@dcl/schemas@^9.4.1":
+  version "9.4.1"
+  resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-9.4.1.tgz#f342100171916a36025008dff3228764292fb8c3"
+  integrity sha512-oM9y5CuKKMH6kjJLXpD9JC1L1JTCkJDshUk5TUNkkvWaP2ljXaxnU99a1LoI7jfKnTkBAASK685bf0totbXdcQ=
   dependencies:
     ajv "^8.11.0"
     ajv-errors "^3.0.0"
