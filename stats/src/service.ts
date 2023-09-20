@@ -1,4 +1,8 @@
-import { Heartbeat, IslandStatusMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import {
+  Heartbeat,
+  IslandStatusMessage,
+  ServiceDiscoveryMessage
+} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { Lifecycle } from '@well-known-components/interfaces'
 import { setupRouter } from './controllers/routes'
 import { AppComponents, GlobalContext, IslandData, TestComponents } from './types'
@@ -22,7 +26,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { logs, nats, stats } = components
+  const { logs, nats, stats, coreStatus } = components
 
   const logger = logs.getLogger('stats')
 
@@ -70,5 +74,13 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       })
     }
     stats.onIslandsDataReceived(report)
+  })
+
+  nats.subscribe('engine.discovery', (err, message) => {
+    if (err) {
+      logger.error(err)
+      return
+    }
+    coreStatus.onServiceDiscoveryReceived(ServiceDiscoveryMessage.decode(message.data))
   })
 }

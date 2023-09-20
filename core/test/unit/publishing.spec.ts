@@ -1,8 +1,8 @@
 import { Reader } from 'protobufjs/minimal'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLocalNatsComponent, decodeJson } from '@well-known-components/nats-component'
-import { IslandStatusMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { createPublisherComponent, ServiceDiscoveryMessage } from '../../src/adapters/publisher'
+import { IslandStatusMessage, ServiceDiscoveryMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { createPublisherComponent } from '../../src/adapters/publisher'
 import { Island } from '../../src/types'
 import { INatsComponent, NatsMsg } from '@well-known-components/nats-component/dist/types'
 
