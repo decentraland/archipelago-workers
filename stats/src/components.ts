@@ -13,6 +13,7 @@ import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
 import { createStatsComponent } from './adapters/stats'
 import { createCoreStatusComponent } from './adapters/core-status'
+import { createClockComponent } from './adapters/clock'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -37,7 +38,8 @@ export async function initComponents(): Promise<AppComponents> {
   const nats = await createNatsComponent({ config, logs })
   const content = await createContentComponent({ config, fetch })
   const stats = createStatsComponent()
-  const coreStatus = createCoreStatusComponent()
+  const clock = createClockComponent()
+  const coreStatus = createCoreStatusComponent({ clock })
 
   await instrumentHttpServerWithMetrics({ server, metrics, config })
   return {
@@ -50,6 +52,7 @@ export async function initComponents(): Promise<AppComponents> {
     nats,
     content,
     stats,
-    coreStatus
+    coreStatus,
+    clock
   }
 }
