@@ -354,6 +354,13 @@
   dependencies:
     "@dcl/ts-proto" "1.154.0"
 
+"@dcl/protocol@https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6250414075.commit-b1be76e.tgz":
+  version "1.0.0-6250414075.commit-b1be76e"
+  uid "34d06ce72ecc4be7c9a9db1101ef25a479e14aca"
+  resolved "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6250414075.commit-b1be76e.tgz#34d06ce72ecc4be7c9a9db1101ef25a479e14aca"
+  dependencies:
+    "@dcl/ts-proto" "1.154.0"
+
 "@dcl/schemas@^9.0.0", "@dcl/schemas@^9.2.0", "@dcl/schemas@^9.4.1":
   version "9.4.1"
   resolved "https://registry.yarnpkg.com/@dcl/schemas/-/schemas-9.4.1.tgz#f342100171916a36025008dff3228764292fb8c3"

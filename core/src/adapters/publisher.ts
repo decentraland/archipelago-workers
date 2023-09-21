@@ -3,19 +3,11 @@ import { BaseComponents, ChangeToIslandUpdate, Island, PeerData } from '../types
 import {
   IslandStatusMessage,
   IslandData,
-  IslandChangedMessage
+  IslandChangedMessage,
+  ServiceDiscoveryMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 
 import { IBaseComponent } from '@well-known-components/interfaces'
-
-export type ServiceDiscoveryMessage = {
-  serverName: string
-  status: {
-    currentTime: number
-    commitHash?: string
-    userCount: number
-  }
-}
 
 export type IPublisherComponent = IBaseComponent & {
   onChangeToIsland(peerId: string, island: Island, change: ChangeToIslandUpdate): void

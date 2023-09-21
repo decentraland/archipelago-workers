@@ -10,6 +10,8 @@ import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IContentComponent } from './adapters/content'
 import { IStatsComponent } from './adapters/stats'
+import { ICoreStatusComponent } from './adapters/core-status'
+import { IClockComponent } from './adapters/clock'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -25,6 +27,8 @@ export type BaseComponents = {
   nats: INatsComponent
   content: IContentComponent
   stats: IStatsComponent
+  coreStatus: ICoreStatusComponent
+  clock: IClockComponent
 }
 
 // components used in runtime
