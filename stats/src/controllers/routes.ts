@@ -5,6 +5,7 @@ import { peersHandler } from './handlers/peers-handler'
 import { islandHandler, islandsHandler } from './handlers/islands-handler'
 import { hotScenesHandler } from './handlers/hot-scenes-handler'
 import { coreStatusHandler } from './handlers/core-status-handler'
+import { statusHandler } from './handlers/status-handler'
 
 // We return the entire router because it will be easier to test than a whole server
 export async function setupRouter(_: GlobalContext): Promise<Router<GlobalContext>> {
@@ -15,6 +16,7 @@ export async function setupRouter(_: GlobalContext): Promise<Router<GlobalContex
   router.get('/islands', islandsHandler)
   router.get('/islands/:id', islandHandler)
   router.get('/core-status', coreStatusHandler)
+  router.get('/status', statusHandler)
 
   router.get('/hot-scenes', hotScenesHandler)
 
