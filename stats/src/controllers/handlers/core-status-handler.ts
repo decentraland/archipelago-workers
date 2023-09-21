@@ -8,7 +8,7 @@ type Result = {
 }
 
 export async function coreStatusHandler(
-  context: Pick<HandlerContextWithPath<'coreStatus', '/status'>, 'url' | 'components'>
+  context: Pick<HandlerContextWithPath<'coreStatus', '/core-status'>, 'url' | 'components'>
 ): Promise<Result> {
   const {
     components: { coreStatus }
