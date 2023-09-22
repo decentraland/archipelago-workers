@@ -32,7 +32,8 @@ describe('publishing', () => {
     const { publishServiceDiscoveryMessage } = await createPublisherComponent({ nats, config })
     publishServiceDiscoveryMessage(10)
     const message = await s
-    const data: ServiceDiscoveryMessage = decodeJson(message.data) as any
+    const data = ServiceDiscoveryMessage.decode(Reader.create(message.data))
+    console.log(data)
     expect(data).toEqual(
       expect.objectContaining({
         serverName: 'archipelago',
