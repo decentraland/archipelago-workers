@@ -10,7 +10,7 @@ jobs:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
     with:
       service-name: archipelago-workers
-      env: dev
+      deployment-environment: dev
     secrets: inherit
 
   archipelago-stats-deployment:
@@ -18,7 +18,7 @@ jobs:
     with:
       service-name: archipelago-stats
       image-name: archipelago-workers
-      env: dev
+      deployment-environment: dev
     secrets: inherit
 
   archipelago-ws-connector-deployment:
@@ -26,5 +26,5 @@ jobs:
     with:
       service-name: archipelago-ws-connector
       image-name: archipelago-workers
-      env: dev
+      deployment-environment: dev
     secrets: inherit
