@@ -6,50 +6,25 @@ on:
       - "main"
 
 jobs:
-  cd:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
+  archipelago-core-deployment:
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
     with:
       service-name: archipelago-workers
+      env: dev
     secrets: inherit
 
-  archipelago-core-deployment:
-    needs: [cd]
-    name: "Deploy core to: dev"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger deployment (archipelago-core)
-        id: deploy
-        uses: decentraland/dcl-deploy-action@main
-        with:
-          dockerImage: "${{ needs.cd.outputs.registry-path }}"
-          serviceName: archipelago-core
-          env: dev
-          token: ${{ secrets.GITHUB_TOKEN }}
+  archipelago-stats-deployment:
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
+    with:
+      service-name: archipelago-stats
+      image-name: archipelago-workers
+      env: dev
+    secrets: inherit
 
   archipelago-ws-connector-deployment:
-    needs: [cd]
-    name: "Deploy ws-connector to: dev"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger deployment (archipelago-ws-connector)
-        id: deploy
-        uses: decentraland/dcl-deploy-action@main
-        with:
-          dockerImage: "${{ needs.cd.outputs.registry-path }}"
-          serviceName: archipelago-ws-connector
-          env: dev
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  archipelago-stats-deployment:
-    needs: [cd]
-    name: "Deploy archipelago-stats to: dev"
-    runs-on: ubuntu-latest
-    steps:
-      - name: Trigger deployment (archipelago-stats)
-        id: deploy
-        uses: decentraland/dcl-deploy-action@main
-        with:
-          dockerImage: "${{ needs.cd.outputs.registry-path }}"
-          serviceName: archipelago-stats
-          env: dev
-          token: ${{ secrets.GITHUB_TOKEN }}
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
+    with:
+      service-name: archipelago-ws-connector
+      image-name: archipelago-workers
+      env: dev
+    secrets: inherit
