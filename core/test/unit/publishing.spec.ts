@@ -33,6 +33,7 @@ describe('publishing', () => {
     publishServiceDiscoveryMessage(10)
     const message = await s
     const data = ServiceDiscoveryMessage.decode(Reader.create(message.data))
+    console.log(data)
     expect(data).toEqual(
       expect.objectContaining({
         serverName: 'archipelago',

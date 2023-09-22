@@ -1,4 +1,3 @@
-import { encodeJson } from '@well-known-components/nats-component'
 import { BaseComponents, ChangeToIslandUpdate, Island, PeerData } from '../types'
 import {
   IslandStatusMessage,
@@ -6,6 +5,7 @@ import {
   IslandChangedMessage,
   ServiceDiscoveryMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { Writer } from 'protobufjs/minimal'
 
 import { IBaseComponent } from '@well-known-components/interfaces'
 
@@ -20,6 +20,13 @@ export async function createPublisherComponent({
   config
 }: Pick<BaseComponents, 'config' | 'nats'>): Promise<IPublisherComponent> {
   const commitHash = await config.getString('COMMIT_HASH')
+  // we use a shared writer to reduce allocations and leverage its allocation pool
+  const writer = new Writer()
+  function craftMessage<T>(encode: (message: T, writer?: Writer | undefined) => Writer, message: T): Uint8Array {
+    writer.reset()
+    encode(message, writer)
+    return writer.finish()
+  }
 
   function onChangeToIsland(peerId: string, toIsland: Island, update: ChangeToIslandUpdate) {
     const islandChangedMessage: IslandChangedMessage = {
@@ -38,7 +45,10 @@ export async function createPublisherComponent({
     if (update.fromIslandId) {
       islandChangedMessage.fromIslandId = update.fromIslandId
     }
-    nats.publish(`engine.peer.${peerId}.island_changed`, IslandChangedMessage.encode(islandChangedMessage).finish())
+    nats.publish(
+      `engine.peer.${peerId}.island_changed`,
+      craftMessage(IslandChangedMessage.encode, islandChangedMessage)
+    )
   }
 
   function publishServiceDiscoveryMessage(userCount: number) {
@@ -50,7 +60,7 @@ export async function createPublisherComponent({
         userCount
       }
     }
-    nats.publish('engine.discovery', ServiceDiscoveryMessage.encode(serviceDiscoveryMessage).finish())
+    nats.publish('engine.discovery', craftMessage(ServiceDiscoveryMessage.encode, serviceDiscoveryMessage))
   }
 
   function publishIslandsReport(islands: Island[]) {
@@ -67,7 +77,7 @@ export async function createPublisherComponent({
         peers: i.peers.map((p) => p.id)
       }
     })
-    nats.publish('engine.islands', IslandStatusMessage.encode({ data }).finish())
+    nats.publish('engine.islands', craftMessage(IslandStatusMessage.encode, { data }))
   }
 
   return {
