@@ -7,14 +7,15 @@ on:
 
 jobs:
   archipelago-core-deployment:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:
-      service-name: archipelago-workers
+      service-name: archipelago-core
+      image-name: archipelago-workers
       deployment-environment: dev
     secrets: inherit
 
   archipelago-stats-deployment:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:
       service-name: archipelago-stats
       image-name: archipelago-workers
@@ -22,7 +23,7 @@ jobs:
     secrets: inherit
 
   archipelago-ws-connector-deployment:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@test4
+    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:
       service-name: archipelago-ws-connector
       image-name: archipelago-workers
