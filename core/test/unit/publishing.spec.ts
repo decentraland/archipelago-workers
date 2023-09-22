@@ -1,4 +1,3 @@
-import { Reader } from 'protobufjs/minimal'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLocalNatsComponent, decodeJson } from '@well-known-components/nats-component'
 import { IslandStatusMessage, ServiceDiscoveryMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
@@ -32,8 +31,7 @@ describe('publishing', () => {
     const { publishServiceDiscoveryMessage } = await createPublisherComponent({ nats, config })
     publishServiceDiscoveryMessage(10)
     const message = await s
-    const data = ServiceDiscoveryMessage.decode(Reader.create(message.data))
-    console.log(data)
+    const data = ServiceDiscoveryMessage.decode(message.data)
     expect(data).toEqual(
       expect.objectContaining({
         serverName: 'archipelago',
@@ -62,7 +60,7 @@ describe('publishing', () => {
     const { publishIslandsReport } = await createPublisherComponent({ nats, config })
     publishIslandsReport(islands)
     const message = await s
-    const { data } = IslandStatusMessage.decode(Reader.create(message.data))
+    const { data } = IslandStatusMessage.decode(message.data)
     expect(data).toHaveLength(1)
     expect(data).toEqual(
       expect.arrayContaining([
