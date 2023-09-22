@@ -50,7 +50,7 @@ export async function createPublisherComponent({
         userCount
       }
     }
-    nats.publish('engine.discovery', encodeJson(serviceDiscoveryMessage))
+    nats.publish('engine.discovery', ServiceDiscoveryMessage.encode(serviceDiscoveryMessage).finish())
   }
 
   function publishIslandsReport(islands: Island[]) {
