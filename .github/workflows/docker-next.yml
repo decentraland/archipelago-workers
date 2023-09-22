@@ -21,7 +21,7 @@ jobs:
         id: deploy
         uses: decentraland/dcl-deploy-action@main
         with:
-          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          dockerImage: "${{ needs.cd.outputs.registry-path }}"
           serviceName: archipelago-core
           env: dev
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -35,7 +35,7 @@ jobs:
         id: deploy
         uses: decentraland/dcl-deploy-action@main
         with:
-          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          dockerImage: "${{ needs.cd.outputs.registry-path }}"
           serviceName: archipelago-ws-connector
           env: dev
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -49,7 +49,7 @@ jobs:
         id: deploy
         uses: decentraland/dcl-deploy-action@main
         with:
-          dockerImage: "quay.io/decentraland/archipelago-workers:next"
+          dockerImage: "${{ needs.cd.outputs.registry-path }}"
           serviceName: archipelago-stats
           env: dev
           token: ${{ secrets.GITHUB_TOKEN }}
