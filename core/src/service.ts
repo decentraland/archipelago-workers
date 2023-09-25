@@ -41,7 +41,6 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
         if (update.action === 'changeTo') {
           const island = engine.getIsland(update.islandId)!
           logger.debug(`Publishing island change for ${peerId}`)
-          metrics.increment('dcl_archipelago_change_island_count', {})
           publisher.onChangeToIsland(peerId, island, update)
         } else if (update.action === 'leave') {
           // NOTE: we are not sending join/leave messages anymore

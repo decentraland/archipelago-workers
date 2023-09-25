@@ -12,10 +12,6 @@ export const metricDeclarations = {
   dcl_archipelago_islands_count: {
     help: 'Number of live islands',
     type: IMetricsComponent.GaugeType
-  },
-  dcl_archipelago_change_island_count: {
-    help: 'Count change island messages',
-    type: IMetricsComponent.CounterType
   }
 }
 
