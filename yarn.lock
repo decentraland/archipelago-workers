@@ -3931,14 +3931,15 @@ lines-and-columns@^1.1.6:
   resolved "https://registry.yarnpkg.com/lines-and-columns/-/lines-and-columns-1.2.4.tgz#eca284f75d2965079309dc0ad9255abb2ebc1632"
   integrity sha512-7ylylesZQ/PV29jhEDl3Ufjo6ZX7gCqJr5F7PKrqc93v7fzSymt1BpwEU8nAUXs8qzzvqhbjhK5QZg6Mt/HkBg==
 
-livekit-server-sdk@^1.2.5:
-  version "1.2.5"
-  resolved "https://registry.yarnpkg.com/livekit-server-sdk/-/livekit-server-sdk-1.2.5.tgz#2a30f2d1897acd042acd0d723895205c17c9c8d0"
-  integrity sha512-QYHGEoilSAXUQQBAZE2SXU1oXW8z08VFp2UxcZzXdPt3u4E9xamghTMhgniLMWmpSCl7oqVObQ6XXnK9rkr0Pg==
+livekit-server-sdk@^1.2.6:
+  version "1.2.6"
+  resolved "https://registry.yarnpkg.com/livekit-server-sdk/-/livekit-server-sdk-1.2.6.tgz#0f336b2851f6580861f015ceb43e27937d79d020"
+  integrity sha512-Oc3lArzsyS3zzjQcTMqb3mnzHXTch0g8p4GqOcuaDaeo7J7vbf0soFUd94vURgqBq5h7wOTOOi7DlC2S0nj6LA==
   dependencies:
     axios "^1.3.6"
     camelcase-keys "^7.0.0"
     jsonwebtoken "^9.0.0"
+    long "^5.0.0"
     protobufjs "^7.2.4"
 
 locate-path@^3.0.0:
