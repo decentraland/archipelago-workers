@@ -17,7 +17,7 @@ export async function initComponents(): Promise<AppComponents> {
   const logs = await createLogComponent({})
 
   const metrics = await createMetricsComponent(metricDeclarations, { config })
-  const server = await createUwsHttpServer<GlobalContext>({ config, logs }, { compression: false })
+  const server = await createUwsHttpServer<GlobalContext>({ config, logs }, { compression: false, idleTimeout: 90 })
   await instrumentHttpServerWithMetrics({ server, metrics, config })
 
   const statusChecks = await createStatusCheckComponent({ server, config })
