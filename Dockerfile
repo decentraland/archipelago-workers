@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:lts-slim as builderenv
+FROM node:18-slim as builderenv
 
 WORKDIR /app
 
@@ -20,7 +20,7 @@ RUN yarn install --prod --frozen-lockfile
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:lts-slim
+FROM node:18-slim
 
 RUN apt-get update
 RUN apt-get upgrade -y
