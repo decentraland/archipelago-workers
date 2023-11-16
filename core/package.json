@@ -17,7 +17,7 @@
     "@types/lodash.get": "^4.4.7",
     "@types/node": "^14.17.33",
     "@types/ws": "^8.5.3",
-    "@well-known-components/test-helpers": "^1.5.3",
+    "@well-known-components/test-helpers": "^1.5.4",
     "assert": "^2.0.0",
     "ebnf": "^1.9.0",
     "eth-crypto": "^2.6.0",
