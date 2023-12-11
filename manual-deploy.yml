@@ -1,0 +1,42 @@
+name: Manual deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      service-name:
+        required: true
+        type: choice
+        options:
+          - archipelago-core
+          - archipelago-ws-connector
+          - archipelago-stats
+        description: Service name
+      deployment-environment:
+        required: true
+        type: choice
+        options:
+          - prd
+          - dev
+        default: prd
+        description: Environment
+      tag:
+        required: true
+        default: "latest"
+        type: string
+        description: "Docker tag (quay.io)"
+
+jobs:
+  deployment:
+    if: ${{ inputs.deployment-environment }} && ${{ inputs.service-name }}
+    name: "Deploy ${{ inputs.service-name }} to: ${{ inputs.deployment-environment }}"
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.deployment-environment }}
+    steps:
+      - name: Trigger deployment
+        id: deploy
+        uses: decentraland/dcl-deploy-action@main
+        with:
+          dockerImage: "quay.io/decentraland/archipelago-workers:${{ inputs.tag }}"
+          serviceName: ${{ inputs.service-name }}
+          env: ${{ inputs.deployment-environment }}
+          token: ${{ secrets.GITHUB_TOKEN }}
