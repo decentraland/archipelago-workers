@@ -11,10 +11,13 @@ import { statusHandler } from './handlers/status-handler'
 export async function setupRouter(_: GlobalContext): Promise<Router<GlobalContext>> {
   const router = new Router<GlobalContext>()
 
-  router.get('/parcels', parcelsHandler)
-  router.get('/peers', peersHandler)
-  router.get('/islands', islandsHandler)
-  router.get('/islands/:id', islandHandler)
+  // NOTE(hugo): we also support /comms prefix for backwards compatibility
+  for (const prefix of ['', '/comms']) {
+    router.get(prefix + '/parcels', parcelsHandler)
+    router.get(prefix + '/peers', peersHandler)
+    router.get(prefix + '/islands', islandsHandler)
+    router.get(prefix + '/islands/:id', islandHandler)
+  }
   router.get('/core-status', coreStatusHandler)
   router.get('/status', statusHandler)
 
