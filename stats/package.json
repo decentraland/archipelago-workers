@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6276153891.commit-3946d15.tgz",
-    "@dcl/schemas": "^9.11.1",
+    "@dcl/schemas": "^9.12.0",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/fetch-component": "^2.0.2",
     "@well-known-components/http-server": "^2.0.0",
