@@ -10,7 +10,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "@dcl/eslint-config": "^1.1.13",
+    "@dcl/eslint-config": "^2.0.0",
     "@types/assert": "^1.5.6",
     "@types/glob": "^7.2.0",
     "@types/google-protobuf": "^3.15.6",
