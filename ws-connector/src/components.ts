@@ -1,14 +1,12 @@
 import { HTTPProvider } from 'eth-connect'
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createStatusCheckComponent } from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
-import { AppComponents, GlobalContext } from './types'
+import { AppComponents } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
-import { createUwsHttpServer } from '@well-known-components/http-server/dist/uws'
 import { createPeersRegistry } from './adapters/peers-registry'
 import { createFetchComponent } from '@well-known-components/fetch-component'
+import { createUWsComponent, createMetricsComponent } from '@well-known-components/uws-http-server'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {
@@ -17,10 +15,8 @@ export async function initComponents(): Promise<AppComponents> {
   const logs = await createLogComponent({})
 
   const metrics = await createMetricsComponent(metricDeclarations, { config })
-  const server = await createUwsHttpServer<GlobalContext>({ config, logs }, { compression: false, idleTimeout: 90 })
-  await instrumentHttpServerWithMetrics({ server, metrics, config })
+  const server = await createUWsComponent({ config, logs })
 
-  const statusChecks = await createStatusCheckComponent({ server, config })
   const fetch = createFetchComponent()
   const nats = await createNatsComponent({ config, logs })
   const peersRegistry = await createPeersRegistry()
@@ -35,7 +31,6 @@ export async function initComponents(): Promise<AppComponents> {
     config,
     logs,
     server,
-    statusChecks,
     fetch,
     metrics,
     nats,

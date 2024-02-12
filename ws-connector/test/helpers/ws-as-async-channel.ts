@@ -1,15 +1,11 @@
 import { AsyncQueue } from '@well-known-components/pushable-channel'
+import { WebSocket } from 'ws'
 
-import { InternalWebSocket } from '../types'
-
-export function wsAsAsyncChannel<Packet>(
-  socket: Pick<InternalWebSocket, 'on' | 'emit' | 'off' | 'end'>,
-  decoder: (data: Uint8Array) => Packet
-) {
+export function wsAsAsyncChannel<Packet>(socket: WebSocket, decoder: (data: Uint8Array) => Packet) {
   // Wire the socket to a pushable channel
   const channel = new AsyncQueue<Packet>((queue, action) => {
     if (action === 'close') {
-      socket.off('message')
+      socket.off('message', processMessage)
       socket.off('close', closeChannel)
     }
   })
@@ -19,7 +15,7 @@ export function wsAsAsyncChannel<Packet>(
     } catch (error: any) {
       socket.emit('error', error)
       try {
-        socket.end()
+        socket.close()
       } catch {}
     }
   }

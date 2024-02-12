@@ -9,19 +9,22 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   // start ports: db, listeners, synchronizations, etc
   await startComponents()
 
-  const { nats, config, logs, metrics, publisher, engine } = components
+  const { nats, config, logs, publisher, engine } = components
 
   const flushFrequency = await config.requireNumber('ARCHIPELAGO_FLUSH_FREQUENCY')
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
   const logger = logs.getLogger('core')
 
-  setInterval(() => {
-    try {
-      publisher.publishServiceDiscoveryMessage(engine.getPeerCount())
-    } catch (err: any) {
-      logger.error(err)
-    }
-  }, (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? 10000)
+  setInterval(
+    () => {
+      try {
+        publisher.publishServiceDiscoveryMessage(engine.getPeerCount())
+      } catch (err: any) {
+        logger.error(err)
+      }
+    },
+    (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? 10000
+  )
 
   const lastPeerHeartbeats = new Map<string, number>()
   async function loop() {
