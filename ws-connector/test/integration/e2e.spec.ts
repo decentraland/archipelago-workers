@@ -1,12 +1,9 @@
-import { wsAsAsyncChannel } from '../../src/logic/ws-as-async-channel'
+import { wsAsAsyncChannel } from '../helpers/ws-as-async-channel'
 import { test } from '../components'
 import { createEphemeralIdentity } from '../helpers/identity'
 import { future } from 'fp-future'
 import { WebSocket } from 'ws'
 import { URL } from 'url'
-import mitt from 'mitt'
-import { InternalWebSocket } from '../../src/types'
-import { WsEvents } from '@well-known-components/http-server/dist/uws'
 import {
   ChallengeResponseMessage,
   ClientPacket,
@@ -31,38 +28,12 @@ test('end to end test', ({ components }) => {
       'HTTP_SERVER_HOST'
     )}:${await components.config.requireNumber('HTTP_SERVER_PORT')}`
     const url = new URL(relativeUrl, protocolHostAndProtocol).toString()
-    const ws = new WebSocket(url) as any
-    ws.end = ws.terminate
-    return ws
-  }
-
-  function adaptSocket(sock: WebSocket): Pick<InternalWebSocket, 'on' | 'off' | 'emit' | 'end'> {
-    const events = mitt<WsEvents>()
-
-    sock.addEventListener('message', (evt) => {
-      events.emit('message', evt.data as ArrayBuffer)
-    })
-    sock.addEventListener('close', (_) => {
-      events.emit('close')
-    })
-    sock.addEventListener('error', (_) => {
-      events.emit('error')
-    })
-    sock.addEventListener('open', (_) => {
-      events.emit('open')
-    })
-
-    return {
-      ...events,
-      end() {
-        sock.close()
-      }
-    }
+    return new WebSocket(url)
   }
 
   async function connectSocket(identity: ReturnType<typeof createEphemeralIdentity>) {
     const ws = await createWs('/ws')
-    const channel = wsAsAsyncChannel<ServerPacket>(adaptSocket(ws), ServerPacket.decode)
+    const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
 
     await socketConnected(ws)
     await socketSend(
@@ -118,6 +89,45 @@ test('end to end test', ({ components }) => {
     await socketConnected(ws)
     await socketSend(ws, new Uint8Array([1, 2, 3, 4, 5, 6]))
     await fut
+  })
+
+  it('sends different address', async () => {
+    const ws = await createWs('/ws')
+    const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
+
+    await socketConnected(ws)
+    await socketSend(
+      ws,
+      ClientPacket.encode({
+        message: {
+          $case: 'challengeRequest',
+          challengeRequest: { address: bobIdentity.address }
+        }
+      }).finish()
+    )
+
+    // get the challenge from the server
+    let packet = await channel.yield(0, 'challenge message did not arrive for ' + bobIdentity.address)
+
+    const challengeMessage = expectPacket<ChallengeResponseMessage>(packet, 'challengeResponse')
+
+    // sign the challenge
+    const authChainJson = JSON.stringify(await aliceIdentity.sign(challengeMessage.challengeToSign))
+    await socketSend(
+      ws,
+      ClientPacket.encode({
+        message: {
+          $case: 'signedChallenge',
+          signedChallenge: { authChainJson }
+        }
+      }).finish()
+    )
+
+    // expect welcome message from server
+    packet = await channel.yield(0, 'welcome message did not arrive for ' + aliceIdentity.address)
+    const welcomeMessage = expectPacket<WelcomeMessage>(packet, 'welcome')
+    expect(welcomeMessage.peerId).toEqual(aliceIdentity.address.toLowerCase())
+    ws.close()
   })
 
   it('connects the websocket and authenticates', async () => {

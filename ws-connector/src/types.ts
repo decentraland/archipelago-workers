@@ -1,19 +1,15 @@
 import { HTTPProvider } from 'eth-connect'
-import type { IFetchComponent } from '@well-known-components/http-server'
 import type {
   IConfigComponent,
   ILoggerComponent,
-  IHttpServerComponent,
-  IBaseComponent,
-  IMetricsComponent
+  IMetricsComponent,
+  IFetchComponent
 } from '@well-known-components/interfaces'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
-import { WsUserData } from '@well-known-components/http-server/dist/uws'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
-
-export type Position3D = [number, number, number]
-export type TransportType = 'unknown' | 'livekit' | 'ws' | 'p2p'
+import { IUWsComponent } from '@well-known-components/uws-http-server'
+import * as uws from 'uWebSockets.js'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -23,7 +19,7 @@ export type GlobalContext = {
 export type BaseComponents = {
   config: IConfigComponent
   logs: ILoggerComponent
-  server: IHttpServerComponent<GlobalContext>
+  server: IUWsComponent
   fetch: IFetchComponent
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
@@ -32,9 +28,7 @@ export type BaseComponents = {
 }
 
 // components used in runtime
-export type AppComponents = BaseComponents & {
-  statusChecks: IBaseComponent
-}
+export type AppComponents = BaseComponents & {}
 
 // components used in tests
 export type TestComponents = BaseComponents & {
@@ -42,21 +36,43 @@ export type TestComponents = BaseComponents & {
   localFetch: IFetchComponent
 }
 
-// this type simplifies the typings of http handlers
-export type HandlerContextWithPath<
-  ComponentNames extends keyof AppComponents,
-  Path extends string = any
-> = IHttpServerComponent.PathAwareContext<
-  IHttpServerComponent.DefaultContext<{
-    components: Pick<AppComponents, ComponentNames>
-  }>,
-  Path
->
-
 export type Parcel = [number, number]
 
-export type Context<Path extends string = any> = IHttpServerComponent.PathAwareContext<GlobalContext, Path>
+export type JsonBody = Record<string, any>
+export type ResponseBody = JsonBody | string
 
-export type InternalWebSocket = WsUserData & {
-  address: string
+export type IHandlerResult = {
+  status?: number
+  headers?: Record<string, string>
+  body?: ResponseBody
 }
+
+export type IHandler = {
+  path: string
+  f: (res: uws.HttpResponse, req: uws.HttpRequest) => Promise<IHandlerResult>
+}
+
+export enum Stage {
+  HANDSHAKE_START,
+  HANDSHAKE_CHALLENGE_SENT,
+  HANDSHAKE_COMPLETED
+}
+
+export type WsUserData = {
+  timeout?: NodeJS.Timeout
+  address?: string
+} & (
+  | {
+      stage: Stage.HANDSHAKE_START
+    }
+  | {
+      stage: Stage.HANDSHAKE_CHALLENGE_SENT
+      challengeToSign: string
+    }
+  | {
+      stage: Stage.HANDSHAKE_COMPLETED
+      address: string
+    }
+)
+
+export type InternalWebSocket = uws.WebSocket<WsUserData>

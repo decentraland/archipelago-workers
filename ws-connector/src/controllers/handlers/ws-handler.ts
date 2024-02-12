@@ -1,74 +1,192 @@
-import { ClientPacket, Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { upgradeWebSocketResponse } from '@well-known-components/http-server/dist/ws'
+import {
+  ClientPacket,
+  Heartbeat,
+  KickedReason
+} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { craftMessage } from '../../logic/craft-message'
-import { handleSocketLinearProtocol } from '../../logic/handle-linear-protocol'
-import { HandlerContextWithPath, InternalWebSocket } from '../../types'
+import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types'
+import { EthAddress, AuthChain } from '@dcl/schemas'
+import { normalizeAddress } from '../../logic/address'
+import { Authenticator } from '@dcl/crypto'
 
-export async function websocketHandler(
-  context: HandlerContextWithPath<'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats', '/ws'>
+export async function registerWsHandler(
+  components: Pick<AppComponents, 'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server'>
 ) {
-  const { logs, peersRegistry, nats } = context.components
+  const { logs, peersRegistry, nats, server, config, ethereumProvider } = components
   const logger = logs.getLogger('Websocket Handler')
 
-  logger.debug('Websocket requested ')
-  return upgradeWebSocketResponse((socket) => {
-    const ws = socket as any as InternalWebSocket
+  const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
 
-    ws.on('error', (error) => {
-      logger.error('ws-error')
-      logger.error(error)
+  function startTimeoutHandler(ws: InternalWebSocket) {
+    const data = ws.getUserData()
+    data.timeout = setTimeout(() => {
       try {
+        logger.debug(`Terminating socket in stage: ${data.stage} because of timeout`)
         ws.end()
-      } catch {}
-    })
+      } catch (err) {}
+    }, timeout_ms)
+  }
 
-    ws.on('close', () => {
-      logger.debug('Websocket closed')
-    })
+  function changeStage(data: WsUserData, newData: WsUserData) {
+    Object.assign(data, newData)
+  }
 
-    handleSocketLinearProtocol(context.components, ws)
-      .then(() => {
-        peersRegistry.onPeerConnected(ws.address!, ws)
+  // TODO http metrics
+  server.app.ws<WsUserData>('/ws', {
+    idleTimeout: 90,
+    upgrade: (res, req, context) => {
+      /* This immediately calls open handler, you must not use res after this call */
+      res.upgrade(
+        {
+          stage: Stage.HANDSHAKE_START
+        },
+        req.getHeader('sec-websocket-key'),
+        req.getHeader('sec-websocket-protocol'),
+        req.getHeader('sec-websocket-extensions'),
+        context
+      )
+    },
+    open: (ws) => {
+      startTimeoutHandler(ws)
+    },
+    message: async (ws, message) => {
+      const userData = ws.getUserData()
+      if (userData.timeout) {
+        clearTimeout(userData.timeout)
+        userData.timeout = undefined
+      }
 
-        const welcomeMessage = craftMessage({
-          message: {
-            $case: 'welcome',
-            welcome: { peerId: ws.address! }
-          }
-        })
-        if (ws.send(welcomeMessage, true) !== 1) {
-          logger.error('Closing connection: cannot send welcome')
-          ws.close()
-          return
-        }
+      try {
+        const packet = ClientPacket.decode(Buffer.from(message))
 
-        logger.debug(`Welcome sent`, { address: ws.address! })
-
-        ws.on('close', () => {
-          if (ws.address) {
-            peersRegistry.onPeerDisconnected(ws.address)
-            nats.publish(`peer.${ws.address}.disconnect`)
-          }
-        })
-
-        ws.on('message', (data) => {
-          const { message } = ClientPacket.decode(Buffer.from(data))
-          if (!message) {
-            return
-          }
-          switch (message.$case) {
-            case 'heartbeat': {
-              nats.publish(`peer.${ws.address!}.heartbeat`, Heartbeat.encode(message.heartbeat).finish())
-              break
+        switch (userData.stage) {
+          case Stage.HANDSHAKE_START: {
+            if (!packet.message || packet.message.$case !== 'challengeRequest') {
+              logger.debug('Invalid protocol. challengeRequest packet missed')
+              ws.end()
+              return
             }
+            if (!EthAddress.validate(packet.message.challengeRequest.address)) {
+              logger.debug('Invalid protocol. challengeRequest has an invalid address')
+              ws.end()
+              return
+            }
+
+            const address = normalizeAddress(packet.message.challengeRequest.address)
+
+            const challengeToSign = 'dcl-' + Math.random().toString(36)
+            const previousWs = peersRegistry.getPeerWs(address)
+            const alreadyConnected = !!previousWs
+            logger.debug('Generating challenge', {
+              challengeToSign,
+              address,
+              alreadyConnected: alreadyConnected + ''
+            })
+
+            const challengeMessage = craftMessage({
+              message: {
+                $case: 'challengeResponse',
+                challengeResponse: { alreadyConnected, challengeToSign }
+              }
+            })
+
+            if (ws.send(challengeMessage, true) !== 1) {
+              logger.error('Closing connection: cannot send challenge')
+              ws.close()
+              return
+            }
+
+            changeStage(userData, {
+              stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+              challengeToSign
+            })
+            startTimeoutHandler(ws)
+            break
           }
-        })
-      })
-      .catch((err: any) => {
+          case Stage.HANDSHAKE_CHALLENGE_SENT: {
+            if (!packet.message || packet.message.$case !== 'signedChallenge') {
+              logger.debug('Invalid protocol. signedChallengeForServer packet missed')
+              ws.end()
+              return
+            }
+
+            const authChain = JSON.parse(packet.message.signedChallenge.authChainJson)
+            if (!AuthChain.validate(authChain)) {
+              logger.debug('Invalid auth chain')
+              ws.end()
+              return
+            }
+
+            const result = await Authenticator.validateSignature(userData.challengeToSign, authChain, ethereumProvider)
+
+            if (result.ok) {
+              const address = normalizeAddress(authChain[0].payload)
+              logger.debug(`Authentication successful`, { address })
+
+              const previousWs = peersRegistry.getPeerWs(address)
+              if (previousWs) {
+                logger.debug('Sending kick message')
+                const kickedMessage = craftMessage({
+                  message: {
+                    $case: 'kicked',
+                    kicked: { reason: KickedReason.KR_NEW_SESSION }
+                  }
+                })
+                if (previousWs.send(kickedMessage, true) !== 1) {
+                  logger.error('Closing connection: cannot send kicked message')
+                }
+                previousWs.end()
+              }
+
+              peersRegistry.onPeerConnected(address, ws)
+
+              const welcomeMessage = craftMessage({
+                message: {
+                  $case: 'welcome',
+                  welcome: { peerId: address }
+                }
+              })
+              if (ws.send(welcomeMessage, true) !== 1) {
+                logger.error('Closing connection: cannot send welcome')
+                ws.close()
+                return
+              }
+
+              logger.debug(`Welcome sent`, { address })
+
+              changeStage(userData, {
+                stage: Stage.HANDSHAKE_COMPLETED,
+                address
+              })
+            } else {
+              logger.warn(`Authentication failed`, { message: result.message } as any)
+              ws.end()
+            }
+            break
+          }
+          case Stage.HANDSHAKE_COMPLETED: {
+            if (packet.message && packet.message.$case === 'heartbeat') {
+              nats.publish(`peer.${userData.address}.heartbeat`, Heartbeat.encode(packet.message.heartbeat).finish())
+            }
+            break
+          }
+          default: {
+            logger.error('Invalid stage')
+            break
+          }
+        }
+      } catch (err: any) {
         logger.error(err)
-        try {
-          ws.end()
-        } catch {}
-      })
+        ws.end()
+      }
+    },
+    close: (ws, code, message) => {
+      logger.debug(`Websocket closed ${code} ${message}`)
+      const data = ws.getUserData()
+      if (data.address) {
+        peersRegistry.onPeerDisconnected(data.address)
+        nats.publish(`peer.${data.address}.disconnect`)
+      }
+    }
   })
 }
