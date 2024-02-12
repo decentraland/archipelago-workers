@@ -28,7 +28,7 @@ export type BaseComponents = {
 }
 
 // components used in runtime
-export type AppComponents = BaseComponents & {}
+export type AppComponents = BaseComponents
 
 // components used in tests
 export type TestComponents = BaseComponents & {
