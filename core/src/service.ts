@@ -15,13 +15,16 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   const checkHeartbeatInterval = await config.requireNumber('CHECK_HEARTBEAT_INTERVAL')
   const logger = logs.getLogger('core')
 
-  setInterval(() => {
-    try {
-      publisher.publishServiceDiscoveryMessage(engine.getPeerCount())
-    } catch (err: any) {
-      logger.error(err)
-    }
-  }, (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? 10000)
+  setInterval(
+    () => {
+      try {
+        publisher.publishServiceDiscoveryMessage(engine.getPeerCount())
+      } catch (err: any) {
+        logger.error(err)
+      }
+    },
+    (await config.getNumber('ARCHIPELAGO_STATUS_UPDATE_INTERVAL')) ?? 10000
+  )
 
   const lastPeerHeartbeats = new Map<string, number>()
   async function loop() {

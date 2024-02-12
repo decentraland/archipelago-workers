@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "@dcl/crypto": "^3.4.5",
+    "@dcl/eslint-config": "^2.0.0",
     "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6276153891.commit-3946d15.tgz",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/fetch-component": "^2.0.2",
