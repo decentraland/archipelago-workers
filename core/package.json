@@ -11,6 +11,7 @@
   "license": "Apache-2.0",
   "devDependencies": {
     "@dcl/eslint-config": "^1.1.13",
+    "@dcl/schemas": "^10.2.0",
     "@types/assert": "^1.5.6",
     "@types/glob": "^7.2.0",
     "@types/google-protobuf": "^3.15.6",
@@ -37,7 +38,6 @@
   "dependencies": {
     "@dcl/crypto": "^3.4.5",
     "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6276153891.commit-3946d15.tgz",
-    "@dcl/schemas": "^9.12.0",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/http-server": "^2.0.0",
     "@well-known-components/interfaces": "^1.4.2",
