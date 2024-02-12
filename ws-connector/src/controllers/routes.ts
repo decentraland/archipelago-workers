@@ -1,9 +1,14 @@
 import { Router } from '@well-known-components/http-server'
-import { createMetricsHandler, onRequestEnd, onRequestStart } from '@well-known-components/uws-http-server'
+import {
+  HttpRequest,
+  HttpResponse,
+  createMetricsHandler,
+  onRequestEnd,
+  onRequestStart
+} from '@well-known-components/uws-http-server'
 import { GlobalContext, IHandler } from '../types'
 import { createStatusHandler } from './handlers/status-handler'
 import { registerWsHandler } from './handlers/ws-handler'
-import { HttpRequest, HttpResponse } from 'uWebSockets.js'
 
 // We return the entire router because it will be easier to test than a whole server
 export async function setupRoutes(context: GlobalContext): Promise<Router<GlobalContext>> {

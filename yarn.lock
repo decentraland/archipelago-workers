@@ -1571,10 +1571,10 @@
     sinon "^17.0.0"
     ts-jest "^29.1.0"
 
-"@well-known-components/uws-http-server@^0.0.1-20240209211104.commit-8ea3bf4":
-  version "0.0.1-20240209211104.commit-8ea3bf4"
-  resolved "https://registry.yarnpkg.com/@well-known-components/uws-http-server/-/uws-http-server-0.0.1-20240209211104.commit-8ea3bf4.tgz#ba3d2098ec00152aa790adbdc170ffeb049f1c53"
-  integrity sha512-t8PLwwcmTWjM2mW318YVNf4pIdNCLJFEJVDjOc5Gam66TMrYmwT3/T7VkyTPPDnD54/LpsWt2wc6eH+WvIIQqA==
+"@well-known-components/uws-http-server@^0.0.1-20240212165828.commit-d5f5caf":
+  version "0.0.1-20240212165828.commit-d5f5caf"
+  resolved "https://registry.yarnpkg.com/@well-known-components/uws-http-server/-/uws-http-server-0.0.1-20240212165828.commit-d5f5caf.tgz#8e8e2918bdd74ddfb9f4d580eb52bf0110419d16"
+  integrity sha512-2j7qNjK4CcXRPO/cE6mjvNTTBNgyTSzUd/fNXBJXs24esgLiE+XrpDdM+aiUDezrRQ+pw7EZ5YaWAq4OuUBBDQ==
   dependencies:
     "@well-known-components/interfaces" "^1.4.2"
     prom-client "^15.1.0"
@@ -4706,7 +4706,7 @@ secp256k1@^4.0.1:
     node-addon-api "^2.0.0"
     node-gyp-build "^4.2.0"
 
-semver@^6.0.0, semver@^6.3.0, semver@^6.3.1:
+semver@^6.0.0, semver@^6.3.0:
   version "6.3.1"
   resolved "https://registry.yarnpkg.com/semver/-/semver-6.3.1.tgz#556d2ef8689146e46dcea4bfdd095f3434dffcb4"
   integrity sha512-BR7VvDCVHO+q2xBEWskxS6DJE1qRnb7DxzUrogb71CWoSficBxYsiAGd+Kl0mmq/MprG9yArRkyrQxTO6XjMzA==

@@ -8,11 +8,15 @@ import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types
 import { EthAddress, AuthChain } from '@dcl/schemas'
 import { normalizeAddress } from '../../logic/address'
 import { Authenticator } from '@dcl/crypto'
+import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-server'
 
 export async function registerWsHandler(
-  components: Pick<AppComponents, 'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server'>
+  components: Pick<
+    AppComponents,
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server' | 'metrics'
+  >
 ) {
-  const { logs, peersRegistry, nats, server, config, ethereumProvider } = components
+  const { logs, peersRegistry, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
@@ -31,10 +35,10 @@ export async function registerWsHandler(
     Object.assign(data, newData)
   }
 
-  // TODO http metrics
   server.app.ws<WsUserData>('/ws', {
     idleTimeout: 90,
     upgrade: (res, req, context) => {
+      const { labels, end } = onRequestStart(metrics, req.getMethod(), '/ws')
       /* This immediately calls open handler, you must not use res after this call */
       res.upgrade(
         {
@@ -45,6 +49,7 @@ export async function registerWsHandler(
         req.getHeader('sec-websocket-extensions'),
         context
       )
+      onRequestEnd(metrics, labels, 101, end)
     },
     open: (ws) => {
       startTimeoutHandler(ws)

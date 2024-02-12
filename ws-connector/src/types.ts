@@ -8,8 +8,7 @@ import type {
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
-import { IUWsComponent } from '@well-known-components/uws-http-server'
-import * as uws from 'uWebSockets.js'
+import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@well-known-components/uws-http-server'
 
 export type GlobalContext = {
   components: BaseComponents
@@ -49,7 +48,7 @@ export type IHandlerResult = {
 
 export type IHandler = {
   path: string
-  f: (res: uws.HttpResponse, req: uws.HttpRequest) => Promise<IHandlerResult>
+  f: (res: HttpResponse, req: HttpRequest) => Promise<IHandlerResult>
 }
 
 export enum Stage {
@@ -75,4 +74,4 @@ export type WsUserData = {
     }
 )
 
-export type InternalWebSocket = uws.WebSocket<WsUserData>
+export type InternalWebSocket = WebSocket<WsUserData>
