@@ -38,6 +38,7 @@ export async function registerWsHandler(
   server.app.ws<WsUserData>('/ws', {
     idleTimeout: 90,
     upgrade: (res, req, context) => {
+      logger.debug('upgrade requested')
       const { labels, end } = onRequestStart(metrics, req.getMethod(), '/ws')
       /* This immediately calls open handler, you must not use res after this call */
       res.upgrade(
@@ -52,6 +53,7 @@ export async function registerWsHandler(
       onRequestEnd(metrics, labels, 101, end)
     },
     open: (ws) => {
+      logger.debug('ws open')
       startTimeoutHandler(ws)
     },
     message: async (ws, message) => {
@@ -185,8 +187,8 @@ export async function registerWsHandler(
         ws.end()
       }
     },
-    close: (ws, code, message) => {
-      logger.debug(`Websocket closed ${code} ${message}`)
+    close: (ws, code, _message) => {
+      logger.debug(`Websocket closed ${code}`)
       const data = ws.getUserData()
       if (data.address) {
         peersRegistry.onPeerDisconnected(data.address)
