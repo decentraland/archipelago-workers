@@ -13,7 +13,6 @@ updates:
     - dependency-name: "@well-known-components/*"
     - dependency-name: "dcl-*"
     - dependency-name: "eth-connect"
-    - dependency-name: "livekit-server-sdk"
   versioning-strategy: auto
   commit-message:
     prefix: "chore: "

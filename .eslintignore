@@ -5,3 +5,4 @@ dist/
 *.json
 
 **/src/index.ts
+core/src/logic/livekit.ts
