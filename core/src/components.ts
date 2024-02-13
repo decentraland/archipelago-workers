@@ -7,7 +7,7 @@ import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPublisherComponent } from './adapters/publisher'
 import { createArchipelagoEngine } from './adapters/engine'
-import { AccessToken, TrackSource } from 'livekit-server-sdk'
+import { AccessToken, TrackSource } from './logic/livekit'
 import { IConfigComponent } from '@well-known-components/interfaces'
 
 async function createLivekitTransport(config: IConfigComponent): Promise<Transport> {

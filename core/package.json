@@ -10,7 +10,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "@dcl/eslint-config": "^1.1.13",
+    "@dcl/eslint-config": "^2.0.0",
     "@dcl/schemas": "^10.2.0",
     "@types/assert": "^1.5.6",
     "@types/glob": "^7.2.0",
@@ -37,7 +37,6 @@
   },
   "dependencies": {
     "@dcl/crypto": "^3.4.5",
-    "@dcl/eslint-config": "^2.0.0",
     "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6276153891.commit-3946d15.tgz",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/http-server": "^2.0.0",
@@ -47,6 +46,6 @@
     "@well-known-components/nats-component": "^2.0.0",
     "eth-connect": "^6.2.4",
     "google-protobuf": "^3.20.1",
-    "livekit-server-sdk": "^2.0.1"
+    "jose": "^5.2.2"
   }
 }
