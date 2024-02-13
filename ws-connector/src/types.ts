@@ -10,10 +10,6 @@ import { INatsComponent } from '@well-known-components/nats-component/dist/types
 import { IPeersRegistryComponent } from './adapters/peers-registry'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@well-known-components/uws-http-server'
 
-export type GlobalContext = {
-  components: BaseComponents
-}
-
 // components used in every environment
 export type BaseComponents = {
   config: IConfigComponent

@@ -1,4 +1,3 @@
-import { Router } from '@well-known-components/http-server'
 import {
   HttpRequest,
   HttpResponse,
@@ -6,14 +5,12 @@ import {
   onRequestEnd,
   onRequestStart
 } from '@well-known-components/uws-http-server'
-import { GlobalContext, IHandler } from '../types'
+import { AppComponents, IHandler, TestComponents } from '../types'
 import { createStatusHandler } from './handlers/status-handler'
 import { registerWsHandler } from './handlers/ws-handler'
 
-// We return the entire router because it will be easier to test than a whole server
-export async function setupRoutes(context: GlobalContext): Promise<Router<GlobalContext>> {
-  const router = new Router<GlobalContext>()
-  const { metrics, server } = context.components
+export async function setupRoutes(components: AppComponents | TestComponents): Promise<void> {
+  const { metrics, server } = components
 
   function wrap(h: IHandler) {
     return async (res: HttpResponse, req: HttpRequest) => {
@@ -49,15 +46,15 @@ export async function setupRoutes(context: GlobalContext): Promise<Router<Global
     }
   }
 
-  await registerWsHandler(context.components)
+  await registerWsHandler(components)
 
   {
-    const handler = await createStatusHandler(context.components)
+    const handler = await createStatusHandler(components)
     server.app.get(handler.path, wrap(handler))
   }
 
   {
-    const { path, handler } = await createMetricsHandler(context.components)
+    const { path, handler } = await createMetricsHandler(components)
     server.app.get(path, handler)
   }
 
@@ -81,6 +78,4 @@ export async function setupRoutes(context: GlobalContext): Promise<Router<Global
     res.end(JSON.stringify({ error: 'Not Found' }))
     onRequestEnd(metrics, labels, 404, end)
   })
-
-  return router
 }
