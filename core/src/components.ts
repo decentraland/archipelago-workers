@@ -36,7 +36,7 @@ async function createLivekitTransport(config: IConfigComponent): Promise<Transpo
           canPublishData: true,
           canPublishSources: [TrackSource.MICROPHONE]
         })
-        connStrs[userId] = `livekit:${livekit.host}?access_token=${token.toJwt()}`
+        connStrs[userId] = `livekit:${livekit.host}?access_token=${await token.toJwt()}`
       }
       return connStrs
     }
