@@ -63,9 +63,17 @@ export async function registerWsHandler(
         userData.timeout = undefined
       }
 
-      try {
-        const packet = ClientPacket.decode(Buffer.from(message))
+      let packet: ClientPacket
 
+      try {
+        packet = ClientPacket.decode(Buffer.from(message))
+      } catch (err: any) {
+        logger.error(err)
+        ws.end(1007, Buffer.from('Cannot decode ClientPacket'))
+        return
+      }
+
+      try {
         switch (userData.stage) {
           case Stage.HANDSHAKE_START: {
             if (!packet.message || packet.message.$case !== 'challengeRequest') {
