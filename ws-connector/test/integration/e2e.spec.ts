@@ -83,12 +83,16 @@ test('end to end test', ({ components }) => {
     const ws = await createWs('/ws')
     const fut = futureWithTimeout(3000, 'The socket was not closed')
 
-    ws.on('close', fut.resolve) // resolve on close
+    ws.on('close', (code, reason) => {
+      fut.resolve({ code, reason: reason.toString() })
+    })
     ws.on('message', fut.reject) // fail on timeout and message
 
     await socketConnected(ws)
     await socketSend(ws, new Uint8Array([1, 2, 3, 4, 5, 6]))
-    await fut
+    const { code, reason } = await fut
+    expect(code).toEqual(1007)
+    expect(reason).toEqual('Cannot decode ClientPacket')
   })
 
   it('sends different address', async () => {
