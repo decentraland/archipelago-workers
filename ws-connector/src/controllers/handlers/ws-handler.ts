@@ -68,7 +68,7 @@ export async function registerWsHandler(
       try {
         packet = ClientPacket.decode(Buffer.from(message))
       } catch (err: any) {
-        console.log(Buffer.from(message).toString('hex').match(/../g)!.join(' '))
+        logger.log(Buffer.from(message).toString('hex').match(/../g)!.join(' '))
 
         logger.error(err)
         ws.end(1007, Buffer.from('Cannot decode ClientPacket'))

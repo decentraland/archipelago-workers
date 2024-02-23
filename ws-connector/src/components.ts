@@ -1,5 +1,5 @@
 import { HTTPProvider } from 'eth-connect'
-import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
+import { createConfigComponent, createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
 import { AppComponents } from './types'
 import { metricDeclarations } from './metrics'
@@ -18,7 +18,10 @@ export async function initComponents(): Promise<AppComponents> {
   const server = await createUWsComponent({ config, logs })
 
   const fetch = createFetchComponent()
-  const nats = await createNatsComponent({ config, logs })
+
+  const natsLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'WARN' }) })
+  const nats = await createNatsComponent({ config, logs: natsLogs })
+
   const peersRegistry = await createPeersRegistry()
 
   const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'sepolia'
