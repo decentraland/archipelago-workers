@@ -2,12 +2,13 @@ import { createDotEnvConfigComponent } from '@well-known-components/env-config-p
 import {
   createServerComponent,
   createStatusCheckComponent,
-  IHttpServerOptions
+  IHttpServerOptions,
+  instrumentHttpServerWithPromClientRegistry
 } from '@well-known-components/http-server'
 import { createFetchComponent } from '@well-known-components/fetch-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createNatsComponent } from '@well-known-components/nats-component'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
+import { createMetricsComponent } from '@well-known-components/metrics'
 import { createContentComponent } from './adapters/content'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
@@ -41,7 +42,7 @@ export async function initComponents(): Promise<AppComponents> {
   const clock = createClockComponent()
   const coreStatus = createCoreStatusComponent({ clock })
 
-  await instrumentHttpServerWithMetrics({ server, metrics, config })
+  await instrumentHttpServerWithPromClientRegistry({ server, metrics, config, registry: metrics.registry! })
   return {
     config,
     logs,

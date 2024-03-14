@@ -54,7 +54,7 @@ export async function setupRoutes(components: AppComponents | TestComponents): P
   }
 
   {
-    const { path, handler } = await createMetricsHandler(components)
+    const { path, handler } = await createMetricsHandler(components, metrics.registry!)
     server.app.get(path, handler)
   }
 
