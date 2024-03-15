@@ -1550,12 +1550,11 @@
   resolved "https://registry.yarnpkg.com/@well-known-components/logger/-/logger-3.1.3.tgz#b1f4a76ac5e0d89c276cf339fe44a61f46023d2f"
   integrity sha512-tTjD27CdfU4SVe+kPfjRbPSqdrw0Crg+M31RNejinCuMEBtEGbhYLtB1M4gn+PSTy2Oi3cI3iOdeQ1xVhMSerQ==
 
-"@well-known-components/metrics@^2.0.2-20240314122215.commit-df469cb":
-  version "2.0.2-20240314122215.commit-df469cb"
-  resolved "https://registry.yarnpkg.com/@well-known-components/metrics/-/metrics-2.0.2-20240314122215.commit-df469cb.tgz#98546b0c57660a2df70f4e13bc7a8a870d56e70d"
-  integrity sha512-O7IGqEasy2ykv2YXaIHKRtCp9Tn12RbcqesV0lpjD0KW3Uj814Vi5OJWTlvsH1azSNvmvdVWoHN0pShDocwUrw==
+"@well-known-components/metrics@^2.0.2-20240315125952.commit-847498c":
+  version "2.0.2-20240315125952.commit-847498c"
+  resolved "https://registry.yarnpkg.com/@well-known-components/metrics/-/metrics-2.0.2-20240315125952.commit-847498c.tgz#d777032b946d3d9cdc8787af00c86fd0f6f2c21e"
+  integrity sha512-ugX2PHbWoJgTlQHHREmFfAVGjSr7JRBz8fG0kKxSjlXVVdF+uS0vcwwKf44Y+mo1u3jPchx5i5tsuHDp30OyGA==
   dependencies:
-    "@well-known-components/http-server" "^2.0.1-20240313124908.commit-80c33da"
     prom-client "^15.1.0"
 
 "@well-known-components/nats-component@^2.0.0":
