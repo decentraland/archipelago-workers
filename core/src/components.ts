@@ -1,7 +1,11 @@
 import { createDotEnvConfigComponent } from '@well-known-components/env-config-provider'
-import { createServerComponent, createStatusCheckComponent } from '@well-known-components/http-server'
+import {
+  createServerComponent,
+  createStatusCheckComponent,
+  instrumentHttpServerWithPromClientRegistry
+} from '@well-known-components/http-server'
 import { createLogComponent } from '@well-known-components/logger'
-import { createMetricsComponent, instrumentHttpServerWithMetrics } from '@well-known-components/metrics'
+import { createMetricsComponent } from '@well-known-components/metrics'
 import { AppComponents, GlobalContext, Transport } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
@@ -51,7 +55,7 @@ export async function initComponents(): Promise<AppComponents> {
 
   const metrics = await createMetricsComponent(metricDeclarations, { config })
   const server = await createServerComponent<GlobalContext>({ config, logs }, {})
-  await instrumentHttpServerWithMetrics({ server, metrics, config })
+  await instrumentHttpServerWithPromClientRegistry({ server, metrics, config, registry: metrics.registry! })
 
   const statusChecks = await createStatusCheckComponent({ server, config })
   const nats = await createNatsComponent({ config, logs })
