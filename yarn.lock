@@ -1513,10 +1513,10 @@
     "@well-known-components/interfaces" "^1.4.1"
     cross-fetch "^3.1.5"
 
-"@well-known-components/http-server@^2.0.1-20240313124908.commit-80c33da":
-  version "2.0.1-20240313124908.commit-80c33da"
-  resolved "https://registry.yarnpkg.com/@well-known-components/http-server/-/http-server-2.0.1-20240313124908.commit-80c33da.tgz#8d5cdca3b39784b9fd4eb0702224b9a268444832"
-  integrity sha512-Po6/QodzvbzJYJydBg+8Ga3+JagGyfOm7o9Iweosr/SdfbdPY8+BmvfN3bLaNh0tOkT3UA6uvhqAD4ADCSKoaQ==
+"@well-known-components/http-server@^2.1.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/@well-known-components/http-server/-/http-server-2.1.0.tgz#23a18edc82904b3a575452c2d7e618c7da37a07f"
+  integrity sha512-IHD7aLTA+9DYEchQubHDBwc4FmVEmQC+2TWbi8Tz+QlkiQdtndcuba8XHH+EwqlB5sna/EAJGZGXPxS7okcHKA==
   dependencies:
     "@types/http-errors" "^2.0.1"
     destroy "^1.2.0"
