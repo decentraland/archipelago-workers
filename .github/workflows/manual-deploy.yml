@@ -10,6 +10,9 @@ on:
           - archipelago-core
           - archipelago-ws-connector
           - archipelago-stats
+          - archipelago-ea-core
+          - archipelago-ea-ws-connector
+          - archipelago-ea-stats
         description: Service name
       deployment-environment:
         required: true
