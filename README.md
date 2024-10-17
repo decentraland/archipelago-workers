@@ -1,5 +1,7 @@
 # Archipelago Service
 
+The Archipelago worker is a bundle of services designed to support a standalone realm in Decentraland. It consists of a `core` service that implements the established clustering logic to group users into islands based on their in-world positions. Additionally, the `ws-connector` service provides a WebSocket connection, exposed to Decentraland clients through the [Realm Provider](https://github.com/decentraland/realm-provider/). A `stats` service is also included, aggregating information about islands and peers, making it available for consumption.
+
 ## Getting Started
 
 ### Dependencies
