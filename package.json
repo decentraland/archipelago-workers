@@ -1,10 +1,14 @@
 {
   "name": "archipelago-service",
   "private": true,
-  "workspaces": ["core", "ws-connector", "stats"],
+  "workspaces": [
+    "core",
+    "ws-connector",
+    "stats"
+  ],
   "scripts": {
-    "build": "yarn workspaces run build",
-    "test": "yarn workspaces run test",
+    "build": "yarn workspaces run build",    
+    "test" : "jest --forceExit --detectOpenHandles --coverage --verbose --projects core ws-connector stats",    
     "start:local": "yarn workspace core start & yarn workspace ws-connector start & yarn workspace stats start",
     "lint:check": "eslint '**/*.{js,ts}'",
     "lint:fix": "eslint . --ext .ts --fix"
@@ -12,5 +16,12 @@
   "resolutions": {
     "**/make-dir/semver": "^6.3.1"
   },
-  "license": "Apache-2.0"
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "istanbul": "^0.4.5",
+    "istanbul-combine": "^0.3.0",
+    "jest": "^29.7.0",
+    "jest-sonar-reporter": "^2.0.0",
+    "ts-jest": "^29.2.5"
+  }
 }
