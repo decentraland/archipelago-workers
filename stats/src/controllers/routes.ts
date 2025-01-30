@@ -1,7 +1,7 @@
 import { Router } from '@well-known-components/http-server'
 import { GlobalContext } from '../types'
 import { parcelsHandler } from './handlers/parcels-handler'
-import { peersHandler } from './handlers/peers-handler'
+import { peerHandler, peersHandler } from './handlers/peers-handler'
 import { islandHandler, islandsHandler } from './handlers/islands-handler'
 import { hotScenesHandler } from './handlers/hot-scenes-handler'
 import { coreStatusHandler } from './handlers/core-status-handler'
@@ -15,6 +15,7 @@ export async function setupRouter(_: GlobalContext): Promise<Router<GlobalContex
   for (const prefix of ['', '/comms']) {
     router.get(prefix + '/parcels', parcelsHandler)
     router.get(prefix + '/peers', peersHandler)
+    router.get(prefix + '/peers/:id', peerHandler)
     router.get(prefix + '/islands', islandsHandler)
     router.get(prefix + '/islands/:id', islandHandler)
   }
