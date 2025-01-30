@@ -40,14 +40,19 @@ export async function peersHandler(
   context: Pick<HandlerContextWithPath<'stats', '/peers'>, 'url' | 'components'>
 ): Promise<PeersResponse> {
   const {
+    url,
     components: { stats }
   } = context
+
+  const peerIds = url.searchParams.getAll('id')
 
   const peers = stats.getPeers()
   const result: PeerResult[] = []
 
   for (const peer of peers.values()) {
-    result.push(processPeer(peer))
+    if (!peerIds.length || peerIds.includes(peer.address)) {
+      result.push(processPeer(peer))
+    }
   }
 
   return {

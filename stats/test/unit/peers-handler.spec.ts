@@ -15,7 +15,6 @@ describe('peers-controller-unit', () => {
   describe('/peers', () => {
     it('ok', async () => {
       const url = new URL('https://localhost/peers')
-
       const {
         body: { ok, peers }
       } = await peersHandler({ url, components: { stats } })
@@ -40,6 +39,44 @@ describe('peers-controller-unit', () => {
           }
         ])
       )
+    })
+
+    it('ok with ids', async () => {
+      const url = new URL('https://localhost/peers?id=0x0001&id=0x0002&id=0x0003')
+      const {
+        body: { ok, peers }
+      } = await peersHandler({ url, components: { stats } })
+
+      expect(ok).toEqual(true)
+      expect(peers).toHaveLength(2)
+      expect(peers).toEqual(
+        expect.arrayContaining([
+          {
+            id: '0x0001',
+            address: '0x0001',
+            lastPing: now,
+            parcel: [0, 0],
+            position: [0, 0, 0]
+          },
+          {
+            id: '0x0002',
+            address: '0x0002',
+            lastPing: now,
+            parcel: [100, 100],
+            position: [1600, 1, 1600]
+          }
+        ])
+      )
+    })
+
+    it('ok without peers', async () => {
+      const url = new URL('https://localhost/peers?id=0x0003')
+      const {
+        body: { ok, peers }
+      } = await peersHandler({ url, components: { stats } })
+
+      expect(ok).toEqual(true)
+      expect(peers).toHaveLength(0)
     })
   })
 
