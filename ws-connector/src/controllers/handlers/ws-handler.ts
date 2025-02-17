@@ -110,7 +110,7 @@ export async function registerWsHandler(
             const denyList: Set<string> = await fetchDenyList()
             if (denyList.has(address)) {
               logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
-              ws.end(1008, Buffer.from('Access denied'))
+              ws.close()
               return
             }
 
