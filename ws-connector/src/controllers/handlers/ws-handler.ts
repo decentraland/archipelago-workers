@@ -21,6 +21,25 @@ export async function registerWsHandler(
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
 
+  async function fetchDenyList(): Promise<Set<string>> {
+    try {
+      const response = await fetch('https://config.decentraland.org/denylist.json')
+      if (!response.ok) {
+        throw new Error(`Failed to fetch deny list, status: ${response.status}`)
+      }
+      const data = await response.json()
+      if (data.users && Array.isArray(data.users)) {
+        return new Set(data.users.map((user: { wallet: string }) => normalizeAddress(user.wallet)))
+      } else {
+        logger.warn('Deny list is missing "users" field or it is not an array.')
+        return new Set()
+      }
+    } catch (error) {
+      logger.error(`Error fetching deny list: ${(error as Error).message}`)
+      return new Set()
+    }
+  }
+
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
     data.timeout = setTimeout(() => {
@@ -88,6 +107,12 @@ export async function registerWsHandler(
             }
 
             const address = normalizeAddress(packet.message.challengeRequest.address)
+            const denyList: Set<string> = await fetchDenyList()
+            if (denyList.has(address)) {
+              logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
+              ws.end(1008, Buffer.from('Access denied'))
+              return
+            }
 
             const challengeToSign = 'dcl-' + Math.random().toString(36)
             const previousWs = peersRegistry.getPeerWs(address)
