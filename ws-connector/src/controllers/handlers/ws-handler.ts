@@ -111,7 +111,7 @@ export async function registerWsHandler(
             if (denyList.has(address)) {
               logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
               ws.close()
-              return
+              break
             }
 
             const challengeToSign = 'dcl-' + Math.random().toString(36)
@@ -188,7 +188,10 @@ export async function registerWsHandler(
               })
               if (ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
-                ws.close()
+                const data = ws.getUserData()
+                if (data.address) {
+                  ws.close()
+                }
                 return
               }
 
