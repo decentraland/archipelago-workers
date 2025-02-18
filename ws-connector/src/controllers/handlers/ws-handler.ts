@@ -72,7 +72,9 @@ export async function registerWsHandler(
       onRequestEnd(metrics, labels, 101, end)
     },
     open: (ws) => {
-      logger.debug('ws open')
+      logger.debug('ws opened')
+      const data = ws.getUserData()
+      data.isClosed = false
       startTimeoutHandler(ws)
     },
     message: async (ws, message) => {
@@ -187,9 +189,10 @@ export async function registerWsHandler(
               })
               if (ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
-                const data = ws.getUserData()
-                if (ws && data.address) {
-                  ws.end()
+                const userData = ws.getUserData()
+                if (!userData.isClosed) {
+                  userData.isClosed = true
+                  ws.close()
                 }
                 return
               }
@@ -225,6 +228,7 @@ export async function registerWsHandler(
     close: (ws, code, _message) => {
       logger.debug(`Websocket closed ${code}`)
       const data = ws.getUserData()
+      data.isClosed = true
       if (data.address) {
         peersRegistry.onPeerDisconnected(data.address)
         nats.publish(`peer.${data.address}.disconnect`)

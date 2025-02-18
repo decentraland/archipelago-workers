@@ -56,6 +56,7 @@ export enum Stage {
 export type WsUserData = {
   timeout?: NodeJS.Timeout
   address?: string
+  isClosed?: boolean
 } & (
   | {
       stage: Stage.HANDSHAKE_START
