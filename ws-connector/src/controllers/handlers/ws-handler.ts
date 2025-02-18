@@ -105,13 +105,12 @@ export async function registerWsHandler(
               ws.end()
               return
             }
-
             const address = normalizeAddress(packet.message.challengeRequest.address)
             const denyList: Set<string> = await fetchDenyList()
             if (denyList.has(address)) {
               logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
-              ws.close()
-              break
+              ws.end()
+              return
             }
 
             const challengeToSign = 'dcl-' + Math.random().toString(36)
@@ -189,8 +188,8 @@ export async function registerWsHandler(
               if (ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
                 const data = ws.getUserData()
-                if (data.address) {
-                  ws.close()
+                if (ws && data.address) {
+                  ws.end()
                 }
                 return
               }
