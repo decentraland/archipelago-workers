@@ -187,8 +187,14 @@ export async function registerWsHandler(
                   welcome: { peerId: address }
                 }
               })
+
               const userData = ws.getUserData()
-              logger.debug('userData: ', userData)
+              logger.debug('userData state:', {
+                address: String(userData.address || ''),
+                stage: String(userData.stage),
+                isClosed: String(userData.isClosed)
+              })
+
               if (ws && ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
                 if (!userData.isClosed) {
