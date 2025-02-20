@@ -54,6 +54,24 @@ export async function registerWsHandler(
     Object.assign(data, newData)
   }
 
+  function safeEndWebSocket(ws: InternalWebSocket, code?: number, message?: Buffer) {
+    const userData = ws.getUserData()
+    if (!userData.isClosed) {
+      try {
+        userData.isClosed = true
+        if (message) {
+          ws.end(code, message)
+        } else if (code) {
+          ws.end(code)
+        } else {
+          ws.end()
+        }
+      } catch (err) {
+        logger.error(`Error while safely ending WebSocket: ${(err as Error).message}`)
+      }
+    }
+  }
+
   server.app.ws<WsUserData>('/ws', {
     idleTimeout: 90,
     upgrade: (res, req, context) => {
@@ -99,19 +117,19 @@ export async function registerWsHandler(
           case Stage.HANDSHAKE_START: {
             if (!packet.message || packet.message.$case !== 'challengeRequest') {
               logger.debug('Invalid protocol. challengeRequest packet missed')
-              ws.end()
+              safeEndWebSocket(ws)
               return
             }
             if (!EthAddress.validate(packet.message.challengeRequest.address)) {
               logger.debug('Invalid protocol. challengeRequest has an invalid address')
-              ws.end()
+              safeEndWebSocket(ws)
               return
             }
             const address = normalizeAddress(packet.message.challengeRequest.address)
             const denyList: Set<string> = await fetchDenyList()
             if (denyList.has(address)) {
               logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
-              ws.end()
+              safeEndWebSocket(ws)
               return
             }
 
@@ -147,14 +165,14 @@ export async function registerWsHandler(
           case Stage.HANDSHAKE_CHALLENGE_SENT: {
             if (!packet.message || packet.message.$case !== 'signedChallenge') {
               logger.debug('Invalid protocol. signedChallengeForServer packet missed')
-              ws.end()
+              safeEndWebSocket(ws)
               return
             }
 
             const authChain = JSON.parse(packet.message.signedChallenge.authChainJson)
             if (!AuthChain.validate(authChain)) {
               logger.debug('Invalid auth chain')
-              ws.end()
+              safeEndWebSocket(ws)
               return
             }
 
@@ -197,10 +215,7 @@ export async function registerWsHandler(
 
               if (ws && ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
-                if (!userData.isClosed) {
-                  userData.isClosed = true
-                  ws.close()
-                }
+                safeEndWebSocket(ws)
                 return
               }
 
@@ -212,7 +227,7 @@ export async function registerWsHandler(
               })
             } else {
               logger.warn(`Authentication failed`, { message: result.message } as any)
-              ws.end()
+              safeEndWebSocket(ws)
             }
             break
           }
@@ -229,7 +244,7 @@ export async function registerWsHandler(
         }
       } catch (err: any) {
         logger.error(err)
-        ws.end()
+        safeEndWebSocket(ws)
       }
     },
     close: (ws, code, _message) => {
