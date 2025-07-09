@@ -19,6 +19,7 @@ on:
         type: choice
         options:
           - prd
+          - stg
           - dev
         default: prd
         description: Environment
