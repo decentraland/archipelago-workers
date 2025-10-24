@@ -6,7 +6,10 @@
     "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose",
     "lint:check": "eslint '**/*.{js,ts}'",
-    "lint:fix": "eslint '**/*.{js,ts}' --fix"
+    "lint:fix": "eslint '**/*.{js,ts}' --fix",
+    "docs:build": "yarn redocly build-docs ../../docs/archipelago-stats-openapi.yaml -o ../../docs/stats-index.html",
+    "predocs:preview": "yarn docs:build",
+    "docs:preview": "yarn redocly preview-docs ../../docs/archipelago-stats-openapi.yaml"
   },
   "license": "Apache-2.0",
   "devDependencies": {
@@ -15,7 +18,8 @@
     "@types/google-protobuf": "^3.15.6",
     "@types/node": "^18.6.1",
     "@well-known-components/test-helpers": "^1.5.6",
-    "typescript": "^4.7.4"
+    "typescript": "^4.7.4",
+    "@redocly/redoc-cli": "^1.0.0"
   },
   "prettier": {
     "printWidth": 120,

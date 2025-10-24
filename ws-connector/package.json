@@ -6,7 +6,10 @@
     "start": "node --trace-warnings --abort-on-uncaught-exception --unhandled-rejections=strict dist/index.js",
     "test": "jest --forceExit --detectOpenHandles --coverage --verbose",
     "lint:check": "npx eslint . --ext .ts",
-    "lint:fix": "npx eslint . --ext .ts --fix"
+    "lint:fix": "npx eslint . --ext .ts --fix",
+    "docs:build": "yarn redocly build-docs ../../docs/archipelago-ws-connector-openapi.yaml -o ../../docs/ws-connector-index.html",
+    "predocs:preview": "yarn docs:build",
+    "docs:preview": "yarn redocly preview-docs ../../docs/archipelago-ws-connector-openapi.yaml"
   },
   "license": "Apache-2.0",
   "devDependencies": {
@@ -20,7 +23,8 @@
     "glob": "^8.0.3",
     "lodash.get": "^4.4.2",
     "typescript": "^4.9.4",
-    "ws": "^8.13.0"
+    "ws": "^8.13.0",
+    "@redocly/redoc-cli": "^1.0.0"
   },
   "prettier": {
     "printWidth": 120,
