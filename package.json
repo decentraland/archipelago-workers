@@ -11,17 +11,13 @@
     "test": "yarn workspaces run test && jest --coverage --onlyChanged=false --runInBand",
     "start:local": "yarn workspace core start & yarn workspace ws-connector start & yarn workspace stats start",
     "lint:check": "eslint '**/*.{js,ts}'",
-    "lint:fix": "eslint . --ext .ts --fix",
-    "docs:build": "yarn redocly build-docs ./docs/openapi.yaml -o ./docs/index.html",
-    "predocs:preview": "yarn docs:build",
-    "docs:preview": "yarn redocly preview-docs ./docs/openapi.yaml"
+    "lint:fix": "eslint . --ext .ts --fix"
   },
   "resolutions": {
     "**/make-dir/semver": "^6.3.1"
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "@redocly/cli": "^2.8.0",
     "istanbul": "^0.4.5",
     "istanbul-combine": "^0.3.0",
     "jest": "^29.7.0",
