@@ -1,0 +1,28 @@
+name: build-app-docs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+  pull_request:
+    paths:
+      - 'docs/**'
+
+jobs:
+  build-stats:
+    uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
+    with:
+      api-spec-file: 'docs/archipelago-stats-openapi.yaml'
+      output-directory: './docs'
+      api-spec-name: 'archipelago-stats-api'
+      node-version: '20'
+    secrets: inherit
+  
+  build-ws-connector:
+    uses: decentraland/platform-actions/.github/workflows/apps-docs.yml@main
+    with:
+      api-spec-file: 'docs/archipelago-ws-connector-openapi.yaml'
+      output-directory: './docs'
+      api-spec-name: 'archipelago-ws-connector-api'
+      node-version: '20'
+    secrets: inherit
