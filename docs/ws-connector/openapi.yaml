@@ -6,16 +6,21 @@ info:
   contact:
     name: Decentraland
     url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: archipelago-ws-connector-api
 servers:
   - url: /
     description: Service root
+security: []
 paths:
   /status:
     get:
       summary: Get service status
       description: Returns service status with version, commit hash, current time, and user count
       operationId: getStatus
+      security: []
       responses:
         '200':
           description: Service status
@@ -23,11 +28,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Status'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /metrics:
     get:
       summary: Get Prometheus metrics
       description: Returns Prometheus metrics for monitoring
       operationId: getMetrics
+      security: []
       responses:
         '200':
           description: Prometheus metrics
@@ -35,11 +53,24 @@ paths:
             text/plain:
               schema:
                 type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /health/live:
     get:
       summary: Liveness probe
       description: Returns 'alive' for liveness checks
       operationId: getLiveness
+      security: []
       responses:
         '200':
           description: Service is alive
@@ -48,14 +79,49 @@ paths:
               schema:
                 type: string
                 example: alive
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /ws:
     get:
       summary: WebSocket connection
       description: WebSocket endpoint for real-time communication
       operationId: connectWebSocket
+      security: []
       responses:
+        '200':
+          description: WebSocket connection established
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: connected
         '101':
           description: Switching protocols to WebSocket
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
       x-websocket:
         description: WebSocket protocol for real-time communication
         protocol: archipelago-websocket
@@ -191,3 +257,14 @@ components:
         - commitHash
         - currentTime
         - userCount
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: integer
+          description: Error code
+      required:
+        - error
