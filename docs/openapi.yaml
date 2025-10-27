@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Archipelago Workers API
-  description: Combined API documentation for Archipelago Stats and WebSocket Connector services
+  description: Combined API documentation for Archipelago Stats and WebSocket Connector services (see [ADR-204](https://adr.decentraland.org/adr/ADR-204))
   version: 1.0.0
   contact:
     name: Decentraland
