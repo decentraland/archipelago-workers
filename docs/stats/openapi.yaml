@@ -30,6 +30,8 @@ security: []
 paths:
   /parcels:
     get:
+      tags:
+        - Stats Service
       summary: Get parcels with peer counts
       description: |
         Returns a list of parcels with their current peer density information. Parcels represent geographic coordinates in Decentraland, and this endpoint helps identify areas with high user concentration. The peer count for each parcel indicates how many users are currently present in that geographic area, enabling crowd visualization and hotspot detection.
@@ -58,6 +60,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /peers:
     get:
+      tags:
+        - Stats Service
       summary: Get all connected peers
       description: |
         Returns a list of all peers (users) currently active in the archipelago system. Each peer includes their unique identifier, Ethereum address, current position coordinates, assigned island, and last heartbeat timestamp. This endpoint provides a comprehensive view of all active users in the system at any given moment.
@@ -96,6 +100,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /peers/{id}:
     get:
+      tags:
+        - Stats Service
       summary: Get specific peer information
       description: Returns information about a specific peer
       operationId: getPeer
@@ -144,6 +150,8 @@ paths:
                   - peer
   /islands:
     get:
+      tags:
+        - Stats Service
       summary: Get all islands
       description: |
         Returns a list of all active islands in the archipelago system. Islands are dynamic clusters of peers that are continuously recalculated based on user positions. Each island entry includes the island identifier, current peer count, maximum capacity, center coordinates (x, y, z), radius, and the list of peers currently assigned to that island. Islands are created, merged, and split dynamically to maintain optimal distribution of users across the metaverse.
@@ -182,6 +190,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /islands/{id}:
     get:
+      tags:
+        - Stats Service
       summary: Get specific island information
       description: Returns information about a specific island
       operationId: getIsland
@@ -220,6 +230,8 @@ paths:
                   - body
   /hot-scenes:
     get:
+      tags:
+        - Stats Service
       summary: Get hot scenes data
       description: |
         Returns data about popular scenes (hot scenes) in Decentraland based on current user activity. This endpoint provides information about scenes that are currently attracting high user traffic, including scene metadata, user counts, geographic coordinates, thumbnails, and project details. Hot scenes help identify trending areas and popular destinations in the metaverse.
@@ -246,6 +258,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /core-status:
     get:
+      tags:
+        - Stats Service
       summary: Get core service status
       description: |
         Returns the operational status of the Archipelago core service. The core service is responsible for implementing the archipelago clustering logic, managing island creation/merging/splitting, processing peer position updates, and publishing island change notifications. This endpoint allows monitoring of the core service health and availability.
@@ -272,6 +286,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /status:
     get:
+      tags:
+        - Stats Service
       summary: Get service health status
       description: Returns health status of the service
       operationId: getStatus
@@ -285,6 +301,8 @@ paths:
                 $ref: '#/components/schemas/Status'
   /comms/parcels:
     get:
+      tags:
+        - Stats Service
       summary: Get parcels (backwards compatibility)
       description: Backwards compatibility endpoint for parcels
       operationId: getCommsParcels
@@ -312,6 +330,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /comms/peers:
     get:
+      tags:
+        - Stats Service
       summary: Get peers (backwards compatibility)
       description: Backwards compatibility endpoint for peers
       operationId: getCommsPeers
@@ -349,6 +369,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /comms/peers/{id}:
     get:
+      tags:
+        - Stats Service
       summary: Get specific peer (backwards compatibility)
       description: Backwards compatibility endpoint for specific peer
       operationId: getCommsPeer
@@ -371,6 +393,8 @@ paths:
           description: Peer not found
   /comms/islands:
     get:
+      tags:
+        - Stats Service
       summary: Get islands (backwards compatibility)
       description: Backwards compatibility endpoint for islands
       operationId: getCommsIslands
@@ -408,6 +432,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /comms/islands/{id}:
     get:
+      tags:
+        - Stats Service
       summary: Get specific island (backwards compatibility)
       description: Backwards compatibility endpoint for specific island
       operationId: getCommsIsland
