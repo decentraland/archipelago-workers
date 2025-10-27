@@ -303,6 +303,7 @@ paths:
     get:
       tags:
         - Stats Service
+      deprecated: true
       summary: Get parcels (backwards compatibility)
       description: Backwards compatibility endpoint for parcels
       operationId: getCommsParcels
@@ -332,6 +333,7 @@ paths:
     get:
       tags:
         - Stats Service
+      deprecated: true
       summary: Get peers (backwards compatibility)
       description: Backwards compatibility endpoint for peers
       operationId: getCommsPeers
@@ -371,6 +373,7 @@ paths:
     get:
       tags:
         - Stats Service
+      deprecated: true
       summary: Get specific peer (backwards compatibility)
       description: Backwards compatibility endpoint for specific peer
       operationId: getCommsPeer
@@ -395,6 +398,7 @@ paths:
     get:
       tags:
         - Stats Service
+      deprecated: true
       summary: Get islands (backwards compatibility)
       description: Backwards compatibility endpoint for islands
       operationId: getCommsIslands
@@ -434,6 +438,7 @@ paths:
     get:
       tags:
         - Stats Service
+      deprecated: true
       summary: Get specific island (backwards compatibility)
       description: Backwards compatibility endpoint for specific island
       operationId: getCommsIsland
