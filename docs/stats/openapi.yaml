@@ -22,8 +22,10 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: archipelago-stats-api
 servers:
-  - url: /
-    description: Service root
+  - url: https://archipelago-ea-stats.decentraland.org
+    description: Stats service - Production
+  - url: https://archipelago-ea-stats.zone
+    description: Stats service - Development
 security: []
 paths:
   /parcels:

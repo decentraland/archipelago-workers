@@ -25,8 +25,10 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: archipelago-ws-connector-api
 servers:
-  - url: /
-    description: Service root
+  - url: https://archipelago-ea-ws-connector.decentraland.org
+    description: WebSocket Connector service - Production
+  - url: https://archipelago-ea-ws-connector.zone
+    description: WebSocket Connector service - Development
 security: []
 paths:
   /status:
