@@ -22,6 +22,7 @@
     "istanbul-combine": "^0.3.0",
     "jest": "^29.7.0",
     "jest-sonar-reporter": "^2.0.0",
+    "redoc-cli": "^0.13.21",
     "ts-jest": "^29.2.5"
   }
 }
