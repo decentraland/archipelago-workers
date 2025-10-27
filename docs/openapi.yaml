@@ -1,0 +1,48 @@
+openapi: 3.1.0
+info:
+  title: Archipelago Workers API
+  description: Combined API documentation for Archipelago Stats and WebSocket Connector services
+  version: 1.0.0
+  contact:
+    name: Decentraland
+    url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  x-api-id: archipelago-workers-api
+servers:
+  - url: /
+    description: Service root
+paths:
+  /parcels:
+    $ref: './stats/openapi.yaml#/paths/~1parcels'
+  /peers:
+    $ref: './stats/openapi.yaml#/paths/~1peers'
+  /peers/{id}:
+    $ref: './stats/openapi.yaml#/paths/~1peers~1{id}'
+  /islands:
+    $ref: './stats/openapi.yaml#/paths/~1islands'
+  /islands/{id}:
+    $ref: './stats/openapi.yaml#/paths/~1islands~1{id}'
+  /hot-scenes:
+    $ref: './stats/openapi.yaml#/paths/~1hot-scenes'
+  /core-status:
+    $ref: './stats/openapi.yaml#/paths/~1core-status'
+  /comms/parcels:
+    $ref: './stats/openapi.yaml#/paths/~1comms~1parcels'
+  /comms/peers:
+    $ref: './stats/openapi.yaml#/paths/~1comms~1peers'
+  /comms/peers/{id}:
+    $ref: './stats/openapi.yaml#/paths/~1comms~1peers~1{id}'
+  /comms/islands:
+    $ref: './stats/openapi.yaml#/paths/~1comms~1islands'
+  /comms/islands/{id}:
+    $ref: './stats/openapi.yaml#/paths/~1comms~1islands~1{id}'
+  /status:
+    $ref: './ws-connector/openapi.yaml#/paths/~1status'
+  /metrics:
+    $ref: './ws-connector/openapi.yaml#/paths/~1metrics'
+  /health/live:
+    $ref: './ws-connector/openapi.yaml#/paths/~1health~1live'
+  /ws:
+    $ref: './ws-connector/openapi.yaml#/paths/~1ws'

@@ -1,0 +1,270 @@
+openapi: 3.1.0
+info:
+  title: Archipelago WebSocket Connector API
+  description: API for archipelago WebSocket connector service with HTTP endpoints and WebSocket protocol
+  version: 1.0.0
+  contact:
+    name: Decentraland
+    url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  x-api-id: archipelago-ws-connector-api
+servers:
+  - url: /
+    description: Service root
+security: []
+paths:
+  /status:
+    get:
+      summary: Get service status
+      description: Returns service status with version, commit hash, current time, and user count
+      operationId: getStatus
+      security: []
+      responses:
+        '200':
+          description: Service status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /metrics:
+    get:
+      summary: Get Prometheus metrics
+      description: Returns Prometheus metrics for monitoring
+      operationId: getMetrics
+      security: []
+      responses:
+        '200':
+          description: Prometheus metrics
+          content:
+            text/plain:
+              schema:
+                type: string
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /health/live:
+    get:
+      summary: Liveness probe
+      description: Returns 'alive' for liveness checks
+      operationId: getLiveness
+      security: []
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: alive
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /ws:
+    get:
+      summary: WebSocket connection
+      description: WebSocket endpoint for real-time communication
+      operationId: connectWebSocket
+      security: []
+      responses:
+        '200':
+          description: WebSocket connection established
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: connected
+        '101':
+          description: Switching protocols to WebSocket
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+      x-websocket:
+        description: WebSocket protocol for real-time communication
+        protocol: archipelago-websocket
+        handshake:
+          description: Authentication handshake process
+          steps:
+            - step: 1
+              name: HANDSHAKE_START
+              description: Client sends challenge request with Ethereum address
+              message:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [challengeRequest]
+                  address:
+                    type: string
+                    description: Ethereum address
+            - step: 2
+              name: HANDSHAKE_CHALLENGE_SENT
+              description: Server responds with challenge response
+              message:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [challengeResponse]
+                  challenge:
+                    type: string
+                    description: Challenge string to sign
+            - step: 3
+              name: HANDSHAKE_CHALLENGE_SENT
+              description: Client sends signed challenge
+              message:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [signedChallenge]
+                  authChain:
+                    type: array
+                    description: AuthChain with signature
+            - step: 4
+              name: HANDSHAKE_COMPLETED
+              description: Server validates and sends welcome message
+              message:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: [welcome]
+                  peerId:
+                    type: string
+                    description: Assigned peer ID
+        messages:
+          client:
+            challengeRequest:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [challengeRequest]
+                address:
+                  type: string
+                  description: Ethereum address
+            signedChallenge:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [signedChallenge]
+                authChain:
+                  type: array
+                  description: AuthChain with signature
+            heartbeat:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [heartbeat]
+          server:
+            challengeResponse:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [challengeResponse]
+                challenge:
+                  type: string
+                  description: Challenge string to sign
+            welcome:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [welcome]
+                peerId:
+                  type: string
+                  description: Assigned peer ID
+            kicked:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum: [kicked]
+                reason:
+                  type: string
+                  enum: [KR_NEW_SESSION]
+                  description: Kick reason
+        authentication:
+          type: ethereum-signature
+          description: Ethereum signature validation via AuthChain
+components:
+  schemas:
+    Status:
+      type: object
+      properties:
+        version:
+          type: string
+          description: Service version
+        commitHash:
+          type: string
+          description: Git commit hash
+        currentTime:
+          type: string
+          format: date-time
+          description: Current server time
+        userCount:
+          type: number
+          description: Number of connected users
+      required:
+        - version
+        - commitHash
+        - currentTime
+        - userCount
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: integer
+          description: Error code
+      required:
+        - error

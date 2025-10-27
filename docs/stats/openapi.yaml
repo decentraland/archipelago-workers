@@ -1,0 +1,572 @@
+openapi: 3.1.0
+info:
+  title: Archipelago Stats API
+  description: API for archipelago statistics service providing parcel, peer, and island data
+  version: 1.0.0
+  contact:
+    name: Decentraland
+    url: https://decentraland.org
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  x-api-id: archipelago-stats-api
+servers:
+  - url: /
+    description: Service root
+security: []
+paths:
+  /parcels:
+    get:
+      summary: Get parcels with peer counts
+      description: Returns list of parcels with their peer counts
+      operationId: getParcels
+      security: []
+      responses:
+        '200':
+          description: List of parcels with peer counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ParcelResult'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /peers:
+    get:
+      summary: Get all connected peers
+      description: Returns list of all connected peers
+      operationId: getPeers
+      security: []
+      responses:
+        '200':
+          description: List of connected peers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  peers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Peer'
+                    description: List of peers
+                required:
+                  - ok
+                  - peers
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /peers/{id}:
+    get:
+      summary: Get specific peer information
+      description: Returns information about a specific peer
+      operationId: getPeer
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Peer ID
+      responses:
+        '200':
+          description: Peer information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  peer:
+                    $ref: '#/components/schemas/Peer'
+                    description: Peer information
+                required:
+                  - ok
+                  - peer
+        '404':
+          description: Peer not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  peer:
+                    oneOf:
+                      - type: object
+                      - type: 'null'
+                    description: Peer information (null when not found)
+                required:
+                  - ok
+                  - peer
+  /islands:
+    get:
+      summary: Get all islands
+      description: Returns list of all islands
+      operationId: getIslands
+      security: []
+      responses:
+        '200':
+          description: List of islands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  islands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Island'
+                    description: List of islands
+                required:
+                  - ok
+                  - islands
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /islands/{id}:
+    get:
+      summary: Get specific island information
+      description: Returns information about a specific island
+      operationId: getIsland
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Island ID
+      responses:
+        '200':
+          description: Island information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Island'
+        '404':
+          description: Island not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: number
+                    description: HTTP status code
+                  body:
+                    oneOf:
+                      - type: object
+                      - type: 'null'
+                    description: Island information (null when not found)
+                required:
+                  - status
+                  - body
+  /hot-scenes:
+    get:
+      summary: Get hot scenes data
+      description: Returns data about hot scenes
+      operationId: getHotScenes
+      security: []
+      responses:
+        '200':
+          description: Hot scenes data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HotScenes'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /core-status:
+    get:
+      summary: Get core service status
+      description: Returns status of core service
+      operationId: getCoreStatus
+      security: []
+      responses:
+        '200':
+          description: Core service status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CoreStatus'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /status:
+    get:
+      summary: Get service health status
+      description: Returns health status of the service
+      operationId: getStatus
+      security: []
+      responses:
+        '200':
+          description: Service health status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+  /comms/parcels:
+    get:
+      summary: Get parcels (backwards compatibility)
+      description: Backwards compatibility endpoint for parcels
+      operationId: getCommsParcels
+      security: []
+      responses:
+        '200':
+          description: List of parcels with peer counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ParcelResult'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /comms/peers:
+    get:
+      summary: Get peers (backwards compatibility)
+      description: Backwards compatibility endpoint for peers
+      operationId: getCommsPeers
+      security: []
+      responses:
+        '200':
+          description: List of connected peers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  peers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Peer'
+                    description: List of peers
+                required:
+                  - ok
+                  - peers
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /comms/peers/{id}:
+    get:
+      summary: Get specific peer (backwards compatibility)
+      description: Backwards compatibility endpoint for specific peer
+      operationId: getCommsPeer
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Peer ID
+      responses:
+        '200':
+          description: Peer information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Peer'
+        '404':
+          description: Peer not found
+  /comms/islands:
+    get:
+      summary: Get islands (backwards compatibility)
+      description: Backwards compatibility endpoint for islands
+      operationId: getCommsIslands
+      security: []
+      responses:
+        '200':
+          description: List of islands
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                    description: Success status
+                  islands:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Island'
+                    description: List of islands
+                required:
+                  - ok
+                  - islands
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /comms/islands/{id}:
+    get:
+      summary: Get specific island (backwards compatibility)
+      description: Backwards compatibility endpoint for specific island
+      operationId: getCommsIsland
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Island ID
+      responses:
+        '200':
+          description: Island information
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Island'
+        '404':
+          description: Island not found
+components:
+  schemas:
+    ParcelResult:
+      type: object
+      properties:
+        peersCount:
+          type: number
+          description: Number of peers in this parcel
+        parcel:
+          $ref: '#/components/schemas/Parcel'
+      required:
+        - peersCount
+        - parcel
+    Parcel:
+      type: object
+      properties:
+        x:
+          type: number
+          description: X coordinate
+        y:
+          type: number
+          description: Y coordinate
+      required:
+        - x
+        - y
+    Peer:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Peer ID
+        address:
+          type: string
+          description: Peer address
+        lastPing:
+          type: number
+          description: Last ping timestamp
+        parcel:
+          type: array
+          items:
+            type: number
+          description: Parcel coordinates [x, y]
+        position:
+          type: array
+          items:
+            type: number
+          description: Position coordinates [x, y, z]
+      required:
+        - id
+        - address
+        - lastPing
+        - parcel
+        - position
+    Island:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Island ID
+        peers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Peer'
+          description: List of peers in this island
+        maxPeers:
+          type: number
+          description: Maximum number of peers allowed
+        center:
+          type: array
+          items:
+            type: number
+          description: Center coordinates [x, y, z]
+        radius:
+          type: number
+          description: Island radius
+      required:
+        - id
+        - peers
+        - maxPeers
+        - center
+        - radius
+    HotScenes:
+      type: array
+      items:
+        type: object
+        properties:
+          id:
+            type: string
+            description: Scene ID
+          name:
+            type: string
+            description: Scene name
+          baseCoords:
+            type: array
+            items:
+              type: number
+            description: Base coordinates [x, y]
+          usersTotalCount:
+            type: number
+            description: Total number of users in scene
+          parcels:
+            type: array
+            items:
+              type: array
+              items:
+                type: number
+            description: List of parcel coordinates
+          thumbnail:
+            type: string
+            description: Scene thumbnail URL
+          projectId:
+            type: string
+            description: Project ID
+          creator:
+            type: string
+            description: Creator name
+          description:
+            type: string
+            description: Scene description
+        required:
+          - id
+          - name
+          - baseCoords
+          - usersTotalCount
+          - parcels
+    CoreStatus:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Core service status
+        timestamp:
+          type: string
+          format: date-time
+          description: Status timestamp
+      required:
+        - status
+    Status:
+      type: object
+      properties:
+        status:
+          type: string
+          description: Service health status
+        timestamp:
+          type: string
+          format: date-time
+          description: Status timestamp
+      required:
+        - status
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: integer
+          description: Error code
+      required:
+        - error
