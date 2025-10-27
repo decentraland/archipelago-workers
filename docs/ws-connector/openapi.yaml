@@ -1,7 +1,21 @@
 openapi: 3.1.0
 info:
   title: Archipelago WebSocket Connector API
-  description: API for archipelago WebSocket connector service with HTTP endpoints and WebSocket protocol
+  description: |
+    API for archipelago WebSocket connector service implementing the WebSocket protocol for real-time communication in the Archipelago system.
+    
+    This service manages WebSocket connections for peers in the Archipelago protocol, enabling real-time position updates, profile changes, chat messages, and island assignments. The WebSocket protocol implements a handshake-based authentication system using Ethereum signatures for secure peer identification.
+    
+    **Key Features:**
+    - **Authentication**: Challenge-response handshake using Ethereum signatures and AuthChain
+    - **Position updates**: Real-time avatar position and movement synchronization
+    - **Profile events**: User profile change notifications
+    - **Chat messages**: Text chat with nearby peers
+    - **Island assignments**: Dynamic island assignment notifications as users move
+    
+    The service integrates with the Archipelago core service to receive island assignments and forward island change notifications to connected peers. It maintains a registry of connected peers and manages the lifecycle of WebSocket connections.
+    
+    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for detailed protocol specifications.
   version: 1.0.0
   contact:
     name: Decentraland
@@ -94,7 +108,24 @@ paths:
   /ws:
     get:
       summary: WebSocket connection
-      description: WebSocket endpoint for real-time communication
+      description: |
+        Establishes a WebSocket connection for real-time communication in the Archipelago system. This endpoint enables peer-to-peer communication, position synchronization, and island management for Decentraland clients.
+        
+        **Authentication Flow:**
+        1. Client initiates connection with an Ethereum address
+        2. Server responds with a challenge string to sign
+        3. Client sends signed challenge with AuthChain
+        4. Server validates signature and assigns peer ID
+        
+        **Supported Message Types:**
+        - `challengeRequest`: Initial connection with address
+        - `challengeResponse`: Server-provided challenge
+        - `signedChallenge`: Client-provided signed challenge with AuthChain
+        - `welcome`: Server confirmation with assigned peer ID
+        - `heartbeat`: Keep-alive messages
+        - `kicked`: Disconnection notification
+        
+        Once authenticated, the peer receives real-time updates about island assignments, nearby peers, and position changes as they move through Decentraland's metaverse.
       operationId: connectWebSocket
       security: []
       responses:

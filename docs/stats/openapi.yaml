@@ -1,7 +1,18 @@
 openapi: 3.1.0
 info:
   title: Archipelago Stats API
-  description: API for archipelago statistics service providing parcel, peer, and island data
+  description: |
+    API for archipelago statistics service providing real-time information about parcels, peers, and islands.
+    
+    This service aggregates data from the Archipelago core service to provide insights into the current state of the Decentraland communication system. The statistics include:
+    
+    - **Parcels**: Geographic areas with peer density information, allowing identification of crowded areas
+    - **Peers**: Individual users currently active in the system, including their positions, last ping times, and island assignments
+    - **Islands**: Dynamic clusters of peers, including their current occupancy, maximum capacity, center coordinates, and radius
+    
+    The archipelago system continuously recalculates islands based on user positions using heuristics such as island center calculation, user-to-island assignment, island creation and merging, allowing efficient crowd management and scalability. Island statistics help monitor system health and user distribution across the metaverse.
+    
+    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for the architectural design of the Archipelago protocol.
   version: 1.0.0
   contact:
     name: Decentraland
@@ -18,7 +29,8 @@ paths:
   /parcels:
     get:
       summary: Get parcels with peer counts
-      description: Returns list of parcels with their peer counts
+      description: |
+        Returns a list of parcels with their current peer density information. Parcels represent geographic coordinates in Decentraland, and this endpoint helps identify areas with high user concentration. The peer count for each parcel indicates how many users are currently present in that geographic area, enabling crowd visualization and hotspot detection.
       operationId: getParcels
       security: []
       responses:
@@ -45,7 +57,8 @@ paths:
   /peers:
     get:
       summary: Get all connected peers
-      description: Returns list of all connected peers
+      description: |
+        Returns a list of all peers (users) currently active in the archipelago system. Each peer includes their unique identifier, Ethereum address, current position coordinates, assigned island, and last heartbeat timestamp. This endpoint provides a comprehensive view of all active users in the system at any given moment.
       operationId: getPeers
       security: []
       responses:
@@ -130,7 +143,8 @@ paths:
   /islands:
     get:
       summary: Get all islands
-      description: Returns list of all islands
+      description: |
+        Returns a list of all active islands in the archipelago system. Islands are dynamic clusters of peers that are continuously recalculated based on user positions. Each island entry includes the island identifier, current peer count, maximum capacity, center coordinates (x, y, z), radius, and the list of peers currently assigned to that island. Islands are created, merged, and split dynamically to maintain optimal distribution of users across the metaverse.
       operationId: getIslands
       security: []
       responses:
@@ -205,7 +219,8 @@ paths:
   /hot-scenes:
     get:
       summary: Get hot scenes data
-      description: Returns data about hot scenes
+      description: |
+        Returns data about popular scenes (hot scenes) in Decentraland based on current user activity. This endpoint provides information about scenes that are currently attracting high user traffic, including scene metadata, user counts, geographic coordinates, thumbnails, and project details. Hot scenes help identify trending areas and popular destinations in the metaverse.
       operationId: getHotScenes
       security: []
       responses:
@@ -230,7 +245,8 @@ paths:
   /core-status:
     get:
       summary: Get core service status
-      description: Returns status of core service
+      description: |
+        Returns the operational status of the Archipelago core service. The core service is responsible for implementing the archipelago clustering logic, managing island creation/merging/splitting, processing peer position updates, and publishing island change notifications. This endpoint allows monitoring of the core service health and availability.
       operationId: getCoreStatus
       security: []
       responses:
