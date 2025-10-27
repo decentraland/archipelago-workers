@@ -33,6 +33,8 @@ security: []
 paths:
   /status:
     get:
+      tags:
+        - WebSocket Connector Service
       summary: Get service status
       description: Returns service status with version, commit hash, current time, and user count
       operationId: getStatus
@@ -58,6 +60,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /metrics:
     get:
+      tags:
+        - WebSocket Connector Service
       summary: Get Prometheus metrics
       description: Returns Prometheus metrics for monitoring
       operationId: getMetrics
@@ -83,6 +87,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /health/live:
     get:
+      tags:
+        - WebSocket Connector Service
       summary: Liveness probe
       description: Returns 'alive' for liveness checks
       operationId: getLiveness
@@ -109,6 +115,8 @@ paths:
                 $ref: '#/components/schemas/Error'
   /ws:
     get:
+      tags:
+        - WebSocket Connector Service
       summary: WebSocket connection
       description: |
         Establishes a WebSocket connection for real-time communication in the Archipelago system. This endpoint enables peer-to-peer communication, position synchronization, and island management for Decentraland clients.
