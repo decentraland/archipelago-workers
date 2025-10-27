@@ -1,7 +1,18 @@
 openapi: 3.1.0
 info:
   title: Archipelago Workers API
-  description: Combined API documentation for Archipelago Stats and WebSocket Connector services (see [ADR-204](https://adr.decentraland.org/adr/ADR-204))
+  description: |
+    Combined API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system.
+    
+    The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. When the maximum number of users per island is reached, the system creates overlapping islands to ensure all users can still interact.
+    
+    **Key Concepts:**
+    - **Islands**: Dynamic groups of users clustered by proximity, with a configurable maximum occupancy
+    - **Peers**: Individual users/avatars in the Archipelago system
+    - **Parcels**: Geographic coordinates in Decentraland where users are located
+    - **Real-time updates**: Islands and peer positions are continuously recalculated
+    
+    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for detailed architectural information.
   version: 1.0.0
   contact:
     name: Decentraland
@@ -11,8 +22,14 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: archipelago-workers-api
 servers:
-  - url: /
-    description: Service root
+  - url: https://archipelago-ea-stats.decentraland.org
+    description: Stats service - Production
+  - url: https://archipelago-ea-stats.zone
+    description: Stats service - Development
+  - url: https://archipelago-ea-ws-connector.decentraland.org
+    description: WebSocket Connector service - Production
+  - url: https://archipelago-ea-ws-connector.zone
+    description: WebSocket Connector service - Development
 paths:
   /parcels:
     $ref: './stats/openapi.yaml#/paths/~1parcels'
