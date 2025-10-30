@@ -2,17 +2,52 @@ openapi: 3.1.0
 info:
   title: Archipelago Stats API
   description: |
-    API for archipelago statistics service providing real-time information about parcels, peers, and islands.
+    ## Overview
     
-    This service aggregates data from the Archipelago core service to provide insights into the current state of the Decentraland communication system. The statistics include:
+    The Archipelago Stats API provides real-time visibility into the Decentraland communication system by aggregating and exposing statistics from the Archipelago core service. This API enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
     
-    - **Parcels**: Geographic areas with peer density information, allowing identification of crowded areas
-    - **Peers**: Individual users currently active in the system, including their positions, last ping times, and island assignments
-    - **Islands**: Dynamic clusters of peers, including their current occupancy, maximum capacity, center coordinates, and radius
+    ### Purpose
     
-    The archipelago system continuously recalculates islands based on user positions using heuristics such as island center calculation, user-to-island assignment, island creation and merging, allowing efficient crowd management and scalability. Island statistics help monitor system health and user distribution across the metaverse.
+    This service acts as an observability layer for the Archipelago protocol, transforming internal system state into queryable metrics and snapshots. It is designed for:
     
-    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for the architectural design of the Archipelago protocol.
+    - **Monitoring**: Track system health, user activity, and island distribution in real-time
+    - **Analytics**: Analyze crowd patterns, popular areas, and user movement across parcels
+    - **Debugging**: Inspect individual peer states, island configurations, and service availability
+    - **Visualization**: Power dashboards and tools that display live metaverse activity
+    
+    ### Key Concepts
+    
+    **Parcels** represent geographic coordinates in Decentraland's 2D grid system. Each parcel has an X/Y coordinate, and the API provides peer density information per parcel, enabling identification of crowded areas and popular destinations.
+    
+    **Peers** are individual users/avatars currently active in the Archipelago system. Each peer entry includes their unique identifier, Ethereum address, real-time position coordinates (X, Y, Z), assigned island, and last heartbeat timestamp. This enables tracking of individual users and their current state in the system.
+    
+    **Islands** are dynamic clusters of peers that are continuously recalculated based on user positions. Islands are the core mechanism for scalable communication—they group nearby users together to optimize message routing and rendering performance. Each island has a maximum capacity, center coordinates, radius, and contains a list of all peers currently assigned to it.
+    
+    ### How It Works
+    
+    The Archipelago core service implements sophisticated clustering algorithms that:
+    
+    - Calculate island centers dynamically as users move
+    - Assign users to islands based on proximity and capacity
+    - Create new islands when existing ones reach maximum occupancy
+    - Merge islands when their boundaries overlap and capacity allows
+    - Split or redistribute users across islands for optimal load balancing
+    
+    The Stats API continuously aggregates this information from the core service and provides it through REST endpoints with low latency, enabling real-time monitoring and analysis.
+    
+    ### Data Freshness
+    
+    All data is provided in real-time and reflects the current state of the Archipelago system at the time of the API call. Island assignments, peer positions, and parcel densities are continuously updated as users move through the metaverse. The API does not provide historical data—each request returns the current snapshot of the system.
+    
+    ### Use Cases
+    
+    - **Live Dashboards**: Display real-time user distribution and popular areas
+    - **System Monitoring**: Track service health, island counts, and user capacity
+    - **Analytics Tools**: Analyze crowd patterns and identify trending scenes
+    - **Developer Tools**: Debug communication issues and inspect peer connections
+    - **Administrative Interfaces**: Monitor system load and user activity
+    
+    For detailed information about the Archipelago protocol architecture, see [ADR-204](https://adr.decentraland.org/adr/ADR-204).
   version: 1.0.0
   contact:
     name: Decentraland

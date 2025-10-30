@@ -2,20 +2,74 @@ openapi: 3.1.0
 info:
   title: Archipelago WebSocket Connector API
   description: |
-    API for archipelago WebSocket connector service implementing the WebSocket protocol for real-time communication in the Archipelago system.
+    ## Overview
     
-    This service manages WebSocket connections for peers in the Archipelago protocol, enabling real-time position updates, profile changes, chat messages, and island assignments. The WebSocket protocol implements a handshake-based authentication system using Ethereum signatures for secure peer identification.
+    The Archipelago WebSocket Connector API provides real-time bidirectional communication for Decentraland clients through WebSocket connections. This service acts as the gateway between client applications and the Archipelago communication system, enabling live position synchronization, chat messaging, profile updates, and island assignment notifications.
     
-    **Key Features:**
-    - **Authentication**: Challenge-response handshake using Ethereum signatures and AuthChain
-    - **Position updates**: Real-time avatar position and movement synchronization
-    - **Profile events**: User profile change notifications
-    - **Chat messages**: Text chat with nearby peers
-    - **Island assignments**: Dynamic island assignment notifications as users move
+    ### Purpose
     
-    The service integrates with the Archipelago core service to receive island assignments and forward island change notifications to connected peers. It maintains a registry of connected peers and manages the lifecycle of WebSocket connections.
+    This service manages the connection layer for all peer-to-peer communication in the Archipelago protocol. It is responsible for:
     
-    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for detailed protocol specifications.
+    - **Connection Management**: Establishing, maintaining, and terminating WebSocket connections for active users
+    - **Authentication**: Verifying user identity through Ethereum signature-based challenge-response authentication
+    - **Message Routing**: Delivering real-time updates about island assignments, peer positions, and communication events
+    - **Protocol Translation**: Converting between client message formats and the internal Archipelago protocol
+    - **Peer Registry**: Maintaining an active registry of connected peers and their current states
+    
+    ### Key Features
+    
+    **Authentication** uses a secure challenge-response handshake mechanism based on Ethereum signatures. Clients provide their Ethereum address, receive a cryptographic challenge, sign it, and return the signature via AuthChain for verification. This ensures only legitimate users can establish connections.
+    
+    **Position Updates** enable real-time synchronization of avatar positions and movements. Clients send position data as users move through the metaverse, and the service distributes this information to nearby peers within the same island, enabling avatar rendering and spatial awareness.
+    
+    **Profile Events** notify connected peers when users update their avatars, appearance, or other profile information. This ensures all users see consistent and up-to-date representations of other players.
+    
+    **Chat Messages** facilitate text communication between nearby users. Messages are delivered to all peers within the same island or scene, enabling social interaction and coordination.
+    
+    **Island Assignments** notify clients when they are moved between islands as they navigate the metaverse. These notifications trigger clients to update their communication channels and peer visibility accordingly.
+    
+    ### How It Works
+    
+    The WebSocket Connector service integrates tightly with the Archipelago core service to provide seamless communication:
+    
+    1. **Connection Lifecycle**: When a client establishes a WebSocket connection, the service authenticates the peer and adds them to the active peer registry
+    2. **Island Coordination**: The service receives island assignment updates from the core service whenever a peer's island changes due to movement or clustering recalculation
+    3. **Message Broadcasting**: Position updates, chat messages, and profile events are routed to all relevant peers based on their current island assignments
+    4. **Connection Monitoring**: The service tracks heartbeat messages to detect disconnected or inactive peers and removes them from the registry
+    
+    ### Authentication Flow
+    
+    The authentication process ensures secure peer identification:
+    
+    1. **Connection Initiation**: Client connects via WebSocket and sends a `challengeRequest` with their Ethereum address
+    2. **Challenge Generation**: Server responds with a `challengeResponse` containing a unique challenge string
+    3. **Signature Submission**: Client signs the challenge using their Ethereum private key and sends a `signedChallenge` with the AuthChain
+    4. **Verification & Welcome**: Server validates the signature, assigns a peer ID, and sends a `welcome` message confirming successful authentication
+    
+    Once authenticated, the peer can send and receive messages. The connection is kept alive through periodic `heartbeat` messages, and peers can be `kicked` if they establish duplicate sessions or violate protocol rules.
+    
+    ### Message Types
+    
+    The WebSocket protocol supports several message types:
+    
+    - **`challengeRequest`**: Initial connection with Ethereum address
+    - **`challengeResponse`**: Server-provided cryptographic challenge
+    - **`signedChallenge`**: Client-signed challenge with AuthChain
+    - **`welcome`**: Server confirmation with assigned peer ID
+    - **`heartbeat`**: Keep-alive messages to maintain connection
+    - **`kicked`**: Disconnection notification (e.g., due to new session)
+    
+    Authenticated peers receive real-time messages for position updates, profile changes, chat messages, and island assignment notifications as they move through Decentraland's metaverse.
+    
+    ### Use Cases
+    
+    - **Client Connections**: Enable Decentraland clients to connect and participate in the communication system
+    - **Real-time Multiplayer**: Support synchronous interactions between multiple users in shared spaces
+    - **Social Features**: Facilitate chat, avatar visibility, and user presence awareness
+    - **Scene Integration**: Connect to scene-specific communication channels for coordinated experiences
+    - **Network Debugging**: Monitor connection status, message delivery, and peer activity
+    
+    For detailed information about the WebSocket protocol, message formats, and communication architecture, see [ADR-204](https://adr.decentraland.org/adr/ADR-204).
   version: 1.0.0
   contact:
     name: Decentraland
