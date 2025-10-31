@@ -2,6 +2,7 @@ openapi: 3.1.0
 info:
   title: Archipelago Workers API
   description: |
+    ## Overview
     Combined API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system.
     
     The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. When the maximum number of users per island is reached, the system creates overlapping islands to ensure all users can still interact.
