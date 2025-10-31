@@ -3,7 +3,8 @@ info:
   title: Archipelago Workers API
   description: |
     ## Overview
-    Combined API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system.
+    
+    API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system. This unified specification provides access to both the observability layer (Stats API) and the real-time communication layer (WebSocket Connector API).
     
     The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. When the maximum number of users per island is reached, the system creates overlapping islands to ensure all users can still interact.
     
@@ -13,7 +14,45 @@ info:
     - **Parcels**: Geographic coordinates in Decentraland where users are located
     - **Real-time updates**: Islands and peer positions are continuously recalculated
     
-    See [ADR-204](https://adr.decentraland.org/adr/ADR-204) for detailed architectural information.
+    ### Services
+    
+    ### Stats Service
+    
+    The **Archipelago Stats API** provides real-time visibility into the Decentraland communication system by aggregating and exposing statistics from the Archipelago core service. This service acts as an observability layer, transforming internal system state into queryable metrics and snapshots.
+    
+    **Purpose**: Enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
+    
+    **Key Endpoints**: `/parcels`, `/peers`, `/islands`, `/hot-scenes`, `/core-status`
+    
+    **Use Cases**:
+    - Live dashboards displaying real-time user distribution
+    - System monitoring and health tracking
+    - Analytics tools for crowd patterns and trending scenes
+    - Developer tools for debugging communication issues
+    
+    All data is provided in real-time and reflects the current state of the Archipelago system at the time of the API call.
+    
+    ### WebSocket Connector Service
+    
+    The **Archipelago WebSocket Connector API** provides real-time bidirectional communication for Decentraland clients through WebSocket connections. This service acts as the gateway between client applications and the Archipelago communication system.
+    
+    **Purpose**: Manages the connection layer for all peer-to-peer communication, enabling live position synchronization, chat messaging, profile updates, and island assignment notifications.
+    
+    **Key Features**:
+    - **Authentication**: Ethereum signature-based challenge-response handshake
+    - **Position Updates**: Real-time avatar position and movement synchronization
+    - **Chat Messages**: Text communication between nearby users
+    - **Island Assignments**: Dynamic notifications when users move between islands
+    
+    **Key Endpoints**: `/status`, `/metrics`, `/health/live`, `/ws` (WebSocket)
+    
+    **Use Cases**:
+    - Client connections for Decentraland applications
+    - Real-time multiplayer interactions
+    - Social features and chat functionality
+    - Scene integration for coordinated experiences
+    
+    For detailed information about the Archipelago protocol architecture, message formats, and communication patterns, see [ADR-204](https://adr.decentraland.org/adr/ADR-204).
   version: 1.0.0
   contact:
     name: Decentraland
