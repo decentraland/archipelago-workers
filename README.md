@@ -45,7 +45,7 @@ yarn test
 - `engine.discovery`
 - `engine.islands`
 
-## 🤖 AI Agent Context
+## AI Agent Context
 
 **Service Purpose:** Monorepo containing three services that implement the Archipelago protocol for clustering users into dynamic islands based on their positions in Decentraland's metaverse. The protocol enables scalable crowd management and efficient real-time communication.
 
