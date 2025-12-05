@@ -1,50 +1,158 @@
-# Archipelago Service
+# Archipelago Workers
 
 [![Coverage Status](https://coveralls.io/repos/github/decentraland/archipelago-workers/badge.svg?branch=coverage)](https://coveralls.io/github/decentraland/archipelago-workers?branch=coverage)
 
-The Archipelago worker is a bundle of services designed to support a standalone realm in Decentraland. It consists of a `core` service that implements the established clustering logic to group users into islands based on their in-world positions. Additionally, the `ws-connector` service provides a WebSocket connection, exposed to Decentraland clients through the [Realm Provider](https://github.com/decentraland/realm-provider/). A `stats` service is also included, aggregating information about islands and peers, making it available for consumption.
+The Archipelago Workers is a monorepo containing three services that implement the Archipelago protocol for clustering users into dynamic islands based on their positions in Decentraland's metaverse. The protocol enables scalable crowd management and efficient real-time communication for standalone realms.
+
+## Table of Contents
+
+- [Features](#features)
+- [Dependencies & Related Services](#dependencies--related-services)
+- [API Documentation](#api-documentation)
+- [Getting Started](#getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+  - [Running the Service](#running-the-service)
+- [Testing](#testing)
+- [How to Contribute](#how-to-contribute)
+- [License](#license)
+
+## Features
+
+- **Core Service**: Implements island clustering algorithms that dynamically group users into islands based on their in-world positions. Manages peer-to-island assignments, processes position updates, and publishes island change notifications via NATS.
+- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), and maintains peer registry.
+- **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability of the Archipelago system.
+
+## Dependencies & Related Services
+
+This service interacts with the following services:
+
+- **[Realm Provider](https://github.com/decentraland/realm-provider/)**: Exposes WebSocket connections to Decentraland clients
+- **[Catalyst](https://github.com/decentraland/catalyst)**: Content server for fetching scene data (used by stats service)
+
+External dependencies:
+
+- **NATS**: Message broker for peer heartbeats, disconnect events, island changes, and discovery messages
+- **Protocol**: @dcl/protocol (Archipelago protocol definitions)
+- **Crypto**: @dcl/crypto (Ethereum signature validation, AuthChain)
+
+## API Documentation
+
+The API is fully documented using the [OpenAPI standard](https://swagger.io/specification/). The schema is located at [docs/openapi.yaml](docs/openapi.yaml).
+
+The monorepo includes:
+- **Stats Service API**: REST endpoints for monitoring and analytics (see [docs/stats/openapi.yaml](docs/stats/openapi.yaml))
+- **WebSocket Connector API**: Real-time communication endpoints (see [docs/ws-connector/openapi.yaml](docs/ws-connector/openapi.yaml))
 
 ## Getting Started
 
-### Dependencies
+### Prerequisites
 
-- Node >= v16
-- [NATS](https://nats.io/) running instance.
-   - `NATS_URL` environment variable must be set. Eg: `NATS_URL=localhost:4222`
+Before running this service, ensure you have the following installed:
+
+- **Node.js**: Version 16.x or higher (LTS recommended)
+- **Yarn**: Version 1.22.x or higher
+- **Docker**: For containerized deployment and local development dependencies
 
 ### Installation
 
-Install Node dependencies:
+1. Clone the repository:
 
+```bash
+git clone https://github.com/decentraland/archipelago-workers.git
+cd archipelago-workers
 ```
+
+2. Install dependencies:
+
+```bash
 yarn install
 ```
 
-### Usage
+3. Build the project:
 
-Build and start the project:
-
-```
+```bash
 yarn build
+```
+
+### Configuration
+
+The service uses environment variables for configuration. Each service (core, ws-connector, stats) has its own configuration requirements.
+
+Key environment variables:
+
+- `NATS_URL`: NATS server connection string (e.g., `localhost:4222`)
+- Service-specific ports and configuration (see individual service documentation)
+
+### Running the Service
+
+#### Setting up the environment
+
+In order to successfully run these services, external dependencies such as message brokers must be provided.
+
+To do so, this repository provides you with a `docker-compose.yml` file for that purpose. In order to get the environment set up, run:
+
+```bash
+docker-compose up -d
+```
+
+This will start:
+- NATS message broker on port `4222`
+
+#### Running in development mode
+
+To run all services in development mode:
+
+```bash
 yarn start:local
 ```
 
-### Test
+This will start all three services:
+- **Core Service**: Island clustering engine
+- **WebSocket Connector Service**: WebSocket gateway for clients
+- **Stats Service**: REST API for monitoring and analytics
 
-Run unit and integration tests:
+### NATS Messages
 
-```
+The services communicate via the following NATS message topics:
+
+- `peer.${address}.heartbeat` - Peer heartbeat messages
+- `peer.${address}.disconnect` - Peer disconnect events
+- `engine.peer.${address}.island_changed` - Island assignment changes
+- `engine.discovery` - Service discovery messages
+- `engine.islands` - Island status reports
+
+## Testing
+
+This service includes comprehensive test coverage with both unit and integration tests.
+
+### Running Tests
+
+Run all tests with coverage:
+
+```bash
 yarn test
 ```
 
-### NATS messages:
+Run tests in watch mode:
 
-- `peer.${address}.heartbeat`
-- `peer.${address}.disconnect`
-- `engine.peer.${address}.island_changed`
-- `engine.discovery`
-- `engine.islands`
+```bash
+yarn test --watch
+```
+
+### Test Structure
+
+- **Unit Tests**: Test individual components and functions in isolation
+- **Integration Tests**: Test the complete request/response cycle and service interactions
+
+For detailed testing guidelines and standards, refer to our [Testing Standards](https://github.com/decentraland/docs/tree/main/development-standards/testing-standards) documentation.
 
 ## AI Agent Context
 
 For detailed AI Agent context, see [docs/ai-agent-context.md](docs/ai-agent-context.md).
+
+---
+
+**Note**: This is a monorepo containing three separate services. Each service can be run independently, but they work together to provide the complete Archipelago communication system.
+
