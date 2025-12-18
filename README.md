@@ -7,7 +7,7 @@ The Archipelago Workers is a monorepo containing three services that implement t
 ## Table of Contents
 
 - [Features](#features)
-- [Dependencies & Related Services](#dependencies--related-services)
+- [Dependencies](#dependencies)
 - [API Documentation](#api-documentation)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
@@ -15,8 +15,6 @@ The Archipelago Workers is a monorepo containing three services that implement t
   - [Configuration](#configuration)
   - [Running the Service](#running-the-service)
 - [Testing](#testing)
-- [How to Contribute](#how-to-contribute)
-- [License](#license)
 
 ## Features
 
@@ -24,18 +22,13 @@ The Archipelago Workers is a monorepo containing three services that implement t
 - **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), and maintains peer registry.
 - **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability of the Archipelago system.
 
-## Dependencies & Related Services
-
-This service interacts with the following services:
+## Dependencies
 
 - **[Realm Provider](https://github.com/decentraland/realm-provider/)**: Exposes WebSocket connections to Decentraland clients
 - **[Catalyst](https://github.com/decentraland/catalyst)**: Content server for fetching scene data (used by stats service)
-
-External dependencies:
-
 - **NATS**: Message broker for peer heartbeats, disconnect events, island changes, and discovery messages
-- **Protocol**: @dcl/protocol (Archipelago protocol definitions)
-- **Crypto**: @dcl/crypto (Ethereum signature validation, AuthChain)
+- **@dcl/protocol**: Archipelago protocol definitions
+- **@dcl/crypto**: Ethereum signature validation, AuthChain
 
 ## API Documentation
 
@@ -51,7 +44,7 @@ The monorepo includes:
 
 Before running this service, ensure you have the following installed:
 
-- **Node.js**: Version 16.x or higher (LTS recommended)
+- **Node.js**: Version 18.x or higher (LTS recommended)
 - **Yarn**: Version 1.22.x or higher
 - **Docker**: For containerized deployment and local development dependencies
 
@@ -78,12 +71,13 @@ yarn build
 
 ### Configuration
 
-The service uses environment variables for configuration. Each service (core, ws-connector, stats) has its own configuration requirements.
+The service uses environment variables for configuration. Copy the example file and adjust as needed:
 
-Key environment variables:
+```bash
+cp .env.default .env
+```
 
-- `NATS_URL`: NATS server connection string (e.g., `localhost:4222`)
-- Service-specific ports and configuration (see individual service documentation)
+See `.env.default` for available configuration options.
 
 ### Running the Service
 
@@ -139,6 +133,18 @@ Run tests in watch mode:
 
 ```bash
 yarn test --watch
+```
+
+Run only unit tests:
+
+```bash
+yarn test test/unit
+```
+
+Run only integration tests:
+
+```bash
+yarn test test/integration
 ```
 
 ### Test Structure
