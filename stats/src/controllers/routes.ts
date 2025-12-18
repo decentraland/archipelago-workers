@@ -1,4 +1,4 @@
-import { Router } from '@well-known-components/http-server'
+import { Router } from '@dcl/wkc-http-server'
 import { GlobalContext } from '../types'
 import { parcelsHandler } from './handlers/parcels-handler'
 import { peerHandler, peersHandler } from './handlers/peers-handler'
