@@ -4,7 +4,7 @@ import {
   createStatusCheckComponent,
   IHttpServerOptions,
   instrumentHttpServerWithPromClientRegistry
-} from '@well-known-components/http-server'
+} from '@dcl/wkc-http-server'
 import { createFetchComponent } from '@well-known-components/fetch-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createNatsComponent } from '@well-known-components/nats-component'
