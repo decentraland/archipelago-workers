@@ -1,12 +1,17 @@
 ARG RUN
 
-FROM node:18-slim as builderenv
+FROM node:20-slim as builderenv
 
 WORKDIR /app
 
-# some packages require a build step
-RUN apt-get update
-RUN apt-get upgrade -y
+# Install build dependencies required for native modules (e.g., uWebSockets.js)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    make \
+    g++ \
+    libc6-dev \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 # build the app
 COPY . /app
@@ -20,7 +25,7 @@ RUN yarn install --prod --frozen-lockfile
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:18-slim
+FROM node:20-slim
 
 RUN apt-get update
 RUN apt-get upgrade -y
