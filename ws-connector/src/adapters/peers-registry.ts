@@ -10,6 +10,7 @@ export type IPeersRegistryComponent = IBaseComponent & {
   onPeerDisconnected(id: string): void
   getPeerWs(id: string): InternalWebSocket | undefined
   getPeerCount(): number
+  forEachPeer(fn: (peerId: string, ws: InternalWebSocket) => void): void
 }
 
 export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
@@ -31,10 +32,15 @@ export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
     return connectedPeers.size
   }
 
+  function forEachPeer(fn: (peerId: string, ws: InternalWebSocket) => void): void {
+    connectedPeers.forEach((ws, peerId) => fn(peerId, ws))
+  }
+
   return {
     onPeerConnected,
     onPeerDisconnected,
     getPeerWs,
-    getPeerCount
+    getPeerCount,
+    forEachPeer
   }
 }

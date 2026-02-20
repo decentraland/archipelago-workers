@@ -13,10 +13,10 @@ import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-se
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server' | 'metrics'
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'islandRegistry' | 'parcelTracker' | 'nats' | 'server' | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, nats, server, config, ethereumProvider, metrics } = components
+  const { logs, peersRegistry, islandRegistry, parcelTracker, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
@@ -234,6 +234,13 @@ export async function registerWsHandler(
           case Stage.HANDSHAKE_COMPLETED: {
             if (packet.message && packet.message.$case === 'heartbeat') {
               nats.publish(`peer.${userData.address}.heartbeat`, Heartbeat.encode(packet.message.heartbeat).finish())
+              if (packet.message.heartbeat.position) {
+                parcelTracker.updatePeerPosition(
+                  userData.address,
+                  packet.message.heartbeat.position.x,
+                  packet.message.heartbeat.position.z
+                )
+              }
             }
             break
           }
@@ -253,6 +260,8 @@ export async function registerWsHandler(
       data.isClosed = true
       if (data.address) {
         peersRegistry.onPeerDisconnected(data.address)
+        islandRegistry.removePeer(data.address)
+        parcelTracker.removePeer(data.address)
         nats.publish(`peer.${data.address}.disconnect`)
       }
     }

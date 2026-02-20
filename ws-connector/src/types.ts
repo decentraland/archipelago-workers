@@ -8,6 +8,8 @@ import type {
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
+import { IIslandRegistryComponent } from './adapters/island-registry'
+import { IParcelTrackerComponent } from './adapters/parcel-tracker'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@well-known-components/uws-http-server'
 
 // components used in every environment
@@ -19,6 +21,8 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
   peersRegistry: IPeersRegistryComponent
+  islandRegistry: IIslandRegistryComponent
+  parcelTracker: IParcelTrackerComponent
   ethereumProvider: HTTPProvider
 }
 
