@@ -13,10 +13,19 @@ import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-se
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'islandRegistry' | 'parcelTracker' | 'nats' | 'server' | 'metrics'
+    | 'config'
+    | 'logs'
+    | 'ethereumProvider'
+    | 'peersRegistry'
+    | 'islandRegistry'
+    | 'parcelTracker'
+    | 'nats'
+    | 'server'
+    | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, islandRegistry, parcelTracker, nats, server, config, ethereumProvider, metrics } = components
+  const { logs, peersRegistry, islandRegistry, parcelTracker, nats, server, config, ethereumProvider, metrics } =
+    components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min

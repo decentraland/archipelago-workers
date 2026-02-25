@@ -86,7 +86,9 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
         }
       }
 
-      logger.debug(`profile update for ${profileUpdate.address} sent to ${peersOnIsland.length - 1} peers on island ${islandId}`)
+      logger.debug(
+        `profile update for ${profileUpdate.address} sent to ${peersOnIsland.length - 1} peers on island ${islandId}`
+      )
     } catch (err: any) {
       logger.error(`cannot process profile update message ${err.message}`)
     }
