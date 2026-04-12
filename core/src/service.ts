@@ -42,7 +42,11 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       const updates = await engine.flush()
       for (const [peerId, update] of updates) {
         if (update.action === 'changeTo') {
-          const island = engine.getIsland(update.islandId)!
+          const island = engine.getIsland(update.islandId)
+          if (!island) {
+            logger.warn(`Island ${update.islandId} not found for peer ${peerId}, skipping update`)
+            continue
+          }
           logger.debug(`Publishing island change for ${peerId}`)
           publisher.onChangeToIsland(peerId, island, update)
         } else if (update.action === 'leave') {
@@ -54,7 +58,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       logger.error(err)
     } finally {
       const flushElapsed = Date.now() - startTime
-      setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed), 1) // At least 1 ms between flushes
+      setTimeout(loop, Math.max(flushFrequency * 1000 - flushElapsed, 1)) // At least 1 ms between flushes
     }
   }
 
@@ -69,6 +73,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
     try {
       const id = message.subject.split('.')[1]
+      lastPeerHeartbeats.delete(id)
       engine.onPeerDisconnected(id)
     } catch (err: any) {
       logger.error(`cannot process peer_connect message ${err.message}`)
@@ -83,6 +88,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
     try {
       const id = message.subject.split('.')[1]
+      lastPeerHeartbeats.delete(id)
       engine.onPeerDisconnected(id)
     } catch (err: any) {
       logger.error(`cannot process peer_disconnect message ${err.message}`)
@@ -98,16 +104,25 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     try {
       const id = message.subject.split('.')[1]
       const decodedMessage = Heartbeat.decode(message.data)
-      const position = decodedMessage.position!
+      const position = decodedMessage.position
+      if (!position) {
+        return
+      }
 
       lastPeerHeartbeats.set(id, Date.now())
-      engine.onPeerPositionsUpdate([
-        {
-          id,
-          position: [position.x, position.y, position.z],
-          preferedIslandId: decodedMessage.desiredRoom
-        }
-      ])
+
+      // Only include preferedIslandId when desiredRoom is explicitly set.
+      // The engine uses 'preferedIslandId' in change to decide whether to update
+      // the preference. Including the key with undefined clears any existing
+      // preference on every heartbeat, making preferences effectively single-use.
+      const change: { id: string; position: [number, number, number]; preferedIslandId?: string } = {
+        id,
+        position: [position.x, position.y, position.z]
+      }
+      if (decodedMessage.desiredRoom) {
+        change.preferedIslandId = decodedMessage.desiredRoom
+      }
+      engine.onPeerPositionsUpdate([change])
     } catch (err: any) {
       logger.error(`cannot process heartbeat message ${err.message}`)
     }
