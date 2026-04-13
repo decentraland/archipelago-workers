@@ -27,7 +27,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       const ws = peersRegistry.getPeerWs(id)
       if (ws) {
         const islandChanged = IslandChangedMessage.decode(message.data)
-        ws.send(
+        const sendResult = ws.send(
           craftMessage({
             message: {
               $case: 'islandChanged',
@@ -36,10 +36,14 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
           }),
           true
         )
-        logger.debug(`island change published for ${id}`)
+        if (sendResult !== 1) {
+          logger.warn(`Failed to send island change to peer ${id}, send returned ${sendResult}`)
+        } else {
+          logger.debug(`island change published for ${id}`)
+        }
       }
     } catch (err: any) {
-      logger.error(`cannot process peer_connect message ${err.message}`)
+      logger.error(`cannot process island_changed message ${err.message}`)
     }
   })
 }
