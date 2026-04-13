@@ -23,7 +23,10 @@ export type Options = {
 }
 
 function recalculateGeometryIfNeeded(island: Island) {
-  if (island.peers.length > 0 && (island._geometryDirty || !island._radius || !island._center)) {
+  if (
+    island.peers.length > 0 &&
+    (island._geometryDirty || island._radius === undefined || island._radius === null || !island._center)
+  ) {
     const [center, radius] = islandGeometryCalculator(island.peers)
     island._center = center
     island._radius = radius
@@ -62,8 +65,10 @@ export function createArchipelagoEngine({
         }
 
         if (peer.islandId) {
-          const island = islands.get(peer.islandId)!
-          island._geometryDirty = true
+          const island = islands.get(peer.islandId)
+          if (island) {
+            island._geometryDirty = true
+          }
         }
       }
     }
@@ -92,18 +97,20 @@ export function createArchipelagoEngine({
     if (peer) {
       peers.delete(id)
       if (peer.islandId) {
-        const island = islands.get(peer.islandId)!
+        const island = islands.get(peer.islandId)
 
-        const idx = island.peers.findIndex((it) => it.id === id)
-        if (idx >= 0) {
-          island.peers.splice(idx, 1)
+        if (island) {
+          const idx = island.peers.findIndex((it) => it.id === id)
+          if (idx >= 0) {
+            island.peers.splice(idx, 1)
+          }
+
+          island._geometryDirty = true
+
+          if (island.peers.length === 0) {
+            islands.delete(island.id)
+          }
         }
-
-        if (island.peers.length === 0) {
-          islands.delete(island.id)
-        }
-
-        island._geometryDirty = true
 
         pendingUpdates.set(peer.id, { action: 'leave', islandId: peer.islandId })
       }
@@ -116,6 +123,9 @@ export function createArchipelagoEngine({
       try {
         await createIsland([change])
       } catch (err: any) {
+        // Remove from peers so the peer is not orphaned without an island.
+        // The next heartbeat will re-add it to pendingNewPeers for retry.
+        peers.delete(id)
         logger.error(err)
       }
     }
@@ -129,7 +139,10 @@ export function createArchipelagoEngine({
     }
 
     for (const islandId of affectedIslands) {
-      await checkSplitIsland(islands.get(islandId)!, affectedIslands)
+      const island = islands.get(islandId)
+      if (island) {
+        await checkSplitIsland(island, affectedIslands)
+      }
     }
 
     // NOTE: check if islands can be merged
@@ -190,6 +203,10 @@ export function createArchipelagoEngine({
         try {
           affectedIslands.add(await createIsland(group))
         } catch (err: any) {
+          // createIsland failed before setPeersIsland, so these peers were never
+          // assigned to a new island. Put them back in the original island to
+          // avoid orphaning them.
+          island.peers.push(...group)
           logger.error(err)
         }
       }
@@ -201,9 +218,17 @@ export function createArchipelagoEngine({
     const peerIds = group.map((p) => p.id)
     const connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
 
+    // After the await, filter out peers that disconnected during the transport call.
+    // A NATS disconnect callback can fire during the await and remove peers from the
+    // peers Map. If we include them, they become ghost peers in the island.
+    const activePeers = group.filter((p) => peers.has(p.id))
+    if (activePeers.length === 0) {
+      return newIslandId
+    }
+
     const island: Island = {
       id: newIslandId,
-      peers: group,
+      peers: activePeers,
       maxPeers: transport.maxIslandSize,
       sequenceId: ++currentSequence,
       _geometryDirty: true,
@@ -219,7 +244,7 @@ export function createArchipelagoEngine({
 
     islands.set(newIslandId, island)
 
-    setPeersIsland(island, group, connStrs)
+    setPeersIsland(island, activePeers, connStrs)
 
     return newIslandId
   }
@@ -236,8 +261,25 @@ export function createArchipelagoEngine({
         islandToMergeInto.id
       )
 
-      islandToMergeInto.peers.push(...anIsland.peers)
-      setPeersIsland(islandToMergeInto, anIsland.peers, connStrs)
+      // After the await, re-validate that both islands still exist and the merge
+      // is still valid. A NATS disconnect callback can fire during the await and
+      // delete islands or change peer counts.
+      if (!islands.has(islandToMergeInto.id) || !islands.has(anIsland.id)) {
+        return false
+      }
+      if (islandToMergeInto.peers.length + anIsland.peers.length > islandToMergeInto.maxPeers) {
+        return false
+      }
+
+      // Filter out peers that disconnected during the await
+      const activePeers = anIsland.peers.filter((p) => peers.has(p.id))
+      if (activePeers.length === 0) {
+        islands.delete(anIsland.id)
+        return true
+      }
+
+      islandToMergeInto.peers.push(...activePeers)
+      setPeersIsland(islandToMergeInto, activePeers, connStrs)
       islands.delete(anIsland.id)
       islandToMergeInto._geometryDirty = true
 
@@ -248,8 +290,8 @@ export function createArchipelagoEngine({
     }
   }
 
-  async function mergeIslands(...islands: Island[]) {
-    const sortedIslands = islands.sort((i1, i2) =>
+  async function mergeIslands(...islandsToMerge: Island[]) {
+    const sortedIslands = islandsToMerge.sort((i1, i2) =>
       i1.peers.length === i2.peers.length
         ? Math.sign(i1.sequenceId - i2.sequenceId)
         : Math.sign(i2.peers.length - i1.peers.length)
@@ -260,6 +302,11 @@ export function createArchipelagoEngine({
     let anIsland: Island | undefined
 
     while ((anIsland = sortedIslands.shift())) {
+      // Skip islands that were deleted by a concurrent disconnect during a previous await
+      if (!islands.has(anIsland.id)) {
+        continue
+      }
+
       let merged = false
 
       const preferedIslandId = getPreferedIslandFor(anIsland)
@@ -273,6 +320,7 @@ export function createArchipelagoEngine({
       }
 
       for (let i = 0; !merged && i < biggestIslands.length; i++) {
+        if (biggestIslands[i] === preferedIsland) continue
         merged = await mergeIntoIfPossible(biggestIslands[i], anIsland)
       }
 

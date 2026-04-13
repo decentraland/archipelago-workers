@@ -23,7 +23,7 @@ async function createLivekitTransport(config: IConfigComponent): Promise<Transpo
   }
   return {
     name: 'livekit',
-    maxIslandSize: 100,
+    maxIslandSize: livekit.islandSize ?? 100,
     async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
       const connStrs: Record<string, string> = {}
       for (const userId of userIds) {

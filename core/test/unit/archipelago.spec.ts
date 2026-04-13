@@ -342,4 +342,222 @@ describe('engine', () => {
     expect.strictEqual(updates.get('peer1').islandId, getIslandId(bigIsland))
     expect.strictEqual(updates.get('peer2').islandId, getIslandId(bigIsland))
   })
+
+  it('calculates correct geometry for a single-peer island (radius 0)', async () => {
+    await setPositionArrays(['1', 50, 0, 30])
+
+    const island = engine.getIslands()[0]
+
+    expect.deepStrictEqual(island.center, [50, 0, 30])
+    expect.strictEqual(island.radius, 0)
+  })
+
+  it('caches geometry for radius-0 islands without recalculating on every access', async () => {
+    await setPositionArrays(['1', 50, 0, 30])
+
+    const island = engine.getIslands()[0]
+
+    // First access triggers calculation and should clear dirty flag
+    expect.strictEqual(island.radius, 0)
+    expect.strictEqual(island._geometryDirty, false)
+
+    // Subsequent accesses should still return correct values with dirty flag remaining false
+    expect.strictEqual(island.radius, 0)
+    expect.strictEqual(island._geometryDirty, false)
+    expect.deepStrictEqual(island.center, [50, 0, 30])
+    expect.strictEqual(island._geometryDirty, false)
+  })
+
+  it('merges a single-peer island correctly with a nearby island', async () => {
+    await setPositionArrays(['1', 0, 0, 0])
+    await setPositionArrays(['2', 50, 0, 0])
+
+    expect.strictEqual(engine.getIslands().length, 1)
+    expectIslandWith(engine, '1', '2')
+  })
+
+  it('keeps single-peer islands separate when far apart', async () => {
+    await setPositionArrays(['1', 0, 0, 0])
+    await setPositionArrays(['2', 200, 0, 0])
+
+    expect.strictEqual(engine.getIslands().length, 2)
+    expectIslandsWith(engine, ['1'], ['2'])
+  })
+
+  it('calculates correct geometry when all peers are at the same position', async () => {
+    await setPositionArrays(['1', 10, 0, 10], ['2', 10, 0, 10], ['3', 10, 0, 10])
+
+    const island = engine.getIslands()[0]
+
+    expect.deepStrictEqual(island.center, [10, 0, 10])
+    expect.strictEqual(island.radius, 0)
+    expect.strictEqual(island._geometryDirty, false)
+  })
+
+  it('does not retry preferred island in merge fallback loop', async () => {
+    let getConnectionStringsCalls = 0
+    const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+    const logs = await createLogComponent({ config })
+    const metrics = createTestMetricsComponent(metricDeclarations)
+
+    const smallEngine = createArchipelagoEngine({
+      components: { logs, metrics },
+      joinDistance: 64,
+      leaveDistance: 80,
+      transport: {
+        name: 'p2p',
+        maxIslandSize: 3,
+        getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+          getConnectionStringsCalls++
+          const connStrs: Record<string, string> = {}
+          for (const userId of userIds) {
+            connStrs[userId] = `p2p:${roomId}.${userId}`
+          }
+          return Promise.resolve(connStrs)
+        }
+      }
+    })
+
+    // Create island A with 3 peers (at capacity)
+    smallEngine.onPeerPositionsUpdate([
+      { id: '1', position: [0, 0, 0] },
+      { id: '2', position: [10, 0, 0] },
+      { id: '3', position: [20, 0, 0] }
+    ])
+    await smallEngine.flush()
+
+    // Create island B with 1 peer, preferring island A
+    const islandA = smallEngine.getIslands()[0]
+    smallEngine.onPeerPositionsUpdate([
+      { id: '4', position: [200, 0, 0], preferedIslandId: islandA.id }
+    ])
+    await smallEngine.flush()
+
+    // Move peer 4 close to island A so they'd intersect
+    getConnectionStringsCalls = 0
+    smallEngine.onPeerPositionsUpdate([{ id: '4', position: [30, 0, 0] }])
+    await smallEngine.flush()
+
+    // Merging into A should fail (4 peers > maxIslandSize 3).
+    // Without the fix, getConnectionStrings would be called once for
+    // the preferred attempt and once again in the fallback loop.
+    // With the fix, the fallback loop skips the preferred island,
+    // so getConnectionStrings is never called (both attempts fail
+    // the canMerge check before reaching the transport).
+    expect.strictEqual(getConnectionStringsCalls, 0)
+  })
+
+  describe('split with transport failure', () => {
+    it('returns peers to original island when createIsland fails during split', async () => {
+      const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+      const logs = await createLogComponent({ config })
+      const metrics = createTestMetricsComponent(metricDeclarations)
+
+      let shouldFail = false
+      const failingEngine = createArchipelagoEngine({
+        components: { logs, metrics },
+        joinDistance: 64,
+        leaveDistance: 80,
+        transport: {
+          name: 'p2p',
+          maxIslandSize: 200,
+          getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+            if (shouldFail) {
+              return Promise.reject(new Error('transport failure'))
+            }
+            const connStrs: Record<string, string> = {}
+            for (const userId of userIds) {
+              connStrs[userId] = `p2p:${roomId}.${userId}`
+            }
+            return Promise.resolve(connStrs)
+          }
+        }
+      })
+
+      // Create two peers close together so they merge into one island
+      failingEngine.onPeerPositionsUpdate([
+        { id: '1', position: [0, 0, 0] },
+        { id: '2', position: [16, 0, 16] }
+      ])
+      await failingEngine.flush()
+      expect.strictEqual(failingEngine.getIslands().length, 1)
+      expectIslandWith(failingEngine, '1', '2')
+
+      // Move peer 2 far away to trigger a split, with transport failing
+      shouldFail = true
+      failingEngine.onPeerPositionsUpdate([{ id: '2', position: [200, 0, 0] }])
+      await failingEngine.flush()
+
+      // With the fix, peer 2 should be returned to the original island
+      // instead of being orphaned
+      expect.strictEqual(failingEngine.getIslands().length, 1)
+      const island = failingEngine.getIslands()[0]
+      const peerIds = island.peers.map((p) => p.id).sort()
+      expect.deepStrictEqual(peerIds, ['1', '2'])
+
+      // Verify peers are functional after recovery: move them close together
+      shouldFail = false
+      failingEngine.onPeerPositionsUpdate([
+        { id: '1', position: [0, 0, 0] },
+        { id: '2', position: [10, 0, 0] }
+      ])
+      await failingEngine.flush()
+      expect.strictEqual(failingEngine.getIslands().length, 1)
+      expectIslandWith(failingEngine, '1', '2')
+    })
+
+    it('keeps successfully split groups even if a later group fails', async () => {
+      const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+      const logs = await createLogComponent({ config })
+      const metrics = createTestMetricsComponent(metricDeclarations)
+
+      let failNextCall = false
+      const partialFailEngine = createArchipelagoEngine({
+        components: { logs, metrics },
+        joinDistance: 64,
+        leaveDistance: 80,
+        transport: {
+          name: 'p2p',
+          maxIslandSize: 200,
+          getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+            if (failNextCall) {
+              failNextCall = false
+              return Promise.reject(new Error('transport failure'))
+            }
+            const connStrs: Record<string, string> = {}
+            for (const userId of userIds) {
+              connStrs[userId] = `p2p:${roomId}.${userId}`
+            }
+            return Promise.resolve(connStrs)
+          }
+        }
+      })
+
+      // Create three peers close together in one island
+      partialFailEngine.onPeerPositionsUpdate([
+        { id: '1', position: [0, 0, 0] },
+        { id: '2', position: [16, 0, 0] },
+        { id: '3', position: [32, 0, 0] }
+      ])
+      await partialFailEngine.flush()
+      expect.strictEqual(partialFailEngine.getIslands().length, 1)
+      expectIslandWith(partialFailEngine, '1', '2', '3')
+
+      // Move them far apart to trigger a 3-way split.
+      // The split produces the biggest group + two split-off groups.
+      // We fail the first createIsland call (for one split-off group).
+      failNextCall = true
+      partialFailEngine.onPeerPositionsUpdate([
+        { id: '1', position: [0, 0, 0] },
+        { id: '2', position: [100, 0, 0] },
+        { id: '3', position: [200, 0, 0] }
+      ])
+      await partialFailEngine.flush()
+
+      // No peers should be orphaned — all must be accounted for across islands
+      const islands = partialFailEngine.getIslands()
+      const allPeerIds = islands.flatMap((i) => i.peers.map((p) => p.id)).sort()
+      expect.deepStrictEqual(allPeerIds, ['1', '2', '3'])
+    })
+  })
 })
