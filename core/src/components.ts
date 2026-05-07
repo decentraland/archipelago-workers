@@ -16,10 +16,7 @@ import { IConfigComponent, ILoggerComponent } from '@well-known-components/inter
 
 const BAN_CHECK_TIMEOUT_MS = 1000
 
-async function createLivekitTransport(
-  config: IConfigComponent,
-  logs: ILoggerComponent
-): Promise<Transport> {
+async function createLivekitTransport(config: IConfigComponent, logs: ILoggerComponent): Promise<Transport> {
   const logger = logs.getLogger('livekit-transport')
   const livekit = {
     apiKey: await config.requireString('LIVEKIT_API_KEY'),
