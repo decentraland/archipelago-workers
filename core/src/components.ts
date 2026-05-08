@@ -15,8 +15,32 @@ import { AccessToken, TrackSource } from './logic/livekit'
 import { IConfigComponent, ILoggerComponent } from '@well-known-components/interfaces'
 
 const BAN_CHECK_TIMEOUT_MS = 1000
+// Cap concurrent ban-check requests so a large island formation doesn't open
+// hundreds of sockets to comms-gatekeeper at once. The engine's default island
+// size is 100; 20 in flight keeps the burst bounded while still taking
+// advantage of parallelism.
+const BAN_CHECK_CONCURRENCY = 20
 
-async function createLivekitTransport(config: IConfigComponent, logs: ILoggerComponent): Promise<Transport> {
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let cursor = 0
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = cursor++
+      if (i >= items.length) return
+      results[i] = await fn(items[i])
+    }
+  }
+  const workerCount = Math.min(limit, items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  return results
+}
+
+export async function createLivekitTransport(config: IConfigComponent, logs: ILoggerComponent): Promise<Transport> {
   const logger = logs.getLogger('livekit-transport')
   const livekit = {
     apiKey: await config.requireString('LIVEKIT_API_KEY'),
@@ -34,7 +58,7 @@ async function createLivekitTransport(config: IConfigComponent, logs: ILoggerCom
   async function isBanned(address: string): Promise<boolean> {
     if (!commsGatekeeperUrl) return false
     try {
-      const response = await fetch(`${commsGatekeeperUrl}/users/${address}/bans`, {
+      const response = await fetch(`${commsGatekeeperUrl}/users/${encodeURIComponent(address)}/bans`, {
         signal: AbortSignal.timeout(BAN_CHECK_TIMEOUT_MS)
       })
       if (!response.ok) {
@@ -77,15 +101,13 @@ async function createLivekitTransport(config: IConfigComponent, logs: ILoggerCom
     name: 'livekit',
     maxIslandSize: livekit.islandSize ?? 100,
     async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
-      const entries = await Promise.all(
-        userIds.map(async (userId) => {
-          if (await isBanned(userId)) {
-            logger.info(`Skipping connection string for banned user`, { address: userId, roomId })
-            return null
-          }
-          return [userId, await mintToken(userId, roomId)] as const
-        })
-      )
+      const entries = await mapWithConcurrency(userIds, BAN_CHECK_CONCURRENCY, async (userId) => {
+        if (await isBanned(userId)) {
+          logger.info(`Skipping connection string for banned user`, { address: userId, roomId })
+          return null
+        }
+        return [userId, await mintToken(userId, roomId)] as const
+      })
       const connStrs: Record<string, string> = {}
       for (const entry of entries) {
         if (entry) connStrs[entry[0]] = entry[1]

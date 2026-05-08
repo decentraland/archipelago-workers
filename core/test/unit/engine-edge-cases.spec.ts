@@ -739,4 +739,60 @@ describe('engine edge cases', () => {
       expect(new Set(islandIds).size).toBe(islandIds.length)
     })
   })
+
+  describe('when transport returns a partial result (e.g., banned users omitted)', () => {
+    let banAwareEngine: Engine
+    let bannedUserIds: Set<string>
+
+    beforeEach(async () => {
+      bannedUserIds = new Set()
+      const config = createConfigComponent({ LOG_LEVEL: 'INFO' })
+      const logs = await createLogComponent({ config })
+      const metrics = createTestMetricsComponent(metricDeclarations)
+
+      banAwareEngine = createArchipelagoEngine({
+        components: { logs, metrics },
+        joinDistance: 64,
+        leaveDistance: 80,
+        transport: {
+          name: 'test',
+          maxIslandSize: 200,
+          getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+            const connStrs: Record<string, string> = {}
+            for (const userId of userIds) {
+              if (!bannedUserIds.has(userId)) {
+                connStrs[userId] = `test:${roomId}.${userId}`
+              }
+            }
+            return Promise.resolve(connStrs)
+          }
+        }
+      })
+    })
+
+    it('does not place a peer in an island when its connStr is missing', async () => {
+      bannedUserIds.add('banned')
+      banAwareEngine.onPeerPositionsUpdate([
+        { id: 'banned', position: [0, 0, 0] },
+        { id: 'allowed', position: [0, 0, 0] }
+      ])
+      const updates = await banAwareEngine.flush()
+
+      expect(updates.has('banned')).toBe(false)
+      expect(updates.has('allowed')).toBe(true)
+      expect((updates.get('allowed') as ChangeToIslandUpdate).connStr).toBeDefined()
+      expect(banAwareEngine.getIslands()).toHaveLength(1)
+      const island = banAwareEngine.getIslands()[0]
+      expect(island.peers.find((p) => p.id === 'banned')).toBeUndefined()
+    })
+
+    it('removes a banned peer from the engine entirely so it does not block subsequent flushes', async () => {
+      bannedUserIds.add('banned')
+      banAwareEngine.onPeerPositionsUpdate([{ id: 'banned', position: [0, 0, 0] }])
+      await banAwareEngine.flush()
+
+      expect(banAwareEngine.getPeerCount()).toBe(0)
+      expect(banAwareEngine.getPeerData('banned')).toBeUndefined()
+    })
+  })
 })

@@ -218,10 +218,20 @@ export function createArchipelagoEngine({
     const peerIds = group.map((p) => p.id)
     const connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
 
-    // After the await, filter out peers that disconnected during the transport call.
-    // A NATS disconnect callback can fire during the await and remove peers from the
-    // peers Map. If we include them, they become ghost peers in the island.
-    const activePeers = group.filter((p) => peers.has(p.id))
+    // Peers omitted from connStrs were rejected by the transport (e.g., banned).
+    // Drop them from the engine entirely so they do not occupy island slots or
+    // get retried on every flush — they will only re-enter via a fresh heartbeat.
+    for (const p of group) {
+      if (!(p.id in connStrs) && peers.has(p.id)) {
+        peers.delete(p.id)
+      }
+    }
+
+    // After the await, filter out peers that disconnected during the transport call
+    // and peers without a connection string. A NATS disconnect callback can fire
+    // during the await and remove peers from the peers Map. If we include them,
+    // they become ghost peers in the island.
+    const activePeers = group.filter((p) => peers.has(p.id) && p.id in connStrs)
     if (activePeers.length === 0) {
       return newIslandId
     }
@@ -271,8 +281,17 @@ export function createArchipelagoEngine({
         return false
       }
 
-      // Filter out peers that disconnected during the await
-      const activePeers = anIsland.peers.filter((p) => peers.has(p.id))
+      // Drop peers rejected by the transport (e.g., banned) from the engine
+      // so they don't end up in the merged island with no connection string.
+      for (const p of anIsland.peers) {
+        if (!(p.id in connStrs) && peers.has(p.id)) {
+          peers.delete(p.id)
+        }
+      }
+
+      // Filter out peers that disconnected during the await and peers without
+      // a connection string.
+      const activePeers = anIsland.peers.filter((p) => peers.has(p.id) && p.id in connStrs)
       if (activePeers.length === 0) {
         islands.delete(anIsland.id)
         return true
