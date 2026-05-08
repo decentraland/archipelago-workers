@@ -21,11 +21,7 @@ const BAN_CHECK_TIMEOUT_MS = 1000
 // advantage of parallelism.
 const BAN_CHECK_CONCURRENCY = 20
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let cursor = 0
   async function worker(): Promise<void> {
