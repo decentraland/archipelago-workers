@@ -42,6 +42,11 @@ export async function createLivekitTransport(config: IConfigComponent, logs: ILo
     islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
   }
   const commsGatekeeperUrl = (await config.getString('COMMS_GATEKEEPER_URL'))?.replace(/\/$/, '')
+  if (commsGatekeeperUrl) {
+    logger.info(`Ban check enabled — comms-gatekeeper at ${commsGatekeeperUrl}`)
+  } else {
+    logger.warn(`COMMS_GATEKEEPER_URL not set — ban checks disabled, all users will receive tokens`)
+  }
 
   // Unset URL → skip the check (local dev). Errors → fail OPEN: a gatekeeper
   // outage must not stop island formation; a slipped ban is the lesser harm.
