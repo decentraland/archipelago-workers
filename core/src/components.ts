@@ -15,10 +15,7 @@ import { AccessToken, TrackSource } from './logic/livekit'
 import { IConfigComponent, ILoggerComponent } from '@well-known-components/interfaces'
 
 const BAN_CHECK_TIMEOUT_MS = 1000
-// Cap concurrent ban-check requests so a large island formation doesn't open
-// hundreds of sockets to comms-gatekeeper at once. The engine's default island
-// size is 100; 20 in flight keeps the burst bounded while still taking
-// advantage of parallelism.
+// Cap concurrent ban checks so a 100-peer island doesn't open 100 sockets at once.
 const BAN_CHECK_CONCURRENCY = 20
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -46,11 +43,8 @@ export async function createLivekitTransport(config: IConfigComponent, logs: ILo
   }
   const commsGatekeeperUrl = (await config.getString('COMMS_GATEKEEPER_URL'))?.replace(/\/$/, '')
 
-  // When COMMS_GATEKEEPER_URL is unset, ban checks are skipped — preserves the
-  // pre-integration behavior so local dev/tests don't need the gatekeeper running.
-  // On HTTP error, timeout, or non-200, we fail OPEN: mint the token anyway and
-  // log a warning. A gatekeeper outage must not stop island formation across the
-  // platform; a banned user slipping through during an outage is the lesser harm.
+  // Unset URL → skip the check (local dev). Errors → fail OPEN: a gatekeeper
+  // outage must not stop island formation; a slipped ban is the lesser harm.
   async function isBanned(address: string): Promise<boolean> {
     if (!commsGatekeeperUrl) return false
     try {

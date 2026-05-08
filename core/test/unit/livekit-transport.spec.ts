@@ -99,6 +99,34 @@ describe('livekit transport ban check', () => {
       expect(result['0xabc']).toMatch(/^livekit:/)
     })
 
+    it('returns an empty record when every user is banned', async () => {
+      fetchMock.mockImplementation(() => Promise.resolve(jsonResponse({ data: { isBanned: true } })))
+      const transport = await buildTransport({ COMMS_GATEKEEPER_URL: gatekeeperUrl })
+
+      const result = await transport.getConnectionStrings(['0xa', '0xb', '0xc'], 'island-1')
+
+      expect(result).toEqual({})
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+
+    it('returns an empty record when called with no users', async () => {
+      const transport = await buildTransport({ COMMS_GATEKEEPER_URL: gatekeeperUrl })
+
+      const result = await transport.getConnectionStrings([], 'island-1')
+
+      expect(result).toEqual({})
+      expect(fetchMock).not.toHaveBeenCalled()
+    })
+
+    it('treats a missing isBanned field as not banned', async () => {
+      fetchMock.mockResolvedValue(jsonResponse({ data: {} }))
+      const transport = await buildTransport({ COMMS_GATEKEEPER_URL: gatekeeperUrl })
+
+      const result = await transport.getConnectionStrings(['0xabc'], 'island-1')
+
+      expect(result['0xabc']).toMatch(/^livekit:/)
+    })
+
     it('caps concurrent ban-check requests', async () => {
       let inFlight = 0
       let observedMaxInFlight = 0
