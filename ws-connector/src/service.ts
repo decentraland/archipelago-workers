@@ -40,7 +40,10 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const banSweepIntervalMs = (await config.getNumber('BAN_SWEEP_INTERVAL_MS')) ?? DEFAULT_BAN_SWEEP_INTERVAL_MS
   logger.info(`Ban sweep running every ${banSweepIntervalMs}ms`)
-  setInterval(async () => {
+  // unref() so the timer doesn't keep the process alive on its own — the
+  // HTTP server and NATS connection are what hold the event loop open in prod;
+  // in tests, this lets Jest exit cleanly.
+  const banSweep = setInterval(async () => {
     const peers = peersRegistry.snapshot()
     if (peers.length === 0) return
     await mapWithConcurrency(peers, BAN_SWEEP_CONCURRENCY, async ({ id }) => {
@@ -75,6 +78,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       }
     })
   }, banSweepIntervalMs)
+  banSweep.unref()
   nats.subscribe('engine.peer.*.island_changed', (err, message) => {
     if (err) {
       logger.error(err)
