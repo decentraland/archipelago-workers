@@ -11,11 +11,7 @@ const DEFAULT_BAN_SWEEP_INTERVAL_MS = 30_000
 // open hundreds of sockets to comms-gatekeeper at once. Matches archipelago-core.
 const BAN_SWEEP_CONCURRENCY = 20
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<R[]> {
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let cursor = 0
   async function worker(): Promise<void> {
@@ -42,8 +38,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const logger = logs.getLogger('ws-connector')
 
-  const banSweepIntervalMs =
-    (await config.getNumber('BAN_SWEEP_INTERVAL_MS')) ?? DEFAULT_BAN_SWEEP_INTERVAL_MS
+  const banSweepIntervalMs = (await config.getNumber('BAN_SWEEP_INTERVAL_MS')) ?? DEFAULT_BAN_SWEEP_INTERVAL_MS
   logger.info(`Ban sweep running every ${banSweepIntervalMs}ms`)
   setInterval(async () => {
     const peers = peersRegistry.snapshot()

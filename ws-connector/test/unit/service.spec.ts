@@ -37,7 +37,8 @@ describe('ws-connector island change forwarding', () => {
           close: jest.fn()
         } as unknown as InternalWebSocket
       }),
-      getPeerCount: jest.fn(() => connectedPeers.size)
+      getPeerCount: jest.fn(() => connectedPeers.size),
+      snapshot: jest.fn(() => [])
     }
   })
 
