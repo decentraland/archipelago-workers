@@ -5,6 +5,7 @@ import { AppComponents } from './types'
 import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPeersRegistry } from './adapters/peers-registry'
+import { createBanChecker } from './adapters/ban-checker'
 import { createFetchComponent } from '@well-known-components/fetch-component'
 import { createUWsComponent } from '@well-known-components/uws-http-server'
 import { createMetricsComponent } from '@well-known-components/metrics'
@@ -23,6 +24,7 @@ export async function initComponents(): Promise<AppComponents> {
   const natsLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'WARN' }) })
   const nats = await createNatsComponent({ config, logs: natsLogs })
   const peersRegistry = await createPeersRegistry()
+  const banChecker = await createBanChecker({ config, logs })
 
   const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'sepolia'
   const ethereumProvider = new HTTPProvider(
@@ -38,6 +40,7 @@ export async function initComponents(): Promise<AppComponents> {
     metrics,
     nats,
     peersRegistry,
+    banChecker,
     ethereumProvider
   }
 }
