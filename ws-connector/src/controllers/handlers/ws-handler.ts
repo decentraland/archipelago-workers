@@ -203,6 +203,10 @@ export async function registerWsHandler(
               }
 
               // Reject platform-banned users so they can't establish a comms session.
+              // KR_NEW_SESSION is reused as the kick reason because the protocol enum
+              // currently has no KR_BANNED. The explorer treats both as "you were kicked"
+              // and shows the existing user-banned notification (the SNS event arrives
+              // separately). Replace with a dedicated reason if/when the protocol adds one.
               if (await banChecker.isBanned(address)) {
                 logger.warn(`Rejected connection from platform-banned wallet: ${address}`)
                 const kickedMessage = craftMessage({

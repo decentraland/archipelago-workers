@@ -21,6 +21,7 @@ export async function createBanChecker(components: {
 
   // Unset URL → skip (local dev). Errors → fail OPEN: a gatekeeper outage
   // must not lock everyone out of the platform.
+  // Near-duplicate of core/src/components.ts isBanned. Keep both in sync.
   async function isBanned(address: string): Promise<boolean> {
     if (!url) return false
     try {

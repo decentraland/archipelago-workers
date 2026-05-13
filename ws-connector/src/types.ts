@@ -1,5 +1,6 @@
 import { HTTPProvider } from 'eth-connect'
 import type {
+  IBaseComponent,
   IConfigComponent,
   ILoggerComponent,
   IMetricsComponent,
@@ -21,6 +22,7 @@ export type BaseComponents = {
   nats: INatsComponent
   peersRegistry: IPeersRegistryComponent
   banChecker: IBanCheckerComponent
+  banSweep: IBaseComponent
   ethereumProvider: HTTPProvider
 }
 

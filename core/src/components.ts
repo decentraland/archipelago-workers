@@ -18,6 +18,7 @@ const BAN_CHECK_TIMEOUT_MS = 1000
 // Cap concurrent ban checks so a 100-peer island doesn't open 100 sockets at once.
 const BAN_CHECK_CONCURRENCY = 20
 
+// Duplicate of ws-connector/src/service.ts. Keep the two implementations in sync.
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let cursor = 0
@@ -50,6 +51,7 @@ export async function createLivekitTransport(config: IConfigComponent, logs: ILo
 
   // Unset URL → skip the check (local dev). Errors → fail OPEN: a gatekeeper
   // outage must not stop island formation; a slipped ban is the lesser harm.
+  // Near-duplicate of ws-connector/src/adapters/ban-checker.ts. Keep both in sync.
   async function isBanned(address: string): Promise<boolean> {
     if (!commsGatekeeperUrl) return false
     try {
