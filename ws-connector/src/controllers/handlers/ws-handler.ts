@@ -13,10 +13,10 @@ import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-se
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server' | 'metrics'
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'nats' | 'server' | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, nats, server, config, ethereumProvider, metrics } = components
+  const { logs, peersRegistry, banChecker, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
@@ -198,6 +198,24 @@ export async function registerWsHandler(
               const denyListPostAuth: Set<string> = await fetchDenyList()
               if (denyListPostAuth.has(address)) {
                 logger.warn(`Rejected connection from deny-listed wallet (post-auth): ${address}`)
+                safeEndWebSocket(ws)
+                return
+              }
+
+              // Reject platform-banned users so they can't establish a comms session.
+              // KR_NEW_SESSION is reused as the kick reason because the protocol enum
+              // currently has no KR_BANNED. The explorer treats both as "you were kicked"
+              // and shows the existing user-banned notification (the SNS event arrives
+              // separately). Replace with a dedicated reason if/when the protocol adds one.
+              if (await banChecker.isBanned(address)) {
+                logger.warn(`Rejected connection from platform-banned wallet: ${address}`)
+                const kickedMessage = craftMessage({
+                  message: {
+                    $case: 'kicked',
+                    kicked: { reason: KickedReason.KR_NEW_SESSION }
+                  }
+                })
+                ws.send(kickedMessage, true)
                 safeEndWebSocket(ws)
                 return
               }

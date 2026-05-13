@@ -15,6 +15,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   const { nats, logs, peersRegistry } = components
 
   const logger = logs.getLogger('ws-connector')
+
   nats.subscribe('engine.peer.*.island_changed', (err, message) => {
     if (err) {
       logger.error(err)

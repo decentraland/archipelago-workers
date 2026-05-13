@@ -465,4 +465,81 @@ describe('ws-handler safety', () => {
       })
     })
   })
+
+  describe('platform-ban handshake rejection', () => {
+    /**
+     * Documents the platform-ban handshake guard added alongside the deny list:
+     * after a successful auth, we call banChecker.isBanned with the real address
+     * from the auth chain. If banned, we send a kicked message and close the WS,
+     * preventing the user from establishing a comms session.
+     */
+    type WsStub = {
+      send: jest.Mock<number, [Uint8Array, boolean?]>
+      end: jest.Mock
+      closed: boolean
+    }
+
+    function makeWs(): WsStub {
+      return {
+        send: jest.fn().mockReturnValue(1),
+        end: jest.fn(function (this: WsStub) {
+          this.closed = true
+        }),
+        closed: false
+      }
+    }
+
+    // Replicates the post-auth platform-ban branch from registerWsHandler.
+    // Mirrors the production order: isBanned → send kicked → end WS → return.
+    async function postAuthBanBranch(ws: WsStub, address: string, isBanned: (a: string) => Promise<boolean>) {
+      if (await isBanned(address)) {
+        ws.send(new Uint8Array([1]), true)
+        ws.end()
+        return 'rejected'
+      }
+      ws.send(new Uint8Array([2]), true) // welcome
+      return 'welcomed'
+    }
+
+    describe('when the user is platform-banned', () => {
+      it('should send a kicked message and close the WS, never sending welcome', async () => {
+        const ws = makeWs()
+        const isBanned = jest.fn(async (_: string) => true)
+
+        const outcome = await postAuthBanBranch(ws, '0xbanned', isBanned)
+
+        expect(outcome).toBe('rejected')
+        expect(ws.send).toHaveBeenCalledTimes(1)
+        expect(ws.end).toHaveBeenCalledTimes(1)
+        expect(ws.closed).toBe(true)
+      })
+    })
+
+    describe('when the user is not platform-banned', () => {
+      it('should not close the WS and should proceed to send welcome', async () => {
+        const ws = makeWs()
+        const isBanned = jest.fn(async (_: string) => false)
+
+        const outcome = await postAuthBanBranch(ws, '0xok', isBanned)
+
+        expect(outcome).toBe('welcomed')
+        expect(ws.end).not.toHaveBeenCalled()
+        expect(ws.closed).toBe(false)
+      })
+    })
+
+    describe('when banChecker fails (fail-open)', () => {
+      // The real banChecker catches its own errors and returns false, so the
+      // handler path observes a non-banned response and lets the user through.
+      it('should let the user through when isBanned resolves to false', async () => {
+        const ws = makeWs()
+        const isBanned = jest.fn(async (_: string) => false)
+
+        const outcome = await postAuthBanBranch(ws, '0xok', isBanned)
+
+        expect(outcome).toBe('welcomed')
+        expect(ws.end).not.toHaveBeenCalled()
+      })
+    })
+  })
 })

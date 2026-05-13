@@ -12,36 +12,102 @@ import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPublisherComponent } from './adapters/publisher'
 import { createArchipelagoEngine } from './adapters/engine'
 import { AccessToken, TrackSource } from './logic/livekit'
-import { IConfigComponent } from '@well-known-components/interfaces'
+import { IConfigComponent, ILoggerComponent } from '@well-known-components/interfaces'
 
-async function createLivekitTransport(config: IConfigComponent): Promise<Transport> {
+const BAN_CHECK_TIMEOUT_MS = 1000
+// Cap concurrent ban checks so a 100-peer island doesn't open 100 sockets at once.
+const BAN_CHECK_CONCURRENCY = 20
+
+// Duplicate of ws-connector/src/service.ts. Keep the two implementations in sync.
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length)
+  let cursor = 0
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = cursor++
+      if (i >= items.length) return
+      results[i] = await fn(items[i])
+    }
+  }
+  const workerCount = Math.min(limit, items.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+  return results
+}
+
+export async function createLivekitTransport(config: IConfigComponent, logs: ILoggerComponent): Promise<Transport> {
+  const logger = logs.getLogger('livekit-transport')
   const livekit = {
     apiKey: await config.requireString('LIVEKIT_API_KEY'),
     apiSecret: await config.requireString('LIVEKIT_API_SECRET'),
     host: await config.requireString('LIVEKIT_HOST'),
     islandSize: await config.getNumber('LIVEKIT_ISLAND_SIZE')
   }
+  const commsGatekeeperUrl = (await config.getString('COMMS_GATEKEEPER_URL'))?.replace(/\/$/, '')
+  if (commsGatekeeperUrl) {
+    logger.info(`Ban check enabled — comms-gatekeeper at ${commsGatekeeperUrl}`)
+  } else {
+    logger.warn(`COMMS_GATEKEEPER_URL not set — ban checks disabled, all users will receive tokens`)
+  }
+
+  // Unset URL → skip the check (local dev). Errors → fail OPEN: a gatekeeper
+  // outage must not stop island formation; a slipped ban is the lesser harm.
+  // Near-duplicate of ws-connector/src/adapters/ban-checker.ts. Keep both in sync.
+  async function isBanned(address: string): Promise<boolean> {
+    if (!commsGatekeeperUrl) return false
+    try {
+      const response = await fetch(`${commsGatekeeperUrl}/users/${encodeURIComponent(address)}/bans`, {
+        signal: AbortSignal.timeout(BAN_CHECK_TIMEOUT_MS)
+      })
+      if (!response.ok) {
+        logger.warn(`Ban check returned non-OK status, allowing connection`, {
+          address,
+          status: response.status
+        })
+        return false
+      }
+      const body = (await response.json()) as { data?: { isBanned?: boolean } }
+      return body?.data?.isBanned === true
+    } catch (error: any) {
+      logger.warn(`Ban check failed, allowing connection`, {
+        address,
+        error: error?.message ?? 'Unknown error'
+      })
+      return false
+    }
+  }
+
+  async function mintToken(userId: string, roomId: string): Promise<string> {
+    const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
+      identity: userId,
+      ttl: 5 * 60 // 5 minutes
+    })
+    token.addGrant({
+      roomJoin: true,
+      room: roomId,
+      roomList: false,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true,
+      canUpdateOwnMetadata: true,
+      canPublishSources: [TrackSource.MICROPHONE]
+    })
+    return `livekit:${livekit.host}?access_token=${await token.toJwt()}`
+  }
+
   return {
     name: 'livekit',
     maxIslandSize: livekit.islandSize ?? 100,
     async getConnectionStrings(userIds: string[], roomId: string): Promise<Record<string, string>> {
+      const entries = await mapWithConcurrency(userIds, BAN_CHECK_CONCURRENCY, async (userId) => {
+        if (await isBanned(userId)) {
+          logger.info(`Skipping connection string for banned user`, { address: userId, roomId })
+          return null
+        }
+        return [userId, await mintToken(userId, roomId)] as const
+      })
       const connStrs: Record<string, string> = {}
-      for (const userId of userIds) {
-        const token = new AccessToken(livekit.apiKey, livekit.apiSecret, {
-          identity: userId,
-          ttl: 5 * 60 // 5 minutes
-        })
-        token.addGrant({
-          roomJoin: true,
-          room: roomId,
-          roomList: false,
-          canPublish: true,
-          canSubscribe: true,
-          canPublishData: true,
-          canUpdateOwnMetadata: true,
-          canPublishSources: [TrackSource.MICROPHONE]
-        })
-        connStrs[userId] = `livekit:${livekit.host}?access_token=${await token.toJwt()}`
+      for (const entry of entries) {
+        if (entry) connStrs[entry[0]] = entry[1]
       }
       return connStrs
     }
@@ -67,7 +133,7 @@ export async function initComponents(): Promise<AppComponents> {
     joinDistance: await config.requireNumber('ARCHIPELAGO_JOIN_DISTANCE'),
     leaveDistance: await config.requireNumber('ARCHIPELAGO_LEAVE_DISTANCE'),
     roomPrefix: await config.getString('ROOM_PREFIX'),
-    transport: await createLivekitTransport(config)
+    transport: await createLivekitTransport(config, logs)
   })
 
   return {

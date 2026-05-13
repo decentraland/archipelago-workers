@@ -1,5 +1,6 @@
 import { HTTPProvider } from 'eth-connect'
 import type {
+  IBaseComponent,
   IConfigComponent,
   ILoggerComponent,
   IMetricsComponent,
@@ -8,6 +9,7 @@ import type {
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
+import { IBanCheckerComponent } from './adapters/ban-checker'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@well-known-components/uws-http-server'
 
 // components used in every environment
@@ -19,6 +21,8 @@ export type BaseComponents = {
   metrics: IMetricsComponent<keyof typeof metricDeclarations>
   nats: INatsComponent
   peersRegistry: IPeersRegistryComponent
+  banChecker: IBanCheckerComponent
+  banSweep: IBaseComponent
   ethereumProvider: HTTPProvider
 }
 

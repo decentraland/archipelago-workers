@@ -218,10 +218,18 @@ export function createArchipelagoEngine({
     const peerIds = group.map((p) => p.id)
     const connStrs = await transport.getConnectionStrings(peerIds, newIslandId)
 
+    // Omitted from connStrs = transport rejected the peer (today: banned).
+    // Evict so they don't get retried every flush; a fresh heartbeat re-enters them.
+    for (const p of group) {
+      if (!(p.id in connStrs) && peers.has(p.id)) {
+        peers.delete(p.id)
+      }
+    }
+
     // After the await, filter out peers that disconnected during the transport call.
     // A NATS disconnect callback can fire during the await and remove peers from the
     // peers Map. If we include them, they become ghost peers in the island.
-    const activePeers = group.filter((p) => peers.has(p.id))
+    const activePeers = group.filter((p) => peers.has(p.id) && p.id in connStrs)
     if (activePeers.length === 0) {
       return newIslandId
     }
@@ -271,8 +279,15 @@ export function createArchipelagoEngine({
         return false
       }
 
-      // Filter out peers that disconnected during the await
-      const activePeers = anIsland.peers.filter((p) => peers.has(p.id))
+      // Evict peers rejected by the transport (today: banned). See createIsland.
+      for (const p of anIsland.peers) {
+        if (!(p.id in connStrs) && peers.has(p.id)) {
+          peers.delete(p.id)
+        }
+      }
+
+      // Filter out peers that disconnected during the await.
+      const activePeers = anIsland.peers.filter((p) => peers.has(p.id) && p.id in connStrs)
       if (activePeers.length === 0) {
         islands.delete(anIsland.id)
         return true
