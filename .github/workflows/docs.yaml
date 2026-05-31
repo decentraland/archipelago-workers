@@ -16,5 +16,5 @@ jobs:
     with:
       api-spec-file: docs/openapi.yaml
       api-spec-name: 'archipelago-workers-api'
-      node-version: '20'
+      node-version: '24'
     secrets: inherit
