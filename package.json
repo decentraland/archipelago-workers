@@ -14,7 +14,8 @@
     "lint:fix": "eslint . --ext .ts --fix"
   },
   "resolutions": {
-    "**/make-dir/semver": "^6.3.1"
+    "**/make-dir/semver": "^6.3.1",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.68.0"
   },
   "license": "Apache-2.0",
   "devDependencies": {    

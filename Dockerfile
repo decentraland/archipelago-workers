@@ -1,6 +1,6 @@
 ARG RUN
 
-FROM node:20-slim as builderenv
+FROM node:24-trixie-slim as builderenv
 
 WORKDIR /app
 
@@ -25,7 +25,7 @@ RUN yarn install --prod --frozen-lockfile
 
 ########################## END OF BUILD STAGE ##########################
 
-FROM node:20-slim
+FROM node:24-trixie-slim
 
 RUN apt-get update
 RUN apt-get upgrade -y
