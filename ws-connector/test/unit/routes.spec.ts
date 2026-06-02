@@ -1,4 +1,4 @@
-import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-server'
+import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 import { setupRoutes } from '../../src/controllers/routes'
 
 jest.mock('../../src/controllers/handlers/ws-handler', () => ({
@@ -12,7 +12,7 @@ jest.mock('../../src/controllers/handlers/status-handler', () => ({
   })
 }))
 
-jest.mock('@well-known-components/uws-http-server', () => ({
+jest.mock('@dcl/uws-http-server', () => ({
   createMetricsHandler: jest.fn().mockResolvedValue({ path: '/metrics', handler: jest.fn() }),
   onRequestStart: jest.fn().mockReturnValue({ labels: {}, end: 0 }),
   onRequestEnd: jest.fn()
