@@ -46,14 +46,23 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       return
     }
 
-    const id = message.subject.split('.')[1]
-    const decodedMessage = Heartbeat.decode(message.data)
-    const position = decodedMessage.position!
-    stats.onPeerUpdated(id, {
-      address: id,
-      time: Date.now(),
-      ...position
-    })
+    try {
+      const id = message.subject.split('.')[1]
+      const decodedMessage = Heartbeat.decode(message.data)
+      const position = decodedMessage.position
+      if (!position) {
+        return
+      }
+      stats.onPeerUpdated(id, {
+        address: id,
+        time: Date.now(),
+        x: position.x,
+        y: position.y,
+        z: position.z
+      })
+    } catch (err: any) {
+      logger.error(`cannot process heartbeat message ${err.message}`)
+    }
   })
 
   nats.subscribe('engine.islands', (err, message) => {
@@ -62,18 +71,25 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       return
     }
 
-    const decodedMessage = IslandStatusMessage.decode(message.data)
-    const report: IslandData[] = []
-    for (const { id, peers, maxPeers, center, radius } of decodedMessage.data) {
-      report.push({
-        id,
-        peers,
-        maxPeers,
-        radius,
-        center: [center!.x, center!.y, center!.z]
-      })
+    try {
+      const decodedMessage = IslandStatusMessage.decode(message.data)
+      const report: IslandData[] = []
+      for (const { id, peers, maxPeers, center, radius } of decodedMessage.data) {
+        if (!center) {
+          continue
+        }
+        report.push({
+          id,
+          peers,
+          maxPeers,
+          radius,
+          center: [center.x, center.y, center.z]
+        })
+      }
+      stats.onIslandsDataReceived(report)
+    } catch (err: any) {
+      logger.error(`cannot process islands message ${err.message}`)
     }
-    stats.onIslandsDataReceived(report)
   })
 
   nats.subscribe('engine.discovery', (err, message) => {

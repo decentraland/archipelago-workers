@@ -10,6 +10,9 @@ export type IPeersRegistryComponent = IBaseComponent & {
   onPeerDisconnected(id: string): void
   getPeerWs(id: string): InternalWebSocket | undefined
   getPeerCount(): number
+  // Returns a point-in-time copy of the registry. Used by the ban sweep so
+  // iteration is safe under concurrent connect/disconnect.
+  snapshot(): { id: string; ws: InternalWebSocket }[]
 }
 
 export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
@@ -31,10 +34,15 @@ export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
     return connectedPeers.size
   }
 
+  function snapshot(): { id: string; ws: InternalWebSocket }[] {
+    return Array.from(connectedPeers, ([id, ws]) => ({ id, ws }))
+  }
+
   return {
     onPeerConnected,
     onPeerDisconnected,
     getPeerWs,
-    getPeerCount
+    getPeerCount,
+    snapshot
   }
 }

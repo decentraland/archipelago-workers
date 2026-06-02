@@ -13,15 +13,22 @@ import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'nats' | 'server' | 'metrics'
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'nats' | 'server' | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, nats, server, config, ethereumProvider, metrics } = components
+  const { logs, peersRegistry, banChecker, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
+  const DENY_LIST_TTL_MS = 5 * 60 * 1000 // 5 minutes
+  let cachedDenyList: Set<string> = new Set()
+  let denyListLastFetched = 0
 
   async function fetchDenyList(): Promise<Set<string>> {
+    if (Date.now() - denyListLastFetched < DENY_LIST_TTL_MS) {
+      return cachedDenyList
+    }
+
     try {
       const response = await fetch('https://config.decentraland.org/denylist.json')
       if (!response.ok) {
@@ -29,24 +36,28 @@ export async function registerWsHandler(
       }
       const data = await response.json()
       if (data.users && Array.isArray(data.users)) {
-        return new Set(data.users.map((user: { wallet: string }) => normalizeAddress(user.wallet)))
+        cachedDenyList = new Set(data.users.map((user: { wallet: string }) => normalizeAddress(user.wallet)))
       } else {
         logger.warn('Deny list is missing "users" field or it is not an array.')
-        return new Set()
+        cachedDenyList = new Set()
       }
     } catch (error) {
       logger.error(`Error fetching deny list: ${(error as Error).message}`)
-      return new Set()
     }
+
+    // Always update the timestamp, even on failure. Otherwise, every handshake
+    // retries the failed fetch, adding latency to all connections when the
+    // deny list endpoint is down.
+    denyListLastFetched = Date.now()
+
+    return cachedDenyList
   }
 
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
     data.timeout = setTimeout(() => {
-      try {
-        logger.debug(`Terminating socket in stage: ${data.stage} because of timeout`)
-        ws.end()
-      } catch (err) {}
+      logger.debug(`Terminating socket in stage: ${data.stage} because of timeout`)
+      safeEndWebSocket(ws)
     }, timeout_ms)
   }
 
@@ -108,7 +119,7 @@ export async function registerWsHandler(
         packet = ClientPacket.decode(Buffer.from(message))
       } catch (err: any) {
         logger.error(err)
-        ws.end(1007, Buffer.from('Cannot decode ClientPacket'))
+        safeEndWebSocket(ws, 1007, Buffer.from('Cannot decode ClientPacket'))
         return
       }
 
@@ -151,7 +162,7 @@ export async function registerWsHandler(
 
             if (ws.send(challengeMessage, true) !== 1) {
               logger.error('Closing connection: cannot send challenge')
-              ws.close()
+              safeEndWebSocket(ws)
               return
             }
 
@@ -182,22 +193,59 @@ export async function registerWsHandler(
               const address = normalizeAddress(authChain[0].payload)
               logger.debug(`Authentication successful`, { address })
 
-              const previousWs = peersRegistry.getPeerWs(address)
-              if (previousWs) {
-                logger.debug('Sending kick message')
+              // Check deny list against the real address from the auth chain,
+              // not just the claimed address from challengeRequest
+              const denyListPostAuth: Set<string> = await fetchDenyList()
+              if (denyListPostAuth.has(address)) {
+                logger.warn(`Rejected connection from deny-listed wallet (post-auth): ${address}`)
+                safeEndWebSocket(ws)
+                return
+              }
+
+              // Reject platform-banned users so they can't establish a comms session.
+              // KR_NEW_SESSION is reused as the kick reason because the protocol enum
+              // currently has no KR_BANNED. The explorer treats both as "you were kicked"
+              // and shows the existing user-banned notification (the SNS event arrives
+              // separately). Replace with a dedicated reason if/when the protocol adds one.
+              if (await banChecker.isBanned(address)) {
+                logger.warn(`Rejected connection from platform-banned wallet: ${address}`)
                 const kickedMessage = craftMessage({
                   message: {
                     $case: 'kicked',
                     kicked: { reason: KickedReason.KR_NEW_SESSION }
                   }
                 })
-                if (previousWs.send(kickedMessage, true) !== 1) {
-                  logger.error('Closing connection: cannot send kicked message')
+                ws.send(kickedMessage, true)
+                safeEndWebSocket(ws)
+                return
+              }
+
+              const previousWs = peersRegistry.getPeerWs(address)
+              if (previousWs) {
+                const previousData = previousWs.getUserData()
+                if (!previousData.isClosed) {
+                  logger.debug('Sending kick message')
+                  const kickedMessage = craftMessage({
+                    message: {
+                      $case: 'kicked',
+                      kicked: { reason: KickedReason.KR_NEW_SESSION }
+                    }
+                  })
+                  if (previousWs.send(kickedMessage, true) !== 1) {
+                    logger.error('Closing connection: cannot send kicked message')
+                  }
                 }
-                previousWs.end()
+                safeEndWebSocket(previousWs)
               }
 
               peersRegistry.onPeerConnected(address, ws)
+
+              // Set address and stage BEFORE sending welcome so the close handler
+              // can clean up the registry if the send fails
+              changeStage(ws.getUserData(), {
+                stage: Stage.HANDSHAKE_COMPLETED,
+                address
+              })
 
               const welcomeMessage = craftMessage({
                 message: {
@@ -206,25 +254,13 @@ export async function registerWsHandler(
                 }
               })
 
-              const userData = ws.getUserData()
-              logger.debug('userData state:', {
-                address: String(userData.address || ''),
-                stage: String(userData.stage),
-                isClosed: String(userData.isClosed)
-              })
-
-              if (ws && ws.send(welcomeMessage, true) !== 1) {
+              if (ws.send(welcomeMessage, true) !== 1) {
                 logger.error('Closing connection: cannot send welcome')
                 safeEndWebSocket(ws)
                 return
               }
 
               logger.debug(`Welcome sent`, { address })
-
-              changeStage(userData, {
-                stage: Stage.HANDSHAKE_COMPLETED,
-                address
-              })
             } else {
               logger.warn(`Authentication failed`, { message: result.message } as any)
               safeEndWebSocket(ws)
@@ -251,6 +287,10 @@ export async function registerWsHandler(
       logger.debug(`Websocket closed ${code}`)
       const data = ws.getUserData()
       data.isClosed = true
+      if (data.timeout) {
+        clearTimeout(data.timeout)
+        data.timeout = undefined
+      }
       if (data.address) {
         peersRegistry.onPeerDisconnected(data.address)
         nats.publish(`peer.${data.address}.disconnect`)

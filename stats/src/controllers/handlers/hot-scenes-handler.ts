@@ -40,34 +40,29 @@ export async function hotScenesHandler(
 
   const scenes = await content.fetchScenes(Array.from(countPerTile.keys()))
 
-  const hotScenes: HotSceneInfo[] = scenes.map((scene) => {
-    const result: HotSceneInfo = {
-      id: scene.id,
-      name: scene.metadata?.display?.title,
-      baseCoords: getCoords(scene.metadata?.scene.base),
-      usersTotalCount: 0,
-      parcels: scene.metadata?.scene.parcels.map(getCoords),
-      thumbnail: content.calculateThumbnail(scene),
-      creator: scene.metadata?.contact?.name,
-      projectId: scene.metadata?.source?.projectId,
-      description: scene.metadata?.display?.description
-    }
+  const hotScenes: HotSceneInfo[] = scenes
+    .filter((scene) => scene.metadata?.scene?.base && scene.metadata?.scene?.parcels)
+    .map((scene) => {
+      const result: HotSceneInfo = {
+        id: scene.id,
+        name: scene.metadata?.display?.title,
+        baseCoords: getCoords(scene.metadata.scene.base),
+        usersTotalCount: 0,
+        parcels: scene.metadata.scene.parcels.map(getCoords),
+        thumbnail: content.calculateThumbnail(scene),
+        creator: scene.metadata?.contact?.name,
+        projectId: scene.metadata?.source?.projectId,
+        description: scene.metadata?.display?.description
+      }
 
-    for (const sceneParcel of scene.metadata?.scene.parcels) {
-      if (countPerTile.has(sceneParcel)) {
-        const usersInParcel = countPerTile.get(sceneParcel) || 0
-        result.usersTotalCount += usersInParcel
-
-        const userParcels: ParcelCoord[] = []
-        const coord = getCoords(sceneParcel)
-        for (let i = 0; i < usersInParcel; i++) {
-          userParcels.push(coord)
+      for (const sceneParcel of scene.metadata.scene.parcels) {
+        if (countPerTile.has(sceneParcel)) {
+          result.usersTotalCount += countPerTile.get(sceneParcel) || 0
         }
       }
-    }
 
-    return result
-  })
+      return result
+    })
 
   const value = hotScenes.sort((scene1, scene2) => scene2.usersTotalCount - scene1.usersTotalCount)
 

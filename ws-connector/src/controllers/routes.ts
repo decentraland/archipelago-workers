@@ -4,14 +4,24 @@ import { createStatusHandler } from './handlers/status-handler'
 import { registerWsHandler } from './handlers/ws-handler'
 
 export async function setupRoutes(components: AppComponents | TestComponents): Promise<void> {
-  const { metrics, server } = components
+  const { metrics, server, logs } = components
+  const logger = logs.getLogger('Routes')
 
   function wrap(h: IHandler) {
     return async (res: HttpResponse, req: HttpRequest) => {
       const { labels, end } = onRequestStart(metrics, req.getMethod(), h.path)
       let status = 500
+      let aborted = false
+      let responseSent = false
+
+      res.onAborted(() => {
+        aborted = true
+      })
+
       try {
         const result = await h.f(res, req)
+        if (aborted) return
+
         status = result.status ?? 200
         res.writeStatus(`${status}`)
 
@@ -31,9 +41,17 @@ export async function setupRoutes(components: AppComponents | TestComponents): P
           res.writeHeader('content-type', 'application/json')
           res.end(JSON.stringify(result.body))
         }
+        responseSent = true
       } catch (err) {
-        res.writeStatus(`${status}`)
-        res.end()
+        logger.error(`Error handling ${h.path}: ${(err as Error).message}`)
+        if (!aborted && !responseSent) {
+          try {
+            res.writeStatus(`${status}`)
+            res.end()
+          } catch {
+            // Response may have been partially written or aborted
+          }
+        }
       } finally {
         onRequestEnd(metrics, labels, status, end)
       }
@@ -61,7 +79,7 @@ export async function setupRoutes(components: AppComponents | TestComponents): P
     res.writeStatus('200 OK')
     res.writeHeader('Access-Control-Allow-Origin', '*')
     res.end('alive')
-    onRequestEnd(metrics, labels, 404, end)
+    onRequestEnd(metrics, labels, 200, end)
   })
 
   server.app.any('/*', (res, req) => {

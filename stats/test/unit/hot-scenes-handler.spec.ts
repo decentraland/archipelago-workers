@@ -82,4 +82,60 @@ describe('hot-scenes-handler-unit', () => {
     expect(result[0].creator).toEqual('creator')
     expect(result[0].description).toEqual('a test')
   })
+
+  it('should not crash when a scene has no metadata', async () => {
+    const stats = createStatsComponent()
+    stats.onPeerUpdated('1', { time: Date.now(), address: '1', x: 160, y: 0, z: 160 })
+
+    const content = {
+      fetchScenes: async (_tiles: string[]) => {
+        return [
+          { id: 'scene-no-metadata', content: [], pointers: ['10,10'] } as unknown as Entity,
+          {
+            id: 'scene-with-metadata',
+            content: [],
+            pointers: ['10,10'],
+            metadata: {
+              scene: { base: '10,10', parcels: ['10,10'] },
+              display: { title: 'valid' }
+            }
+          } as unknown as Entity
+        ]
+      },
+      calculateThumbnail: (_: Entity) => undefined
+    }
+
+    const url = new URL('https://aggregator.com/hot-scenes')
+    const { body } = await hotScenesHandler({ url, components: { stats, content } })
+
+    // Should skip the scene with no metadata and include the valid one
+    const result: HotSceneInfo[] = body
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toEqual('scene-with-metadata')
+  })
+
+  it('should not crash when scene metadata has no scene field', async () => {
+    const stats = createStatsComponent()
+    stats.onPeerUpdated('1', { time: Date.now(), address: '1', x: 160, y: 0, z: 160 })
+
+    const content = {
+      fetchScenes: async (_tiles: string[]) => {
+        return [
+          {
+            id: 'scene-partial-metadata',
+            content: [],
+            pointers: ['10,10'],
+            metadata: { display: { title: 'partial' } }
+          } as unknown as Entity
+        ]
+      },
+      calculateThumbnail: (_: Entity) => undefined
+    }
+
+    const url = new URL('https://aggregator.com/hot-scenes')
+    const { body } = await hotScenesHandler({ url, components: { stats, content } })
+
+    const result: HotSceneInfo[] = body
+    expect(result).toHaveLength(0)
+  })
 })
