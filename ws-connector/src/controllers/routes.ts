@@ -4,7 +4,7 @@ import {
   createMetricsHandler,
   onRequestEnd,
   onRequestStart
-} from '@well-known-components/uws-http-server'
+} from '@dcl/uws-http-server'
 import { AppComponents, IHandler, TestComponents } from '../types'
 import { createStatusHandler } from './handlers/status-handler'
 import { registerWsHandler } from './handlers/ws-handler'

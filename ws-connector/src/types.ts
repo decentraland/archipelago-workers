@@ -8,7 +8,7 @@ import type {
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
-import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@well-known-components/uws-http-server'
+import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@dcl/uws-http-server'
 
 // components used in every environment
 export type BaseComponents = {

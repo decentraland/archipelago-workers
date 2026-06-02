@@ -8,7 +8,7 @@ import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types
 import { EthAddress, AuthChain } from '@dcl/schemas'
 import { normalizeAddress } from '../../logic/address'
 import { Authenticator } from '@dcl/crypto'
-import { onRequestEnd, onRequestStart } from '@well-known-components/uws-http-server'
+import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 
 export async function registerWsHandler(
   components: Pick<

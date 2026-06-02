@@ -6,7 +6,7 @@ import { metricDeclarations } from './metrics'
 import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPeersRegistry } from './adapters/peers-registry'
 import { createFetchComponent } from '@well-known-components/fetch-component'
-import { createUWsComponent } from '@well-known-components/uws-http-server'
+import { createUWsComponent } from '@dcl/uws-http-server'
 import { createMetricsComponent } from '@well-known-components/metrics'
 
 // Initialize all the components of the app
