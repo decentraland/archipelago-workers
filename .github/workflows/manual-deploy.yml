@@ -7,9 +7,6 @@ on:
         required: true
         type: choice
         options:
-          - archipelago-core
-          - archipelago-ws-connector
-          - archipelago-stats
           - archipelago-ea-core
           - archipelago-ea-ws-connector
           - archipelago-ea-stats
