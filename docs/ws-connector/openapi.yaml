@@ -77,7 +77,7 @@ info:
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-  x-api-id: archipelago-ws-connector-api
+  x-api-id: archipelago-ea-ws-connector-api
 servers:
   - url: https://archipelago-ea-ws-connector.decentraland.org
     description: WebSocket Connector service - Production

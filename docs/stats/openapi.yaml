@@ -55,7 +55,7 @@ info:
   license:
     name: Apache 2.0
     url: https://www.apache.org/licenses/LICENSE-2.0.html
-  x-api-id: archipelago-stats-api
+  x-api-id: archipelago-ea-stats-api
 servers:
   - url: https://archipelago-ea-stats.decentraland.org
     description: Stats service - Production
