@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto'
 import {
   ClientPacket,
   Heartbeat,
@@ -144,7 +145,7 @@ export async function registerWsHandler(
               return
             }
 
-            const challengeToSign = 'dcl-' + Math.random().toString(36)
+            const challengeToSign = 'dcl-' + randomBytes(32).toString('hex')
             const previousWs = peersRegistry.getPeerWs(address)
             const alreadyConnected = !!previousWs
             logger.debug('Generating challenge', {
