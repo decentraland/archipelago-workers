@@ -293,7 +293,7 @@ export async function registerWsHandler(
         data.timeout = undefined
       }
       if (data.address) {
-        peersRegistry.onPeerDisconnected(data.address)
+        peersRegistry.onPeerDisconnected(data.address, ws)
         nats.publish(`peer.${data.address}.disconnect`)
       }
     }

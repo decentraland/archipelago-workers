@@ -7,7 +7,7 @@ export type WsApp = {
 
 export type IPeersRegistryComponent = IBaseComponent & {
   onPeerConnected(id: string, ws: InternalWebSocket): void
-  onPeerDisconnected(id: string): void
+  onPeerDisconnected(id: string, ws: InternalWebSocket): void
   getPeerWs(id: string): InternalWebSocket | undefined
   getPeerCount(): number
   // Returns a point-in-time copy of the registry. Used by the ban sweep so
@@ -22,8 +22,13 @@ export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
     connectedPeers.set(id, ws)
   }
 
-  function onPeerDisconnected(id: string): void {
-    connectedPeers.delete(id)
+  function onPeerDisconnected(id: string, ws: InternalWebSocket): void {
+    // Only remove the entry if it still points to this socket. After a reconnect
+    // the previous socket closes later; without this guard its close would evict
+    // the new live socket from the registry, hiding it from the ban sweep.
+    if (connectedPeers.get(id) === ws) {
+      connectedPeers.delete(id)
+    }
   }
 
   function getPeerWs(id: string): InternalWebSocket | undefined {
