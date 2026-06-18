@@ -4,7 +4,7 @@ ARG RUN
 # glibc 2.36). @dcl/uws-http-server bundles uWebSockets.js, whose prebuilt binaries
 # are glibc-only and require GLIBC >= 2.38: they fail to load on bookworm (so
 # `yarn test` below would crash) and segfault on alpine (musl), even with gcompat.
-FROM node:24-trixie-slim as builderenv
+FROM node:24-trixie-slim@sha256:032e78d7e54e352129831743737e3a83171d9cc5b5896f411649c597ce0b11ea as builderenv
 
 WORKDIR /app
 
@@ -30,7 +30,7 @@ RUN yarn install --prod --frozen-lockfile
 ########################## END OF BUILD STAGE ##########################
 
 # Debian Trixie (glibc 2.41) — required by uWebSockets.js, see note on the builder stage above.
-FROM node:24-trixie-slim
+FROM node:24-trixie-slim@sha256:032e78d7e54e352129831743737e3a83171d9cc5b5896f411649c597ce0b11ea
 
 RUN apt-get update
 RUN apt-get upgrade -y
