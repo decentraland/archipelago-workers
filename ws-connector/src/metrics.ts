@@ -1,4 +1,4 @@
-import { validateMetricsDeclaration } from '@well-known-components/metrics'
+import { validateMetricsDeclaration } from '@dcl/metrics'
 import { metricDeclarations as logMetricDeclarations } from '@well-known-components/logger'
 import { getDefaultHttpMetrics } from '@dcl/uws-http-server'
 

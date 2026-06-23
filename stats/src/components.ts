@@ -4,11 +4,11 @@ import {
   createStatusCheckComponent,
   IHttpServerOptions,
   instrumentHttpServerWithPromClientRegistry
-} from '@well-known-components/http-server'
-import { createFetchComponent } from '@well-known-components/fetch-component'
+} from '@dcl/http-server'
+import { createFetchComponent } from '@dcl/fetch-component'
 import { createLogComponent } from '@well-known-components/logger'
 import { createNatsComponent } from '@well-known-components/nats-component'
-import { createMetricsComponent } from '@well-known-components/metrics'
+import { createMetricsComponent } from '@dcl/metrics'
 import { createContentComponent } from './adapters/content'
 import { AppComponents, GlobalContext } from './types'
 import { metricDeclarations } from './metrics'
