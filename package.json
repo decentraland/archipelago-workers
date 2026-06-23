@@ -14,6 +14,7 @@
     "lint:fix": "eslint . --ext .ts --fix"
   },
   "resolutions": {
+    "semver": "^7.6.0",
     "**/make-dir/semver": "^6.3.1"
   },
   "license": "Apache-2.0",
