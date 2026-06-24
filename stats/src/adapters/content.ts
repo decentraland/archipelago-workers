@@ -1,6 +1,6 @@
 import { Entity } from '@dcl/schemas'
 import { createContentClient } from 'dcl-catalyst-client'
-import { IBaseComponent, IFetchComponent as IWkcFetchComponent } from '@well-known-components/interfaces'
+import { IBaseComponent } from '@well-known-components/interfaces'
 import { BaseComponents } from '../types'
 
 export type IContentComponent = IBaseComponent & {
@@ -13,9 +13,7 @@ export async function createContentComponent(
 ): Promise<IContentComponent> {
   const { config, fetch } = components
   const url = (await config.getString('CONTENT_URL')) || 'https://peer.decentraland.org/content/'
-  // dcl-catalyst-client still types its fetcher against node-fetch's IFetchComponent; the native fetch
-  // (global Request/Response) is runtime-compatible, so cast it here.
-  const contentClient = createContentClient({ url, fetcher: fetch as unknown as IWkcFetchComponent })
+  const contentClient = createContentClient({ url, fetcher: fetch })
 
   function fetchScenes(tiles: string[]): Promise<Entity[]> {
     if (tiles.length === 0) {
