@@ -7,9 +7,9 @@ import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPeersRegistry } from './adapters/peers-registry'
 import { createBanChecker } from './adapters/ban-checker'
 import { createBanSweep } from './adapters/ban-sweep'
-import { createFetchComponent } from '@well-known-components/fetch-component'
+import { createFetchComponent } from '@dcl/fetch-component'
 import { createUWsComponent } from '@dcl/uws-http-server'
-import { createMetricsComponent } from '@well-known-components/metrics'
+import { createMetricsComponent } from '@dcl/metrics'
 
 // Initialize all the components of the app
 export async function initComponents(): Promise<AppComponents> {

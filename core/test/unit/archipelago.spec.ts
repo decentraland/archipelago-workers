@@ -3,7 +3,7 @@ import { PeerPositionChange, IslandUpdates, ChangeToIslandUpdate, Island, Engine
 import { sequentialIdGenerator } from '../../src/logic/idGenerator'
 import { expectIslandsWith, expectIslandWith, setMultiplePeersAround } from '../helpers/archipelago'
 import { createLogComponent } from '@well-known-components/logger'
-import { createTestMetricsComponent } from '@well-known-components/metrics'
+import { createTestMetricsComponent } from '@dcl/metrics'
 import { metricDeclarations } from '../../src/metrics'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createArchipelagoEngine } from '../../src/adapters/engine'

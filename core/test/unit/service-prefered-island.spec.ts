@@ -1,6 +1,6 @@
 import { Engine, PeerPositionChange } from '../../src/types'
 import { createLogComponent } from '@well-known-components/logger'
-import { createTestMetricsComponent } from '@well-known-components/metrics'
+import { createTestMetricsComponent } from '@dcl/metrics'
 import { metricDeclarations } from '../../src/metrics'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createArchipelagoEngine } from '../../src/adapters/engine'

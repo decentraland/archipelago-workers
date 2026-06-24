@@ -3,9 +3,9 @@ import type {
   IBaseComponent,
   IConfigComponent,
   ILoggerComponent,
-  IMetricsComponent,
-  IFetchComponent
+  IMetricsComponent
 } from '@well-known-components/interfaces'
+import type { IFetchComponent } from '@dcl/core-commons'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
