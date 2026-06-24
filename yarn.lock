@@ -2647,10 +2647,10 @@ eth-connect@^6.0.3:
   resolved "https://registry.yarnpkg.com/eth-connect/-/eth-connect-6.2.4.tgz#81a94bce29f6743b46f336a0ec9d42ed73fbe6fd"
   integrity sha512-K0+g+pZoWkcJKKc4hwlYvaruoMBFcARoULIdf50bz/Zk9YdgFoKPjlRQWAtBgSDfxJS7AAHqg40k2Z/uQI0aNw==
 
-eth-connect@^6.3.1:
-  version "6.3.1"
-  resolved "https://registry.yarnpkg.com/eth-connect/-/eth-connect-6.3.1.tgz#86a39cc76962c72308727c90874f86c4a28d54bf"
-  integrity sha512-H3b8NGDFNrFwKKamJjeXZ/uJd4hm8GGEiAQOUWnVgrsQP2xlJyOEZT6LKMhjLOZQU7JnxgaehBxJ0/A+Rh0Pyg==
+eth-connect@^6.4.0:
+  version "6.4.0"
+  resolved "https://registry.yarnpkg.com/eth-connect/-/eth-connect-6.4.0.tgz#c40d47a6618cf799434d6f0f40369186a7b42075"
+  integrity sha512-lbuFFE0qNvGutNH4CiP/fvlbIawK0DARNdmG7qoyOclFMSt1EzqvaLHxpLcx5Gjk/7TDMrguDTHjZQM/6Xt77Q==
 
 eth-crypto@^2.6.0:
   version "2.6.0"
