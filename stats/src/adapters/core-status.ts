@@ -14,8 +14,11 @@ export function createCoreStatusComponent({ clock }: Pick<BaseComponents, 'clock
     onServiceDiscoveryReceived(message: ServiceDiscoveryMessage) {
       lastMessage = message
     },
-    // If last heartbeat is less than 90 seconds old, we consider the service healthy
-    isHealthy: () => !!lastMessage?.status && clock.now() - lastMessage.status.currentTime < 90000,
+    // If last heartbeat is less than 90 seconds old, we consider the service healthy.
+    // The delta is absolute: since iteration 1 of the Archipelago => Pulse migration
+    // `currentTime` is stamped on Pulse's host, so a clock running ahead of ours would
+    // otherwise make a total outage read as healthy for as long as the skew lasts.
+    isHealthy: () => !!lastMessage?.status && Math.abs(clock.now() - lastMessage.status.currentTime) < 90000,
     getUserCount: () => lastMessage?.status?.userCount ?? 0
   }
 }
