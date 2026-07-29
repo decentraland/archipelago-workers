@@ -6,10 +6,10 @@ import { IBanCheckerComponent } from './ban-checker'
 
 const DEFAULT_BAN_SWEEP_INTERVAL_MS = 30_000
 // Cap concurrent ban-check requests during a sweep so a high peer count doesn't
-// open hundreds of sockets to comms-gatekeeper at once. Matches archipelago-core.
+// open hundreds of sockets to comms-gatekeeper at once.
 const BAN_SWEEP_CONCURRENCY = 20
 
-// Duplicate of core/src/components.ts. Keep the two implementations in sync.
+// Sole implementation since archipelago-core was removed; it carried a duplicate.
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let cursor = 0

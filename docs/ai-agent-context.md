@@ -4,7 +4,7 @@
 
 > **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed`. WS Connector is unchanged; Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
-**Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client and drives the island assignment loop for the lifetime of the session. The LiveKit connection string (including token) that Archipelago returns is what the client uses to join the voice/CRDT room.
+**Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client, publishes its heartbeats, and forwards island assignments for the lifetime of the session — it does not compute them. The LiveKit connection string (including token) it forwards is minted by comms-gatekeeper and is what the client uses to join the voice/CRDT room.
 
 ---
 
@@ -93,9 +93,15 @@ The `island_changed` message connection string format: `livekit:{host}?access_to
 
 ## Configuration Reference
 
-The clustering variables were removed with `core`. Each surviving service reads its own `.env.default` (`HTTP_SERVER_PORT`, `HTTP_SERVER_HOST`, `NATS_URL`, plus WS Connector's auth and ban-check settings).
+The clustering variables were removed with `core`. Each surviving service reads its own `.env.default`: `HTTP_SERVER_PORT`, `HTTP_SERVER_HOST`, `NATS_URL`, plus `COMMS_GATEKEEPER_URL` for WS Connector.
 
-Removed, with their Pulse equivalents:
+| Variable | Read by | Notes |
+| --- | --- | --- |
+| `NATS_URL` | both | Broker. Also the name Pulse accepts, so one injected secret serves both |
+| `COMMS_GATEKEEPER_URL` | WS Connector | Gates the handshake ban check and the ban sweep. **Fails open** — unset means every handshake is allowed, signalled only by a boot-time warning. Core read this too; it survived core's removal |
+| `ETH_NETWORK`, `HANDSHAKE_TIMEOUT`, `BAN_SWEEP_INTERVAL_MS` | WS Connector | Have code-level defaults; not listed in `.env.default` |
+
+Removed with `core`, with their Pulse equivalents:
 
 | Removed variable | Was | Pulse equivalent |
 | --- | --- | --- |
