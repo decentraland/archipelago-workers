@@ -102,7 +102,7 @@ Every peer that changed island gets a `changeTo` update carrying the island ID a
 | --- | --- | --- |
 | `ARCHIPELAGO_JOIN_DISTANCE` | 64 | Larger → islands merge more aggressively |
 | `ARCHIPELAGO_LEAVE_DISTANCE` | 80 | Larger → islands split less readily; gap vs join distance controls flap resistance |
-| `ARCHIPELAGO_FLUSH_FREQUENCY` | 2000 ms | Recluster interval |
+| `ARCHIPELAGO_FLUSH_FREQUENCY` | `2.0` **seconds** (multiplied by 1000 in code) | Recluster interval |
 | `LIVEKIT_ISLAND_SIZE` | 100 | Hard cap on island size (merge-blocking) |
 | `CHECK_HEARTBEAT_INTERVAL` | 60000 ms | Peer expiry without heartbeat |
 

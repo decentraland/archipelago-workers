@@ -12,12 +12,12 @@
 
 ### WS Connector (`/ws-connector`)
 
-Persistent WebSocket gateway. Clients connect here; they never talk to Archipelago Core directly.
+Persistent WebSocket gateway. Clients connect here and talk to nothing else; the services that compute their cluster (Pulse) and mint their room token (comms-gatekeeper) are behind it.
 
 **Key responsibilities:**
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
-- Publishes heartbeats and disconnects to NATS for Core to process
+- Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed)
 - Subscribes to `engine.peer.{id}.island_changed` and forwards island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Kicks duplicate sessions (same address reconnects evicts previous)
@@ -105,19 +105,19 @@ Removed with `core`, with their Pulse equivalents:
 
 | Removed variable | Was | Pulse equivalent |
 | --- | --- | --- |
-| `ARCHIPELAGO_FLUSH_FREQUENCY` | 2000ms island recalculation interval | `Clusters:PassIntervalMs` (1000ms) + `Clusters:DwellPasses` (3) |
+| `ARCHIPELAGO_FLUSH_FREQUENCY` | `2.0` — island recalculation interval in **seconds**, multiplied by 1000 in code | `Clusters:PassIntervalMs` (`1000`, milliseconds) + `Clusters:DwellPasses` (`3`) |
 | `ARCHIPELAGO_JOIN_DISTANCE` | 64 units to merge | `SpatialHashAreaOfInterest:CellSize` (100 u cells, join band 0–283 u) |
 | `ARCHIPELAGO_LEAVE_DISTANCE` | 80 units to split | none — cell adjacency has no hysteresis pair |
 | `ROOM_PREFIX` | island ID prefix `I` | `Clusters:IdPrefix` (`C`) |
 | `LIVEKIT_ISLAND_SIZE` | 100-peer island cap | none — clusters are uncapped; gatekeeper shards rooms |
 | `CHECK_HEARTBEAT_INTERVAL` | 60000ms peer expiry | none — Pulse cleans up in ~5s |
-| `LIVEKIT_API_KEY` / `_SECRET` / `_HOST` | core minted tokens | held by comms-gatekeeper |
+| `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST` | core minted tokens; all three required at startup | held by comms-gatekeeper |
 
 ---
 
 ## Technology Stack
 
-- Runtime: Node.js 16+
+- Runtime: Node.js 24 (`.nvmrc`, and the Dockerfile pins `node:24-trixie-slim`)
 - Language: TypeScript 4.x–5.x
 - HTTP framework: `@well-known-components/http-server`
 - WebSocket: `ws` + `@well-known-components/uws-http-server`
@@ -154,5 +154,5 @@ docs/          OpenAPI specs, the removal runbook, the archived clustering algor
 Resolved by the migration:
 
 - ~~**Pulse endpoint is hardcoded in client.**~~ Pulse authors the clustering itself, so a cluster's members and the Pulse instance serving their avatar deltas cannot disagree by construction.
-- ~~**Heartbeat timeout is 60 seconds.**~~ Pulse cleans up departed peers in ~5 s. Stats' peer map still uses the 60 s heartbeat window until iteration 2.
+- ~~**Heartbeat timeout is 60 seconds.**~~ For clustering: Pulse cleans up departed peers in ~5 s. Note that stats has **no** time-based expiry of its own — `CHECK_HEARTBEAT_INTERVAL` was core's, and stats drops a peer only on `peer.*.disconnect`. A missed disconnect leaves a peer in `/peers`, `/parcels` and `/hot-scenes` indefinitely, which is unchanged by this migration and retires with the heartbeats in iteration 2.
 - ~~**Island flush is 2 seconds.**~~ Pulse's tracker passes run every 1 s, with a dwell debounce before a reassignment publishes.

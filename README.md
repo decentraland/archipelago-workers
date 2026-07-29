@@ -47,7 +47,7 @@ The monorepo includes:
 
 Before running this service, ensure you have the following installed:
 
-- **Node.js**: Version 18.x or higher (LTS recommended)
+- **Node.js**: Version 24.x — see `.nvmrc`; the Docker image pins `node:24-trixie-slim`
 - **Yarn**: Version 1.22.x or higher
 - **Docker**: For containerized deployment and local development dependencies
 
