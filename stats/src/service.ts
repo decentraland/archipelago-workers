@@ -1,11 +1,8 @@
-import {
-  Heartbeat,
-  IslandStatusMessage,
-  ServiceDiscoveryMessage
-} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { Heartbeat, ServiceDiscoveryMessage } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { Lifecycle } from '@well-known-components/interfaces'
 import { setupRouter } from './controllers/routes'
-import { AppComponents, GlobalContext, IslandData, TestComponents } from './types'
+import { decodeIslandsReport } from './logic/decode'
+import { AppComponents, GlobalContext, TestComponents } from './types'
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
 export async function main(program: Lifecycle.EntryPointParameters<AppComponents | TestComponents>) {
@@ -72,21 +69,7 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
 
     try {
-      const decodedMessage = IslandStatusMessage.decode(message.data)
-      const report: IslandData[] = []
-      for (const { id, peers, maxPeers, center, radius } of decodedMessage.data) {
-        if (!center) {
-          continue
-        }
-        report.push({
-          id,
-          peers,
-          maxPeers,
-          radius,
-          center: [center.x, center.y, center.z]
-        })
-      }
-      stats.onIslandsDataReceived(report)
+      stats.onIslandsDataReceived(decodeIslandsReport(message.data))
     } catch (err: any) {
       logger.error(`cannot process islands message ${err.message}`)
     }
