@@ -1,6 +1,8 @@
 # AI Agent Context
 
-**Service Purpose:** Monorepo with three services that implement island clustering for Decentraland's real-time layer. Players are dynamically grouped into islands based on proximity; each island maps to a LiveKit room. The WS Connector is the only entry point clients talk to — Archipelago Core is internal.
+**Service Purpose:** Monorepo with two services supporting Decentraland's real-time layer: the WS Connector (the only entry point clients talk to) and Stats (read-only monitoring). Players are grouped into clusters by proximity and each cluster maps to a LiveKit room — but **neither the clustering nor the room tokens are produced here any more**.
+
+> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed`. WS Connector is unchanged; Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 **Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client and drives the island assignment loop for the lifetime of the session. The LiveKit connection string (including token) that Archipelago returns is what the client uses to join the voice/CRDT room.
 
@@ -37,20 +39,22 @@ Peer registered, heartbeats accepted
 
 ---
 
-### Archipelago Core (`/core`)
+### Archipelago Core — removed
 
-Island clustering engine. Stateless relative to clients — it processes positions and publishes assignments.
+The `core` workspace no longer exists. Where each of its responsibilities went, verified against Pulse's source before deletion:
 
-**Key responsibilities:**
-- Processes player position updates from NATS
-- Dynamic island clustering: join distance 64 units, leave distance 80 units
-- Calls the LiveKit API directly to generate room tokens and builds the `livekit:{host}?access_token={token}` connection string
-- Publishes island assignments (`engine.peer.{id}.island_changed`) to NATS
-- Publishes island topology (`engine.islands`) and service heartbeat (`engine.discovery`) every ~2 seconds
+| Core did | Now handled by |
+| --- | --- |
+| Position intake from `peer.*.heartbeat` | Pulse reads positions from its own transport (`SnapshotBoard`) — no NATS hop |
+| Peer expiry (60 s heartbeat timeout) | Pulse connection lifecycle, ~5 s cleanup |
+| Clustering: 64/80 single-linkage, 100-peer cap | Pulse `ClusterTracker`: union-find over 100 u grid cells, **uncapped**, sticky `C{n}` IDs with a dwell debounce |
+| `engine.islands` and `engine.discovery` | Pulse `NatsPublisher` — `max_peers = 0`, discovery every 10 s |
+| `engine.peer.{addr}.island_changed`, LiveKit token minting, ban check at mint time | **comms-gatekeeper**, which subscribes to Pulse's `peer.{addr}.cluster_change` |
+| `desiredRoom` → merge-target bias | Nothing. It only mattered when the 100-peer cap split a co-located crowd; uncapped clusters make that impossible, and no production client set it. The proto field survives on the wire and is read by nobody |
 
-**Island flush cycle:** `ARCHIPELAGO_FLUSH_FREQUENCY` — default 2 seconds. Islands are recalculated on each flush.
+The gatekeeper hop exists because minting means issuing a signed LiveKit JWT and running a per-user ban check — token-issuer concerns, so Pulse publishes only the assignment it knows about. That hop is the one piece of core's job that is **not** Pulse's, and it lives in a separate repo.
 
-**Peer heartbeat timeout:** `CHECK_HEARTBEAT_INTERVAL` — default 60 seconds. Peers with no heartbeat are removed.
+Rollback is a revert plus an image rebuild, not a config flip — see [core-decommission-runbook.md](./core-decommission-runbook.md). The algorithm core implemented is archived in [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 ---
 
@@ -61,20 +65,27 @@ Read-only monitoring service. Not in the client data path.
 **Key responsibilities:**
 - Subscribes to NATS: `peer.*.heartbeat`, `peer.*.disconnect`, `engine.islands`, `engine.discovery`
 - Aggregates peer count and island topology in memory
-- Exposes REST endpoints for island/peer statistics and core service health
+- Exposes REST endpoints for island/peer statistics and clustering-service health
 - Integrates with Catalyst for content server metadata
+
+Unchanged by iteration 1, deliberately: the peer map is still built from client heartbeats, so `/peers`, `/parcels` and `/hot-scenes` behave exactly as before. Only the source of the island topology moved. Two visible effects: `GET /islands` serves `C{n}` IDs with `maxPeers: 0` (uncapped clusters — it read `100` while core published this feed), and `/core-status` now reports Pulse's health. `/core-status` only ever exposed `{healthy, userCount}`, so Pulse's `server_name` and commit hash are invisible to `realm-provider` and it needs no change. The health check is `Date.now() − current_time < 90 s`, which is why `ServiceStatus.current_time` must stay `uint64` ([protocol#453](https://github.com/decentraland/protocol/pull/453)) — a truncated timestamp reads permanently unhealthy. `stats/test/unit/pulse-topology.spec.ts` guards all of this against real protobuf bytes.
+
+Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is iteration 2.
 
 ---
 
 ## NATS Message Reference
 
+Only the two `peer.*` subjects are published by this repo.
+
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
-| `peer.{addr}.heartbeat` | WS Connector | Core, Stats | Protobuf `Heartbeat`: position (x,y,z), desired island preference |
-| `peer.{addr}.disconnect` | WS Connector | Core, Stats | Empty — peer left |
-| `engine.peer.{id}.island_changed` | Core | WS Connector | Protobuf `IslandChangedMessage`: island ID, LiveKit connection string with token, peer list |
-| `engine.islands` | Core | Stats | Full island topology snapshot: IDs, centers, radii, max peers, peer lists |
-| `engine.discovery` | Core | Stats | Service heartbeat: name, commit hash, timestamp, user count |
+| `peer.{addr}.heartbeat` | WS Connector | Stats | Protobuf `Heartbeat`: position (x,y,z). `desiredRoom` is still on the wire, read by nobody |
+| `peer.{addr}.disconnect` | WS Connector | Stats | Empty — peer left |
+| `peer.{addr}.cluster_change` | **Pulse** | comms-gatekeeper | Protobuf `decentraland.pulse.PeerClusterChange`: cluster ID, realm. Wallet lower-cased in the subject. Not consumed by this repo |
+| `engine.peer.{id}.island_changed` | **comms-gatekeeper** | WS Connector | Protobuf `IslandChangedMessage`: island ID, LiveKit connection string with token, peer list |
+| `engine.islands` | **Pulse** | Stats | Full topology snapshot: IDs (`C{n}`), centers, radii, `max_peers = 0`, peer lists |
+| `engine.discovery` | **Pulse** | Stats | Service heartbeat every 10 s: `server_name = "pulse"`, commit hash, `current_time` (`uint64` epoch ms), user count |
 
 The `island_changed` message connection string format: `livekit:{host}?access_token={jwt}`
 
@@ -82,12 +93,19 @@ The `island_changed` message connection string format: `livekit:{host}?access_to
 
 ## Configuration Reference
 
-| Variable | Default | Description |
+The clustering variables were removed with `core`. Each surviving service reads its own `.env.default` (`HTTP_SERVER_PORT`, `HTTP_SERVER_HOST`, `NATS_URL`, plus WS Connector's auth and ban-check settings).
+
+Removed, with their Pulse equivalents:
+
+| Removed variable | Was | Pulse equivalent |
 | --- | --- | --- |
-| `ARCHIPELAGO_FLUSH_FREQUENCY` | 2000ms | Island recalculation interval |
-| `ARCHIPELAGO_JOIN_DISTANCE` | 64 units | Distance threshold to merge peers into same island |
-| `ARCHIPELAGO_LEAVE_DISTANCE` | 80 units | Distance threshold to split peers into different islands |
-| `CHECK_HEARTBEAT_INTERVAL` | 60000ms | Timeout before removing a peer with no heartbeat |
+| `ARCHIPELAGO_FLUSH_FREQUENCY` | 2000ms island recalculation interval | `Clusters:PassIntervalMs` (1000ms) + `Clusters:DwellPasses` (3) |
+| `ARCHIPELAGO_JOIN_DISTANCE` | 64 units to merge | `SpatialHashAreaOfInterest:CellSize` (100 u cells, join band 0–283 u) |
+| `ARCHIPELAGO_LEAVE_DISTANCE` | 80 units to split | none — cell adjacency has no hysteresis pair |
+| `ROOM_PREFIX` | island ID prefix `I` | `Clusters:IdPrefix` (`C`) |
+| `LIVEKIT_ISLAND_SIZE` | 100-peer island cap | none — clusters are uncapped; gatekeeper shards rooms |
+| `CHECK_HEARTBEAT_INTERVAL` | 60000ms peer expiry | none — Pulse cleans up in ~5s |
+| `LIVEKIT_API_KEY` / `_SECRET` / `_HOST` | core minted tokens | held by comms-gatekeeper |
 
 ---
 
@@ -100,9 +118,9 @@ The `island_changed` message connection string format: `livekit:{host}?access_to
 - Component architecture: `@well-known-components` (logger, metrics, nats, http-server, env-config-provider)
 
 **External dependencies:**
-- **NATS**: All inter-service communication between WS Connector, Core, and Stats
-- **LiveKit API**: Called by Core to generate room tokens
-- **`@dcl/protocol`**: Protobuf definitions for Heartbeat, IslandChangedMessage
+- **NATS**: All inter-service communication between WS Connector, Stats, Pulse and comms-gatekeeper
+- **LiveKit API**: Called by comms-gatekeeper to generate room tokens — no longer from this repo
+- **`@dcl/protocol`**: Protobuf definitions for Heartbeat, IslandChangedMessage, IslandStatusMessage, ServiceDiscoveryMessage. Pinned to the npm release of [protocol#453](https://github.com/decentraland/protocol/pull/453), which restores `ServiceStatus`/`ServiceDiscoveryMessage` with `current_time` as `uint64`
 - **`@dcl/crypto`**: Ethereum signature validation, AuthChain
 - **`dcl-catalyst-client`**: Stats service fetches content server data
 
@@ -111,10 +129,9 @@ The `island_changed` message connection string format: `livekit:{host}?access_to
 ## Project Structure
 
 ```
-core/        Island clustering engine, NATS subscribers, position processing, LiveKit transport
 ws-connector/  WebSocket handlers, peer registry, auth flow, NATS pub/sub
-stats/       REST API endpoints, Catalyst integration, NATS subscribers, data aggregation
-docs/        OpenAPI spec for Stats and WS Connector APIs
+stats/         REST API endpoints, Catalyst integration, NATS subscribers, data aggregation
+docs/          OpenAPI specs, the removal runbook, the archived clustering algorithm
 ```
 
 **API Specification:** See `docs/openapi.yaml` for Stats and WS Connector REST API documentation.
@@ -123,6 +140,13 @@ docs/        OpenAPI spec for Stats and WS Connector APIs
 
 ## Known Architectural Issues
 
-- **Pulse endpoint is hardcoded in client.** Archipelago assigns LiveKit rooms dynamically but has no awareness of Pulse. There is no guarantee the players in a LiveKit room are the same set receiving avatar deltas from the same Pulse instance. The fix is to add a `pulseEndpoint` field to `island_changed`.
-- **Heartbeat timeout is 60 seconds.** A player who disconnects ungracefully stays in the island for up to 60 seconds.
-- **Island flush is 2 seconds.** Island membership changes lag behind actual position changes by up to 2 seconds.
+- **Cluster IDs are not unique beyond one Pulse process.** `C{n}` comes from a monotonic counter that resets on restart, so after a Pulse restart `C1` names a different crowd and comms-gatekeeper may map it onto the LiveKit room the previous `C1` used. Live-voice-room correctness, not cosmetics; tracked as an open question in `Pulse/docs/clustering-on-aoi.md` §7.
+- **Clusters are uncapped.** Nothing bounds co-located crowd size server-side any more, so the client's GPU becomes the binding constraint (unity-explorer's crowd-ghost work) and comms-gatekeeper owns room sharding.
+- **No in-repo rollback for the clustering path.** Reverting to core means reverting a commit and rebuilding the image; there is no configuration flip. Stats' peer map is unaffected either way, being heartbeat-fed.
+- **The topology change went unmeasured.** No shadow comparison was run between core's 64/80 single-linkage islands and Pulse's 100 u cell clusters, so the first evidence of a difference will be `GET /islands` in a live environment.
+
+Resolved by the migration:
+
+- ~~**Pulse endpoint is hardcoded in client.**~~ Pulse authors the clustering itself, so a cluster's members and the Pulse instance serving their avatar deltas cannot disagree by construction.
+- ~~**Heartbeat timeout is 60 seconds.**~~ Pulse cleans up departed peers in ~5 s. Stats' peer map still uses the 60 s heartbeat window until iteration 2.
+- ~~**Island flush is 2 seconds.**~~ Pulse's tracker passes run every 1 s, with a dwell debounce before a reassignment publishes.
