@@ -35,7 +35,7 @@
     "@dcl/crypto": "^3.4.5",
     "@dcl/fetch-component": "^1.1.1",
     "@dcl/metrics": "^1.0.1",
-    "@dcl/protocol": "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-6276153891.commit-3946d15.tgz",
+    "@dcl/protocol": "1.0.0-30361475985.commit-df8a4ff",
     "@dcl/uws-http-server": "^1.0.1",
     "@well-known-components/env-config-provider": "^1.2.0",
     "@well-known-components/interfaces": "^1.4.3",
