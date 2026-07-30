@@ -21,7 +21,6 @@ export async function createBanChecker(components: {
 
   // Unset URL → skip (local dev). Errors → fail OPEN: a gatekeeper outage
   // must not lock everyone out of the platform.
-  // Sole implementation since archipelago-core was removed; it carried a near-duplicate.
   async function isBanned(address: string): Promise<boolean> {
     if (!url) return false
     try {

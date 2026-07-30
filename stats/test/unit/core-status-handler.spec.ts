@@ -39,9 +39,6 @@ describe('core-status-handler-unit', () => {
     expect(userCount).toEqual(10)
   })
 
-  // Since iteration 1 of the Archipelago => Pulse migration the timestamp is stamped on
-  // Pulse's host, not on a co-located service. An unsigned delta would read a clock running
-  // ahead of ours as "fresh", so a total outage would look healthy for as long as the skew.
   it('if the discovery timestamp is far in the future, the publisher is not healthy', async () => {
     const url = new URL('https://localhost/core-status')
     const now = Date.now()

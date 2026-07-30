@@ -9,7 +9,6 @@ const DEFAULT_BAN_SWEEP_INTERVAL_MS = 30_000
 // open hundreds of sockets to comms-gatekeeper at once.
 const BAN_SWEEP_CONCURRENCY = 20
 
-// Sole implementation since archipelago-core was removed; it carried a duplicate.
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length)
   let cursor = 0

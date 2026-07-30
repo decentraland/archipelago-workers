@@ -11,7 +11,7 @@
 
 How Archipelago Core grouped peers into islands. The implementation lived in
 `core/src/adapters/engine.ts` and `core/src/logic/islands.ts`; read it in git history before
-the removal commit. Everything below is past tense in effect, even where it reads present.
+the removal commit.
 
 ## Overview
 
@@ -70,7 +70,7 @@ Note the scan is against **all** islands, not just affected ones — an affected
 - Sort candidates by peer count descending, ties broken by lower `sequenceId` (older island wins). Islands carry a monotonically increasing `sequenceId` from creation.
 - The biggest/oldest island seeds the "survivors" list. Each remaining island tries to merge into a survivor, in order; if none can take it, it becomes a survivor itself.
 - **Capacity:** a merge is allowed only if `target.peers + source.peers ≤ maxPeers` (`LIVEKIT_ISLAND_SIZE`, default 100). Oversized crowds therefore stay as multiple islands even when spatially connected.
-- **Preferred island:** before trying survivors in order, the source island's peers vote with their `preferedIslandId`; the most-voted survivor is tried first. Preferences only work toward islands bigger/older than the source. The preference came from `desiredRoom` on the heartbeat, and it only ever mattered when the 100-peer cap split a co-located crowd — which is why it died with the cap: Pulse's clusters are uncapped. The proto field survives on the wire and is read by nobody.
+- **Preferred island:** before trying survivors in order, the source island's peers vote with their `preferedIslandId`; the most-voted survivor is tried first. Preferences only work toward islands bigger/older than the source. The preference came from `desiredRoom` on the heartbeat.
 - Merging is directional: source peers are appended to the target island, get new connection strings for the target's room, and the source island is deleted. Peers already in the target island are untouched (no reconnection).
 
 ### Updates out
@@ -98,12 +98,6 @@ Every peer that changed island gets a `changeTo` update carrying the island ID a
 
 ## Tuning
 
-| Variable | Default | Effect |
-| --- | --- | --- |
-| `ARCHIPELAGO_JOIN_DISTANCE` | 64 | Larger → islands merge more aggressively |
-| `ARCHIPELAGO_LEAVE_DISTANCE` | 80 | Larger → islands split less readily; gap vs join distance controls flap resistance |
-| `ARCHIPELAGO_FLUSH_FREQUENCY` | `2.0` **seconds** (multiplied by 1000 in code) | Recluster interval |
-| `LIVEKIT_ISLAND_SIZE` | 100 | Hard cap on island size (merge-blocking) |
-| `CHECK_HEARTBEAT_INTERVAL` | 60000 ms | Peer expiry without heartbeat |
-
-None of these variables exist any more — they were removed with the service. The [runbook](./core-decommission-runbook.md) lists the Pulse-side equivalents (`Clusters:PassIntervalMs`, `Clusters:IdPrefix`, the spatial-grid cell size) and the two settings with no equivalent at all: leave distance and the island size cap.
+Every variable named above was removed with the service. The
+[runbook](./core-decommission-runbook.md#retired-configuration) lists them against their Pulse
+equivalents, including the two with none: leave distance and the island size cap.

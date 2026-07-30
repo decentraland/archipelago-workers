@@ -17,23 +17,15 @@ describe('pulse-published topology', () => {
   /**
    * Frozen wire bytes, hand-checked against archipelago.proto field numbers. Encoding and
    * decoding with the same generated module only proves the build round-trips; these literals
-   * pin the actual bytes, so a regeneration that renumbers a field fails here instead of
-   * silently zeroing `currentTime` (permanent `/core-status` unhealthy) or dropping every
-   * island (`{ok: true, islands: []}`).
+   * pin the bytes, so a regeneration that renumbers a field fails here instead of silently
+   * zeroing `currentTime` (permanently unhealthy `/core-status`) or dropping every island.
    *
-   * ServiceDiscoveryMessage: 0a "pulse" = field 1 (server_name, len-delim);
-   * 12 = field 2 (status, len-delim), containing 08 <varint> = field 1 (current_time, varint —
-   * this is the byte that would differ if it were re-typed or renumbered),
-   * 12 "abc1234" = field 2 (commit_hash), 18 2a = field 3 (user_count = 42).
+   * `08 80f4a9d2f933` is protocol#453's guarantee on the wire: current_time as a uint64
+   * varint, wide enough for epoch milliseconds.
    */
   const DISCOVERY_WIRE = Buffer.from('0a0570756c736512120880f4a9d2f933120761626331323334182a', 'hex')
 
-  /**
-   * IslandStatusMessage: 0a = field 1 (data, repeated len-delim), containing
-   * 0a "C1" = field 1 (id), 12 … = field 2 (peers, repeated), 22 = field 4 (center) with
-   * 0d/1d/29 = fields 1/2/3 as fixed32/fixed32/double, and no field 3 (max_peers) at all —
-   * proto3 omits zero, which is exactly what Pulse sends for an uncapped cluster.
-   */
+  /** Note the absence of field 3 (max_peers): proto3 omits zero, which is what Pulse sends. */
   const ISLANDS_WIRE = Buffer.from(
     '0a290a02433112063078303030311206307830303032220a0d000020411d0000a041290000000000002e40',
     'hex'
@@ -137,22 +129,7 @@ describe('pulse-published topology', () => {
   })
 
   describe('when decoding an engine.discovery heartbeat published by Pulse', () => {
-    // Regression guard for protocol#453: ServiceStatus.current_time must be uint64.
-    // Epoch milliseconds overflow uint32, and /core-status health is
-    // `now - currentTime < 90s`, so a truncated timestamp reads permanently unhealthy.
     const currentTime = 1785000000000
-
-    it('should round-trip epoch-millisecond timestamps without truncation', () => {
-      const encoded = ServiceDiscoveryMessage.encode({
-        serverName: 'pulse',
-        status: { currentTime, commitHash: 'abc1234', userCount: 42 }
-      }).finish()
-
-      const decoded = ServiceDiscoveryMessage.decode(encoded)
-
-      expect(decoded.status!.currentTime).toEqual(currentTime)
-      expect(decoded.serverName).toEqual('pulse')
-    })
 
     it('should read as healthy through GET /core-status', async () => {
       const encoded = ServiceDiscoveryMessage.encode({

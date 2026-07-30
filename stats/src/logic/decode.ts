@@ -2,12 +2,8 @@ import { IslandStatusMessage } from '@dcl/protocol/out-js/decentraland/kernel/co
 import { IslandData } from '../types'
 
 /**
- * Decodes an `engine.islands` snapshot into the shape `GET /islands` serves.
- *
- * Published by Pulse since iteration 1 of the Archipelago => Pulse migration: ids read
- * `C{n}` and `maxPeers` is 0 because clusters are uncapped. Both pass through untouched —
- * stats neither parses ids nor compares maxPeers. Islands without geometry are dropped:
- * the handler contract requires a center.
+ * Decodes an `engine.islands` snapshot into the shape `GET /islands` serves. Pulse publishes
+ * `maxPeers: 0` and `C{n}` ids: nothing here parses or compares either.
  */
 export function decodeIslandsReport(data: Uint8Array): IslandData[] {
   const decodedMessage = IslandStatusMessage.decode(data)

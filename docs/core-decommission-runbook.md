@@ -3,10 +3,8 @@
 Iteration 1 of the [Archipelago ⇒ Pulse migration](https://app.notion.com/p/decentraland/Archipelago-Pulse-migration-plan-3a45f41146a58070b6b0dbe541bc7533).
 Upstream design: `Pulse/docs/clustering-on-aoi.md` §3.6–3.7 and §5.
 
-> Note where this runbook diverges from that §5: it describes core as "kept deployable behind a
-> flag as rollback until shadow comparison passes" and rollback as "config-only". Neither holds
-> any more — core was deleted rather than flagged, and the shadow comparison was dropped. The
-> §3.6/§3.7 feed and configuration details are still accurate.
+> Diverges from §5: core was deleted rather than kept behind a rollback flag, and the shadow
+> comparison was dropped. The §3.6–3.7 feed and configuration details still hold.
 
 `archipelago-core` has been **removed from this repository**. Island clustering is Pulse's
 responsibility.
@@ -91,12 +89,10 @@ curl -s $STATS/core-status | jq
 Expected: a `C{n}` ID with `maxPeers: 0`, a **non-zero peer total**, and
 `{"healthy": true, "userCount": <n>}`.
 
-Check the peer total, not just the island count. `/islands` is a join: stats takes Pulse's
-wallet list and looks each wallet up in its own heartbeat-derived peer map, silently skipping
-any it does not know. The two sides have different sources (Pulse's own connections vs
-`peer.*.heartbeat` from WS Connector), so a cutover where every island reports `peers: []`
-means the join is failing even though the topology arrived — and it would satisfy an
-island-count-only check.
+Check the peer total, not just the island count. `/islands` joins Pulse's wallet list against
+stats' own heartbeat-derived peer map, silently skipping wallets it does not know. Every island
+reporting `peers: []` means the join is failing even though the topology arrived — and an
+island-count-only check would pass.
 
 If `/islands` is empty while Pulse's `published_total` climbs, suspect a **subject prefix
 mismatch**: Pulse applies `Nats:SubjectPrefix` to every subject and stats subscribes to the
@@ -155,8 +151,7 @@ expecting a quick recovery.
    missing. `manual-deploy.yml` can deploy an older tag instead, provided the service still
    exists — but that workflow no longer lists `archipelago-ea-core`, so it needs the entry back.
 
-This is slower and heavier than the kill switch an earlier revision of this plan provided. It
-is the accepted cost of removing the code: verify the cutover in dev before promoting it.
+Verify the cutover in dev before promoting it.
 
 ## Retired configuration
 
@@ -186,18 +181,14 @@ rollback that recreates the config must match, especially the flush frequency, w
 
 - **Metric renames.** `dcl_archipelago_peers_count` and `dcl_archipelago_islands_count` are
   gone. Pulse exposes `dcl_pulse_clusters`, `dcl_pulse_cluster_passes_total`,
-  `dcl_pulse_cluster_pass_duration_us_total`, `dcl_pulse_cluster_reassignments_total`, and for
-  the feed `dcl_pulse_nats_{published,dropped,superseded,reconnects}_total` plus
-  `dcl_pulse_nats_connected`. Dashboards and alerts pointing at the old names go blind rather
-  than red — repoint them.
+  `dcl_pulse_cluster_pass_duration_us_total`, `dcl_pulse_cluster_reassignments_total`, and the
+  feed counters listed in step 1. Dashboards and alerts on the old names go blind rather than
+  red — repoint them.
 - **Scrape and health targets.** Core's `/health` and `/metrics` disappear with the service.
-- **Cluster ID uniqueness.** `C{n}` comes from a per-process counter, so it resets on a Pulse
-  restart and collides across instances. After a restart, `C1` names a different crowd and
-  gatekeeper may map it onto the LiveKit room the previous `C1` used. Tracked as an open
-  question in `Pulse/docs/clustering-on-aoi.md` §7 — live-voice-room correctness, not cosmetics.
-- **Uncapped crowds.** Nothing bounds co-located crowd size server-side any more; the client
-  GPU becomes the binding constraint (unity-explorer's crowd-ghost work) and gatekeeper owns
-  room sharding.
+
+Standing caveats that are not cutover actions — uncapped crowds, per-process cluster ID
+collisions, the unmeasured topology change — are in
+[ai-agent-context.md](./ai-agent-context.md#known-architectural-issues).
 
 ## What was not measured
 
@@ -205,11 +196,10 @@ No shadow comparison was run between core's topology and Pulse's. The two algori
 substantially — peer-pairwise single-linkage at 64/80 with a 100-peer cap, versus cell
 adjacency at 100 u with no cap — so expect fewer, larger clusters.
 
-At capacity on a full-size realm the partition effectively collapses: 100 u cells put the
-occupied fraction past the percolation threshold, and Pulse's own benchmark measures **2
-clusters with the larger holding 4091 of 4095 peers** (`Pulse/docs/clustering-on-aoi.md` §3.2).
-That is a property of the cell size, not a fault, and it is why LiveKit room sharding in
-comms-gatekeeper is load-bearing rather than an overflow path. Sparse and mid-density realms —
-the common case — are unaffected.
+At capacity on a full-size realm the partition effectively collapses: Pulse's own benchmark
+measures **2 clusters with the larger holding 4091 of 4095 peers**
+(`Pulse/docs/clustering-on-aoi.md` §3.2). That follows from the 100 u cell size, and it is why
+gatekeeper's LiveKit room sharding is load-bearing. Sparse and mid-density realms are
+unaffected.
 
 `GET /islands` is the place to look if cluster sizes seem wrong after cutover.
