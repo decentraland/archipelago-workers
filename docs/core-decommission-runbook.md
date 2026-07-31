@@ -168,7 +168,7 @@ rollback that recreates the config must match, especially the flush frequency, w
 | `CHECK_HEARTBEAT_INTERVAL` | `60000` (ms) | — Pulse cleans up departed peers in ~5 s |
 | `ARCHIPELAGO_STATUS_UPDATE_INTERVAL` | `10000` (ms) | `Nats:DiscoveryIntervalMs` (`10000`) |
 | `ROOM_PREFIX` | unset, defaulting to `I` | `Clusters:IdPrefix` (`C`) |
-| `LIVEKIT_ISLAND_SIZE` | unset, defaulting to `100` | — no equivalent; clusters are uncapped and each maps to a single LiveKit room |
+| `LIVEKIT_ISLAND_SIZE` | unset, defaulting to `100` | — no equivalent by design; clusters are uncapped and each maps to a single LiveKit room; any future size bound belongs in Pulse, not in a consumer |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST` | required — core exited at startup without them | Held by comms-gatekeeper, which mints the tokens now |
 
 > **Do not remove `COMMS_GATEKEEPER_URL`.** Core read it too, but **WS Connector still does** —
@@ -200,9 +200,10 @@ adjacency at 100 u with no cap — so expect fewer, larger clusters.
 At capacity on a full-size realm the partition effectively collapses: Pulse's own benchmark
 measures **2 clusters with the larger holding 4091 of 4095 peers**
 (`Pulse/docs/clustering-on-aoi.md` §3.2). That follows from the 100 u cell size — and nothing
-downstream splits it back up: gatekeeper shipped without room sharding, so one cluster maps to
-one LiveKit room and at this density a percolated cluster becomes one oversized room. The risk
-is tracked as an open question in `Pulse/docs/clustering-on-aoi.md`. Sparse and mid-density
-realms are unaffected.
+downstream splits it back up, by design: Pulse is the single source of cluster composition, and
+gatekeeper maps one cluster to one LiveKit room (`island-{clusterId}`) verbatim, so at this
+density a percolated cluster becomes one oversized room. If room size ever needs bounding it
+will be done in Pulse at the tracker level, never in consumers; the open question is tracked in
+`Pulse/docs/clustering-on-aoi.md` §7. Sparse and mid-density realms are unaffected.
 
 `GET /islands` is the place to look if cluster sizes seem wrong after cutover.
