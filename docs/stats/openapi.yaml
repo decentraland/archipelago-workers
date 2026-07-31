@@ -25,7 +25,7 @@ info:
 
     ### How It Works
 
-    Clustering is performed by **Pulse**, which publishes the topology this API serves. Clusters have no size limit; room capacity is handled downstream by comms-gatekeeper, which shards LiveKit rooms as needed.
+    Clustering is performed by **Pulse**, which publishes the topology this API serves. Clusters have no size limit; comms-gatekeeper maps each one to a single LiveKit room named `island-C{n}`, so room size follows cluster size. Note the ID mismatch: clients receive the room name (`island-C{n}`) as their `islandId`, while this API reports the bare cluster ID (`C{n}`).
 
     The Stats API continuously aggregates the published topology and provides it through REST endpoints with low latency, enabling real-time monitoring and analysis. Peer positions still come from client heartbeats.
     
