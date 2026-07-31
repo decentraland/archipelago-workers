@@ -1,20 +1,15 @@
-import { IBaseComponent } from '@well-known-components/interfaces'
-import { InternalWebSocket } from '../types'
+import { InternalWebSocket } from '../../types'
+import { IPeersRegistryComponent } from './types'
 
-export type WsApp = {
-  publish(topic: string, payload: Uint8Array, binary: boolean): void
-}
-
-export type IPeersRegistryComponent = IBaseComponent & {
-  onPeerConnected(id: string, ws: InternalWebSocket): void
-  onPeerDisconnected(id: string, ws: InternalWebSocket): void
-  getPeerWs(id: string): InternalWebSocket | undefined
-  getPeerCount(): number
-  // Returns a point-in-time copy of the registry. Used by the ban sweep so
-  // iteration is safe under concurrent connect/disconnect.
-  snapshot(): { id: string; ws: InternalWebSocket }[]
-}
-
+/**
+ * Creates the in-memory registry of peers connected to this replica.
+ *
+ * Every ws-connector replica receives every `island_changed` event, and this registry is the
+ * filter: only the replica actually holding a peer's socket forwards to it. Keys are exact
+ * strings, so callers must register and look up with the same (lower-cased) address form.
+ *
+ * @returns The peers registry component.
+ */
 export async function createPeersRegistry(): Promise<IPeersRegistryComponent> {
   const connectedPeers = new Map<string, InternalWebSocket>()
 

@@ -14,45 +14,13 @@ import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'nats' | 'server' | 'metrics'
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'denyList' | 'nats' | 'server' | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, banChecker, nats, server, config, ethereumProvider, metrics } = components
+  const { logs, peersRegistry, banChecker, denyList, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
-  const DENY_LIST_TTL_MS = 5 * 60 * 1000 // 5 minutes
-  let cachedDenyList: Set<string> = new Set()
-  let denyListLastFetched = 0
-
-  async function fetchDenyList(): Promise<Set<string>> {
-    if (Date.now() - denyListLastFetched < DENY_LIST_TTL_MS) {
-      return cachedDenyList
-    }
-
-    try {
-      const response = await fetch('https://config.decentraland.org/denylist.json')
-      if (!response.ok) {
-        throw new Error(`Failed to fetch deny list, status: ${response.status}`)
-      }
-      const data = await response.json()
-      if (data.users && Array.isArray(data.users)) {
-        cachedDenyList = new Set(data.users.map((user: { wallet: string }) => normalizeAddress(user.wallet)))
-      } else {
-        logger.warn('Deny list is missing "users" field or it is not an array.')
-        cachedDenyList = new Set()
-      }
-    } catch (error) {
-      logger.error(`Error fetching deny list: ${(error as Error).message}`)
-    }
-
-    // Always update the timestamp, even on failure. Otherwise, every handshake
-    // retries the failed fetch, adding latency to all connections when the
-    // deny list endpoint is down.
-    denyListLastFetched = Date.now()
-
-    return cachedDenyList
-  }
 
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
@@ -138,8 +106,7 @@ export async function registerWsHandler(
               return
             }
             const address = normalizeAddress(packet.message.challengeRequest.address)
-            const denyList: Set<string> = await fetchDenyList()
-            if (denyList.has(address)) {
+            if (await denyList.isDenylisted(address)) {
               logger.warn(`Rejected connection from deny-listed wallet: ${address}`)
               safeEndWebSocket(ws)
               return
@@ -196,8 +163,7 @@ export async function registerWsHandler(
 
               // Check deny list against the real address from the auth chain,
               // not just the claimed address from challengeRequest
-              const denyListPostAuth: Set<string> = await fetchDenyList()
-              if (denyListPostAuth.has(address)) {
+              if (await denyList.isDenylisted(address)) {
                 logger.warn(`Rejected connection from deny-listed wallet (post-auth): ${address}`)
                 safeEndWebSocket(ws)
                 return

@@ -1,8 +1,9 @@
-import { IBaseComponent, IConfigComponent, ILoggerComponent } from '@well-known-components/interfaces'
+import { START_COMPONENT, STOP_COMPONENT } from '@well-known-components/interfaces'
 import { KickedReason } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { craftMessage } from '../logic/craft-message'
-import { IPeersRegistryComponent } from './peers-registry'
-import { IBanCheckerComponent } from './ban-checker'
+import { craftMessage } from '../../logic/craft-message'
+import { getErrorMessage } from '../../logic/errors'
+import { AppComponents } from '../../types'
+import { IBanSweepComponent } from './types'
 
 const DEFAULT_BAN_SWEEP_INTERVAL_MS = 30_000
 // Cap concurrent ban-check requests during a sweep so a high peer count doesn't
@@ -24,12 +25,22 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results
 }
 
-export async function createBanSweep(components: {
-  config: IConfigComponent
-  logs: ILoggerComponent
-  peersRegistry: IPeersRegistryComponent
-  banChecker: IBanCheckerComponent
-}): Promise<IBaseComponent> {
+/**
+ * Creates the background sweep that disconnects peers banned after they connected.
+ *
+ * The handshake ban check only runs once, at connect time, so without this a peer banned
+ * mid-session stays in comms until they reconnect. Each pass snapshots the registry, re-checks
+ * every peer against comms-gatekeeper (bounded concurrency), and kicks the ones now banned.
+ *
+ * Every step is individually guarded: one peer's failed check, send or close must not abort the
+ * rest of the sweep.
+ *
+ * @param components - The config, logs, peers registry and ban checker components.
+ * @returns The ban sweep component. It exposes only lifecycle hooks.
+ */
+export async function createBanSweep(
+  components: Pick<AppComponents, 'config' | 'logs' | 'peersRegistry' | 'banChecker'>
+): Promise<IBanSweepComponent> {
   const { config, logs, peersRegistry, banChecker } = components
   const logger = logs.getLogger('ban-sweep')
   const intervalMs = (await config.getNumber('BAN_SWEEP_INTERVAL_MS')) ?? DEFAULT_BAN_SWEEP_INTERVAL_MS
@@ -54,40 +65,44 @@ export async function createBanSweep(components: {
             }),
             true
           )
-        } catch (sendErr: any) {
+        } catch (sendError) {
           logger.warn(`Failed to send kicked message before close`, {
             address: id,
-            error: sendErr?.message ?? 'unknown'
+            error: getErrorMessage(sendError)
           })
         }
         try {
           ws.end()
-        } catch (closeErr: any) {
+        } catch (closeError) {
           logger.warn(`Failed to close ws for banned user`, {
             address: id,
-            error: closeErr?.message ?? 'unknown'
+            error: getErrorMessage(closeError)
           })
         }
-      } catch (err: any) {
-        logger.warn(`Ban sweep iteration failed`, { address: id, error: err?.message ?? 'unknown' })
+      } catch (error) {
+        logger.warn(`Ban sweep iteration failed`, { address: id, error: getErrorMessage(error) })
       }
     })
   }
 
-  return {
-    async start(): Promise<void> {
-      logger.info(`Ban sweep running every ${intervalMs}ms`)
-      handle = setInterval(sweep, intervalMs)
-      // unref() so the timer doesn't keep the process alive on its own — the
-      // HTTP server and NATS connection are what hold the event loop open in prod;
-      // in tests, this lets Jest exit cleanly.
-      handle.unref()
-    },
-    async stop(): Promise<void> {
-      if (handle) {
-        clearInterval(handle)
-        handle = undefined
-      }
+  async function start(): Promise<void> {
+    logger.info(`Ban sweep running every ${intervalMs}ms`)
+    handle = setInterval(sweep, intervalMs)
+    // unref() so the timer doesn't keep the process alive on its own — the
+    // HTTP server and NATS connection are what hold the event loop open in prod;
+    // in tests, this lets Jest exit cleanly.
+    handle.unref()
+  }
+
+  async function stop(): Promise<void> {
+    if (handle) {
+      clearInterval(handle)
+      handle = undefined
     }
+  }
+
+  return {
+    [START_COMPONENT]: start,
+    [STOP_COMPONENT]: stop
   }
 }

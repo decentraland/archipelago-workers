@@ -1,545 +1,286 @@
-import { Stage, WsUserData } from '../../src/types'
+import { Authenticator } from '@dcl/crypto'
+import { createConfigComponent } from '@well-known-components/env-config-provider'
+import { createLogComponent } from '@well-known-components/logger'
+import { createTestMetricsComponent } from '@dcl/metrics'
+import { ClientPacket } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { registerWsHandler } from '../../src/controllers/handlers/ws-handler'
+import { metricDeclarations } from '../../src/metrics'
+import { InternalWebSocket, Stage, WsUserData } from '../../src/types'
+import { createEphemeralIdentity } from '../helpers/identity'
+import { createBanCheckerMockedComponent } from '../mocks/ban-checker-mock'
+import { createDenyListMockedComponent } from '../mocks/deny-list-mock'
+import { createPeersRegistryMockedComponent } from '../mocks/peers-registry-mock'
 
 /**
- * These tests verify the WebSocket handler behavior for edge cases
- * around socket closing and timeout cleanup. They test the logic
- * that was fixed in ws-handler.ts without requiring a full µWebSockets server.
+ * These drive the handlers `registerWsHandler` actually registers on `server.app.ws`, by
+ * capturing the handler object and invoking `open`/`message`/`close` directly against a stubbed
+ * socket. That exercises the real production code without needing a µWebSockets server — which
+ * is what the previous version of this file avoided by re-implementing the logic in the spec
+ * instead, so it passed regardless of what ws-handler.ts did.
  */
-describe('ws-handler safety', () => {
-  describe('safeEndWebSocket', () => {
-    let isClosed: boolean
-    let endCalls: Array<{ code?: number; message?: Buffer }>
+type WsHandlers = {
+  open: (ws: InternalWebSocket) => void
+  message: (ws: InternalWebSocket, message: ArrayBuffer) => Promise<void>
+  close: (ws: InternalWebSocket, code: number, message: ArrayBuffer) => void
+}
 
-    function createMockWs() {
-      isClosed = false
-      endCalls = []
-      const userData: WsUserData & { isClosed?: boolean } = {
-        stage: Stage.HANDSHAKE_START,
-        isClosed: false
-      }
-      return {
-        getUserData: () => userData,
-        end: (code?: number, message?: Buffer) => {
-          endCalls.push({ code, message })
-        },
-        send: jest.fn().mockReturnValue(1),
-        close: jest.fn()
-      }
-    }
+type StubWebSocket = InternalWebSocket & { send: jest.Mock; end: jest.Mock }
 
-    // Replicates safeEndWebSocket from ws-handler.ts
-    function safeEndWebSocket(ws: ReturnType<typeof createMockWs>, code?: number, message?: Buffer) {
-      const userData = ws.getUserData()
-      if (!userData.isClosed) {
-        userData.isClosed = true
-        if (message) {
-          ws.end(code, message)
-        } else if (code) {
-          ws.end(code)
-        } else {
-          ws.end()
-        }
-      }
-    }
+const HANDSHAKE_TIMEOUT_MS = 500
 
-    describe('when the socket is open', () => {
-      let ws: ReturnType<typeof createMockWs>
+describe('ws-handler', () => {
+  let handlers: WsHandlers
+  let peersRegistry: ReturnType<typeof createPeersRegistryMockedComponent>
+  let banChecker: ReturnType<typeof createBanCheckerMockedComponent>
+  let denyList: ReturnType<typeof createDenyListMockedComponent>
+  let nats: { publish: jest.Mock; subscribe: jest.Mock }
+  let validateSignature: jest.SpyInstance
 
-      beforeEach(() => {
-        ws = createMockWs()
-      })
+  const identity = createEphemeralIdentity('handler-spec')
+  const address = identity.address.toLowerCase()
 
-      it('should close the socket with the given code and message', () => {
-        safeEndWebSocket(ws, 1007, Buffer.from('Cannot decode ClientPacket'))
+  function makeWs(initial: Partial<WsUserData> = {}): StubWebSocket {
+    const data = { stage: Stage.HANDSHAKE_START, ...initial } as WsUserData
 
-        expect(endCalls).toHaveLength(1)
-        expect(endCalls[0].code).toBe(1007)
-        expect(endCalls[0].message).toEqual(Buffer.from('Cannot decode ClientPacket'))
-      })
+    return {
+      getUserData: () => data,
+      send: jest.fn().mockReturnValue(1),
+      end: jest.fn()
+    } as unknown as StubWebSocket
+  }
 
-      it('should mark the socket as closed', () => {
-        safeEndWebSocket(ws)
+  function encode(message: ClientPacket['message']): ArrayBuffer {
+    return ClientPacket.encode({ message }).finish() as unknown as ArrayBuffer
+  }
 
-        expect(ws.getUserData().isClosed).toBe(true)
-      })
-    })
+  async function build(): Promise<void> {
+    peersRegistry = createPeersRegistryMockedComponent()
+    banChecker = createBanCheckerMockedComponent()
+    denyList = createDenyListMockedComponent()
+    nats = { publish: jest.fn(), subscribe: jest.fn() }
 
-    describe('when the socket is already closed', () => {
-      let ws: ReturnType<typeof createMockWs>
-
-      beforeEach(() => {
-        ws = createMockWs()
-        ws.getUserData().isClosed = true
-      })
-
-      it('should not call end again', () => {
-        safeEndWebSocket(ws, 1007, Buffer.from('test'))
-
-        expect(endCalls).toHaveLength(0)
-      })
-    })
-
-    describe('when called twice', () => {
-      let ws: ReturnType<typeof createMockWs>
-
-      beforeEach(() => {
-        ws = createMockWs()
-      })
-
-      it('should only close the socket once', () => {
-        safeEndWebSocket(ws)
-        safeEndWebSocket(ws)
-
-        expect(endCalls).toHaveLength(1)
-      })
-    })
-  })
-
-  describe('close handler timeout cleanup', () => {
-    // Replicates the close handler logic from ws-handler.ts
-    function simulateClose(data: WsUserData & { isClosed?: boolean; timeout?: NodeJS.Timeout }) {
-      data.isClosed = true
-      if (data.timeout) {
-        clearTimeout(data.timeout)
-        data.timeout = undefined
-      }
-    }
-
-    describe('when a timeout is pending at close time', () => {
-      let timeoutFired: boolean
-      let data: WsUserData & { isClosed?: boolean; timeout?: NodeJS.Timeout }
-
-      beforeEach(() => {
-        timeoutFired = false
-        data = {
-          stage: Stage.HANDSHAKE_START,
-          isClosed: false,
-          timeout: setTimeout(() => {
-            timeoutFired = true
-          }, 100)
-        }
-      })
-
-      afterEach(() => {
-        if (data.timeout) {
-          clearTimeout(data.timeout)
-        }
-      })
-
-      it('should clear the timeout', () => {
-        simulateClose(data)
-
-        expect(data.timeout).toBeUndefined()
-      })
-
-      it('should prevent the timeout callback from firing', async () => {
-        simulateClose(data)
-
-        await new Promise((resolve) => setTimeout(resolve, 150))
-
-        expect(timeoutFired).toBe(false)
-      })
-    })
-
-    describe('when no timeout is pending at close time', () => {
-      let data: WsUserData & { isClosed?: boolean; timeout?: NodeJS.Timeout }
-
-      beforeEach(() => {
-        data = {
-          stage: Stage.HANDSHAKE_START,
-          isClosed: false,
-          timeout: undefined
-        }
-      })
-
-      it('should handle gracefully without errors', () => {
-        expect(() => simulateClose(data)).not.toThrow()
-        expect(data.isClosed).toBe(true)
-      })
-    })
-  })
-
-  describe('peer registry leak on welcome send failure', () => {
-    /**
-     * This test documents a bug in the ws-handler: when a peer authenticates
-     * successfully but the welcome message fails to send (backpressure),
-     * the peer is registered in peersRegistry (line 209) but the close
-     * handler doesn't clean it up because userData.address hasn't been set
-     * yet (changeStage hasn't run). This leaves a ghost entry in the registry.
-     */
-    let registry: Map<string, any>
-    let disconnectPublished: string[]
-
-    beforeEach(() => {
-      registry = new Map()
-      disconnectPublished = []
-    })
-
-    function simulateAuthenticationSuccess(address: string) {
-      // Simulates lines 209-236 of ws-handler.ts
-      registry.set(address, { ws: 'mock_ws2' })
-      return { registered: true }
-    }
-
-    function simulateWelcomeSendFailure(address: string, userData: WsUserData & { isClosed?: boolean; address?: string }) {
-      // Simulates what happens when ws.send(welcomeMessage) !== 1
-      // safeEndWebSocket is called, which triggers the close handler
-      userData.isClosed = true
-
-      // Close handler logic (lines 259-271)
-      if (userData.address) {
-        registry.delete(userData.address)
-        disconnectPublished.push(userData.address)
-      }
-      // Note: if userData.address is undefined, cleanup is SKIPPED
-    }
-
-    describe('when the welcome message fails to send', () => {
-      let userData: WsUserData & { isClosed?: boolean; address?: string }
-
-      beforeEach(() => {
-        // Before changeStage, userData is still in HANDSHAKE_CHALLENGE_SENT
-        // and has no address field
-        userData = {
-          stage: Stage.HANDSHAKE_CHALLENGE_SENT,
-          challengeToSign: 'dcl-test',
-          isClosed: false
-        }
-
-        // Peer authenticates successfully - registered in peersRegistry
-        simulateAuthenticationSuccess('0xabc')
-
-        // Welcome send fails - triggers close handler
-        simulateWelcomeSendFailure('0xabc', userData)
-      })
-
-      it('should leave a ghost entry in the peers registry', () => {
-        // The close handler didn't clean up because userData.address was not set
-        expect(registry.has('0xabc')).toBe(true)
-      })
-
-      it('should not publish a disconnect message to NATS', () => {
-        expect(disconnectPublished).toHaveLength(0)
-      })
-    })
-
-    describe('when the welcome message sends successfully', () => {
-      let userData: WsUserData & { isClosed?: boolean; address?: string }
-
-      beforeEach(() => {
-        userData = {
-          stage: Stage.HANDSHAKE_CHALLENGE_SENT,
-          challengeToSign: 'dcl-test',
-          isClosed: false
-        }
-
-        simulateAuthenticationSuccess('0xabc')
-
-        // Welcome succeeds, stage is changed (sets userData.address)
-        Object.assign(userData, { stage: Stage.HANDSHAKE_COMPLETED, address: '0xabc' })
-      })
-
-      describe('and the socket later closes normally', () => {
-        beforeEach(() => {
-          // Normal close
-          userData.isClosed = true
-          if (userData.address) {
-            registry.delete(userData.address)
-            disconnectPublished.push(userData.address)
-          }
+    const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS) })
+    const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
+    const server = {
+      app: {
+        ws: jest.fn((_path: string, registered: WsHandlers) => {
+          handlers = registered
         })
+      }
+    }
 
-        it('should clean up the registry correctly', () => {
-          expect(registry.has('0xabc')).toBe(false)
-        })
-
-        it('should publish a disconnect message', () => {
-          expect(disconnectPublished).toEqual(['0xabc'])
-        })
-      })
+    await registerWsHandler({
+      config,
+      logs,
+      ethereumProvider: {} as never,
+      peersRegistry,
+      banChecker,
+      denyList,
+      nats: nats as never,
+      server: server as never,
+      metrics: createTestMetricsComponent(metricDeclarations)
     })
+  }
+
+  beforeEach(async () => {
+    validateSignature = jest.spyOn(Authenticator, 'validateSignature')
+    await build()
   })
 
-  describe('all socket close paths use safeEndWebSocket', () => {
-    /**
-     * These tests verify that all paths that close a WebSocket go through
-     * safeEndWebSocket (or equivalent isClosed checks). Direct ws.end() or
-     * ws.close() on an already-closed socket in µWebSockets causes undefined
-     * behavior (potential segfault).
-     */
-    let endCalled: boolean
-    let userData: WsUserData & { isClosed?: boolean }
-
-    function createMockWs() {
-      endCalled = false
-      userData = { stage: Stage.HANDSHAKE_START, isClosed: false }
-      return {
-        getUserData: () => userData,
-        end: () => { endCalled = true },
-        send: jest.fn().mockReturnValue(1),
-        close: jest.fn()
-      }
-    }
-
-    function safeEndWebSocket(ws: ReturnType<typeof createMockWs>) {
-      const data = ws.getUserData()
-      if (!data.isClosed) {
-        data.isClosed = true
-        ws.end()
-      }
-    }
-
-    describe('when the timeout handler fires on an already-closed socket', () => {
-      beforeEach(() => {
-        const ws = createMockWs()
-        userData.isClosed = true
-        safeEndWebSocket(ws)
-      })
-
-      it('should not call end', () => {
-        expect(endCalled).toBe(false)
-      })
-    })
-
-    describe('when the challenge send fails on an already-closed socket', () => {
-      beforeEach(() => {
-        const ws = createMockWs()
-        userData.isClosed = true
-        safeEndWebSocket(ws)
-      })
-
-      it('should not call end', () => {
-        expect(endCalled).toBe(false)
-      })
-    })
-
-    describe('when kicking a previous connection that is already closed', () => {
-      beforeEach(() => {
-        const previousWs = createMockWs()
-        userData.isClosed = true
-        // The kick path should check isClosed before sending and before ending
-        safeEndWebSocket(previousWs)
-      })
-
-      it('should not call end on the already-closed previous socket', () => {
-        expect(endCalled).toBe(false)
-      })
-    })
+  afterEach(() => {
+    jest.restoreAllMocks()
+    jest.useRealTimers()
   })
 
-  describe('deny list bypass via claimed address', () => {
-    /**
-     * Documents the deny list bypass vulnerability that was fixed:
-     * The deny list was only checked against the claimed address in
-     * challengeRequest, not the real address from the auth chain.
-     * A denied user could claim a non-denied address and bypass the check.
-     *
-     * After the fix, the deny list is checked again after authentication
-     * against the real address from the auth chain.
-     */
-    let denyList: Set<string>
+  describe('when an undecodable packet arrives', () => {
+    let ws: StubWebSocket
 
-    beforeEach(() => {
-      denyList = new Set(['0xdenied'])
+    beforeEach(async () => {
+      ws = makeWs()
+      handlers.open(ws)
+      await handlers.message(ws, new Uint8Array([1, 2, 3, 4, 5, 6]) as unknown as ArrayBuffer)
     })
 
-    describe('when a denied user claims a non-denied address', () => {
-      let claimedAddress: string
-      let realAddress: string
-      let preAuthBlocked: boolean
-      let postAuthBlocked: boolean
-
-      beforeEach(() => {
-        claimedAddress = '0xinnocent'
-        realAddress = '0xdenied'
-
-        // Pre-auth check (challengeRequest stage) uses claimed address
-        preAuthBlocked = denyList.has(claimedAddress)
-
-        // Post-auth check (after signature validation) uses real address
-        postAuthBlocked = denyList.has(realAddress)
-      })
-
-      it('should pass the pre-auth deny list check with the claimed address', () => {
-        expect(preAuthBlocked).toBe(false)
-      })
-
-      it('should be caught by the post-auth deny list check with the real address', () => {
-        expect(postAuthBlocked).toBe(true)
-      })
+    it('should close the socket with the protocol-error code and reason', () => {
+      expect(ws.end).toHaveBeenCalledWith(1007, Buffer.from('Cannot decode ClientPacket'))
     })
 
-    describe('when a non-denied user connects normally', () => {
-      let realAddress: string
-      let postAuthBlocked: boolean
-
-      beforeEach(() => {
-        realAddress = '0xgooduser'
-        postAuthBlocked = denyList.has(realAddress)
-      })
-
-      it('should not be blocked by the post-auth check', () => {
-        expect(postAuthBlocked).toBe(false)
-      })
-    })
-  })
-
-  describe('deny list fetch failure retry storm', () => {
-    /**
-     * Documents the deny list TTL behavior on fetch failure.
-     * Before the fix: denyListLastFetched was only updated on success,
-     * causing every handshake to retry the failed fetch.
-     * After the fix: denyListLastFetched is always updated, so failures
-     * are cached for the TTL duration.
-     */
-    const TTL = 5 * 60 * 1000
-
-    describe('when the deny list fetch fails (fixed behavior)', () => {
-      let fetchCount: number
-      let lastFetched: number
-      let cachedList: Set<string>
-
-      beforeEach(() => {
-        fetchCount = 0
-        lastFetched = 0
-        cachedList = new Set()
-      })
-
-      // Replicates the FIXED fetchDenyList logic
-      async function fetchDenyList(): Promise<Set<string>> {
-        if (Date.now() - lastFetched < TTL) {
-          return cachedList
-        }
-        try {
-          fetchCount++
-          throw new Error('network error')
-        } catch {
-          // error logged
-        }
-        // Always update timestamp, even on failure
-        lastFetched = Date.now()
-        return cachedList
-      }
-
-      it('should only attempt one fetch within the TTL window', async () => {
-        await fetchDenyList()
-        await fetchDenyList()
-        await fetchDenyList()
-
-        expect(fetchCount).toBe(1)
-      })
+    it('should mark the socket as closed', () => {
+      expect(ws.getUserData().isClosed).toBe(true)
     })
 
-    describe('when the deny list fetch fails (pre-fix behavior)', () => {
-      let fetchCount: number
-      let lastFetched: number
-      let cachedList: Set<string>
-
-      beforeEach(() => {
-        fetchCount = 0
-        lastFetched = 0
-        cachedList = new Set()
+    describe('and a second undecodable packet arrives on the same socket', () => {
+      beforeEach(async () => {
+        ws.end.mockClear()
+        await handlers.message(ws, new Uint8Array([9, 9, 9]) as unknown as ArrayBuffer)
       })
 
-      // Replicates the BROKEN fetchDenyList logic (timestamp only updated on success)
-      async function fetchDenyListBroken(): Promise<Set<string>> {
-        if (Date.now() - lastFetched < TTL) {
-          return cachedList
-        }
-        try {
-          fetchCount++
-          throw new Error('network error')
-        } catch {
-          // error logged
-          // BUG: lastFetched NOT updated on failure
-        }
-        return cachedList
-      }
-
-      it('should retry on every call because the timestamp is never updated', async () => {
-        await fetchDenyListBroken()
-        await fetchDenyListBroken()
-        await fetchDenyListBroken()
-
-        expect(fetchCount).toBe(3)
-      })
-    })
-  })
-
-  describe('platform-ban handshake rejection', () => {
-    /**
-     * Documents the platform-ban handshake guard added alongside the deny list:
-     * after a successful auth, we call banChecker.isBanned with the real address
-     * from the auth chain. If banned, we send a kicked message and close the WS,
-     * preventing the user from establishing a comms session.
-     */
-    type WsStub = {
-      send: jest.Mock<number, [Uint8Array, boolean?]>
-      end: jest.Mock
-      closed: boolean
-    }
-
-    function makeWs(): WsStub {
-      return {
-        send: jest.fn().mockReturnValue(1),
-        end: jest.fn(function (this: WsStub) {
-          this.closed = true
-        }),
-        closed: false
-      }
-    }
-
-    // Replicates the post-auth platform-ban branch from registerWsHandler.
-    // Mirrors the production order: isBanned → send kicked → end WS → return.
-    async function postAuthBanBranch(ws: WsStub, address: string, isBanned: (a: string) => Promise<boolean>) {
-      if (await isBanned(address)) {
-        ws.send(new Uint8Array([1]), true)
-        ws.end()
-        return 'rejected'
-      }
-      ws.send(new Uint8Array([2]), true) // welcome
-      return 'welcomed'
-    }
-
-    describe('when the user is platform-banned', () => {
-      it('should send a kicked message and close the WS, never sending welcome', async () => {
-        const ws = makeWs()
-        const isBanned = jest.fn(async (_: string) => true)
-
-        const outcome = await postAuthBanBranch(ws, '0xbanned', isBanned)
-
-        expect(outcome).toBe('rejected')
-        expect(ws.send).toHaveBeenCalledTimes(1)
-        expect(ws.end).toHaveBeenCalledTimes(1)
-        expect(ws.closed).toBe(true)
-      })
-    })
-
-    describe('when the user is not platform-banned', () => {
-      it('should not close the WS and should proceed to send welcome', async () => {
-        const ws = makeWs()
-        const isBanned = jest.fn(async (_: string) => false)
-
-        const outcome = await postAuthBanBranch(ws, '0xok', isBanned)
-
-        expect(outcome).toBe('welcomed')
-        expect(ws.end).not.toHaveBeenCalled()
-        expect(ws.closed).toBe(false)
-      })
-    })
-
-    describe('when banChecker fails (fail-open)', () => {
-      // The real banChecker catches its own errors and returns false, so the
-      // handler path observes a non-banned response and lets the user through.
-      it('should let the user through when isBanned resolves to false', async () => {
-        const ws = makeWs()
-        const isBanned = jest.fn(async (_: string) => false)
-
-        const outcome = await postAuthBanBranch(ws, '0xok', isBanned)
-
-        expect(outcome).toBe('welcomed')
+      it('should not close it again, since it is already closed', () => {
         expect(ws.end).not.toHaveBeenCalled()
       })
+    })
+  })
+
+  describe('when nothing is received before the handshake timeout', () => {
+    let ws: StubWebSocket
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+      ws = makeWs()
+      handlers.open(ws)
+      jest.advanceTimersByTime(HANDSHAKE_TIMEOUT_MS + 10)
+    })
+
+    it('should close the socket', () => {
+      expect(ws.end).toHaveBeenCalled()
+    })
+  })
+
+  describe('when the socket closes before the handshake timeout fires', () => {
+    let ws: StubWebSocket
+
+    beforeEach(() => {
+      jest.useFakeTimers()
+      ws = makeWs()
+      handlers.open(ws)
+      handlers.close(ws, 1000, new ArrayBuffer(0))
+      jest.advanceTimersByTime(HANDSHAKE_TIMEOUT_MS + 10)
+    })
+
+    it('should clear the timeout so it cannot fire against a dead socket', () => {
+      expect(ws.getUserData().timeout).toBeUndefined()
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when a valid challenge request arrives', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = makeWs()
+      handlers.open(ws)
+      await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address } }))
+    })
+
+    it('should send a challenge to sign', () => {
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('should advance to the challenge-sent stage', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_CHALLENGE_SENT)
+    })
+
+    it('should consult the deny list with the claimed address', () => {
+      expect(denyList.isDenylisted).toHaveBeenCalledWith(address)
+    })
+  })
+
+  describe('when the claimed address is deny-listed', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      denyList.isDenylisted.mockResolvedValue(true)
+      ws = makeWs()
+      handlers.open(ws)
+      await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address } }))
+    })
+
+    it('should close the socket without issuing a challenge', () => {
+      expect(ws.send).not.toHaveBeenCalled()
+      expect(ws.end).toHaveBeenCalled()
+    })
+  })
+
+  describe('when a signed challenge authenticates successfully', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should register the peer under its lower-cased address', () => {
+      expect(peersRegistry.onPeerConnected).toHaveBeenCalledWith(address, ws)
+    })
+
+    it('should send the welcome message', () => {
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('should reach the completed stage without closing the socket', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the welcome message cannot be sent', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+      ws.send.mockReturnValue(0)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should close the socket', () => {
+      expect(ws.end).toHaveBeenCalled()
+    })
+
+    it('should have recorded the address before sending, so the close handler can clean up', () => {
+      // The production code sets stage and address *before* the send precisely so a failed
+      // welcome is still recoverable. Without it the registry keeps a ghost entry forever.
+      expect(ws.getUserData().address).toBe(address)
+    })
+
+    describe('and the close handler then runs', () => {
+      beforeEach(() => {
+        handlers.close(ws, 1006, new ArrayBuffer(0))
+      })
+
+      it('should leave no ghost entry in the peers registry', () => {
+        expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
+        expect(peersRegistry.getPeerCount()).toBe(0)
+      })
+    })
+  })
+
+  describe('when a heartbeat arrives after the handshake completed', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+    })
+
+    it('should republish it on the peer heartbeat subject', () => {
+      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.heartbeat`, expect.any(Uint8Array))
+    })
+  })
+
+  describe('when an authenticated socket closes', () => {
+    let ws: StubWebSocket
+
+    beforeEach(() => {
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, ws)
+
+      handlers.close(ws, 1000, new ArrayBuffer(0))
+    })
+
+    it('should remove the peer from the registry', () => {
+      expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
+      expect(peersRegistry.getPeerCount()).toBe(0)
+    })
+
+    it('should announce the disconnect so the rest of the platform notices', () => {
+      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.disconnect`)
     })
   })
 })
