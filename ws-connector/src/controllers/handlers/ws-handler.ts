@@ -8,6 +8,7 @@ import { craftMessage } from '../../logic/craft-message'
 import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types'
 import { EthAddress, AuthChain } from '@dcl/schemas'
 import { normalizeAddress } from '../../logic/address'
+import { getErrorMessage } from '../../logic/errors'
 import { Authenticator } from '@dcl/crypto'
 import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 
@@ -34,20 +35,21 @@ export async function registerWsHandler(
     Object.assign(data, newData)
   }
 
-  function safeEndWebSocket(ws: InternalWebSocket, code?: number, message?: Buffer) {
+  // `close` travels as a pair rather than two optionals: a code without a message was an
+  // unreachable branch across all call sites, and leaving it in invited someone to pass one and
+  // have it silently dropped. Closing with no reason at all stays the common case.
+  function safeEndWebSocket(ws: InternalWebSocket, close?: { code: number; message: Buffer }) {
     const userData = ws.getUserData()
     if (!userData.isClosed) {
       try {
         userData.isClosed = true
-        if (message) {
-          ws.end(code, message)
-        } else if (code) {
-          ws.end(code)
+        if (close) {
+          ws.end(close.code, close.message)
         } else {
           ws.end()
         }
-      } catch (err) {
-        logger.error(`Error while safely ending WebSocket: ${(err as Error).message}`)
+      } catch (error) {
+        logger.error(`Error while safely ending WebSocket: ${getErrorMessage(error)}`)
       }
     }
   }
@@ -86,9 +88,9 @@ export async function registerWsHandler(
 
       try {
         packet = ClientPacket.decode(Buffer.from(message))
-      } catch (err: any) {
-        logger.error(err)
-        safeEndWebSocket(ws, 1007, Buffer.from('Cannot decode ClientPacket'))
+      } catch (error) {
+        logger.error(`Cannot decode ClientPacket: ${getErrorMessage(error)}`)
+        safeEndWebSocket(ws, { code: 1007, message: Buffer.from('Cannot decode ClientPacket') })
         return
       }
 
@@ -245,8 +247,8 @@ export async function registerWsHandler(
             break
           }
         }
-      } catch (err: any) {
-        logger.error(err)
+      } catch (error) {
+        logger.error(`Error handling client packet: ${getErrorMessage(error)}`)
         safeEndWebSocket(ws)
       }
     },

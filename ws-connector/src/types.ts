@@ -33,8 +33,6 @@ export type TestComponents = BaseComponents & {
   localFetch: IFetchComponent
 }
 
-export type Parcel = [number, number]
-
 export type JsonBody = Record<string, any>
 export type ResponseBody = JsonBody | string
 

@@ -109,6 +109,67 @@ describe('ban sweep', () => {
     })
   })
 
+  describe('when a banned peer disconnects between the snapshot and the ban check', () => {
+    it('should skip it instead of acting on a socket that is already gone', async () => {
+      const { sweep } = await buildSweep(['0xbanned'], new Set(['0xbanned']))
+      // Present in the snapshot the sweep started from, absent by the time it looks the socket up.
+      ;(peersRegistry.getPeerWs as jest.Mock).mockReturnValue(undefined)
+      await sweep[START_COMPONENT]!({} as never)
+
+      await tickAndFlush()
+
+      expect(sentMessages.get('0xbanned')).toHaveLength(0)
+      await sweep[STOP_COMPONENT]!()
+    })
+  })
+
+  describe('when a banned peer socket throws while being kicked', () => {
+    // Every step is individually guarded so one bad socket cannot abort the whole sweep — which
+    // would leave every peer after it in the list still connected while banned.
+    it('should still close that socket after a failing send', async () => {
+      const { sweep, wsById } = await buildSweep(['0xbanned'], new Set(['0xbanned']))
+      wsById.get('0xbanned')!.send = jest.fn(() => {
+        throw new Error('socket gone')
+      }) as never
+      await sweep[START_COMPONENT]!({} as never)
+
+      await tickAndFlush()
+
+      expect(wsById.get('0xbanned')!.end).toHaveBeenCalledTimes(1)
+      await sweep[STOP_COMPONENT]!()
+    })
+
+    it('should keep sweeping the remaining peers after a failing close', async () => {
+      const { sweep, wsById } = await buildSweep(['0xbanned', '0xalsobanned'], new Set(['0xbanned', '0xalsobanned']))
+      wsById.get('0xbanned')!.end = jest.fn(() => {
+        throw new Error('already closed')
+      }) as never
+      await sweep[START_COMPONENT]!({} as never)
+
+      await tickAndFlush()
+
+      expect(sentMessages.get('0xalsobanned')).toHaveLength(1)
+      expect(wsById.get('0xalsobanned')!.end).toHaveBeenCalledTimes(1)
+      await sweep[STOP_COMPONENT]!()
+    })
+  })
+
+  describe('when the ban check itself throws for one peer', () => {
+    it('should keep sweeping the rest', async () => {
+      const { sweep, wsById } = await buildSweep(['0xexplodes', '0xbanned'], new Set(['0xbanned']))
+      ;(banChecker.isBanned as jest.Mock).mockImplementation(async (id: string) => {
+        if (id === '0xexplodes') throw new Error('gatekeeper unreachable')
+        return id === '0xbanned'
+      })
+      await sweep[START_COMPONENT]!({} as never)
+
+      await tickAndFlush()
+
+      expect(wsById.get('0xbanned')!.end).toHaveBeenCalledTimes(1)
+      await sweep[STOP_COMPONENT]!()
+    })
+  })
+
   describe('when stop is called', () => {
     it('should clear the interval so no further sweeps run', async () => {
       const { sweep } = await buildSweep(['0xa'], new Set(['0xa']))

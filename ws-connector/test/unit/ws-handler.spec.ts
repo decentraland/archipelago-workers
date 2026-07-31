@@ -121,6 +121,36 @@ describe('ws-handler', () => {
     })
   })
 
+  describe('when closing the socket itself throws', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = makeWs()
+      ws.end.mockImplementation(() => {
+        throw new Error('socket already gone')
+      })
+      handlers.open(ws)
+    })
+
+    it('should swallow it, since this runs on every rejection path', async () => {
+      await expect(handlers.message(ws, new Uint8Array([1, 2, 3]) as unknown as ArrayBuffer)).resolves.toBeUndefined()
+    })
+  })
+
+  describe('when a packet arrives in an unrecognised stage', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = makeWs({ stage: 99 as never })
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 0, y: 0, z: 0 } } }))
+    })
+
+    it('should ignore it rather than acting on an unknown state', () => {
+      expect(ws.send).not.toHaveBeenCalled()
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
   describe('when nothing is received before the handshake timeout', () => {
     let ws: StubWebSocket
 
@@ -247,6 +277,150 @@ describe('ws-handler', () => {
         expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
         expect(peersRegistry.getPeerCount()).toBe(0)
       })
+    })
+  })
+
+  describe('when the protocol is violated', () => {
+    let ws: StubWebSocket
+
+    describe('and the first packet is not a challenge request', () => {
+      beforeEach(async () => {
+        ws = makeWs()
+        handlers.open(ws)
+        await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 0, y: 0, z: 0 } } }))
+      })
+
+      it('should close the socket', () => {
+        expect(ws.end).toHaveBeenCalled()
+      })
+    })
+
+    describe('and the claimed address is not a valid eth address', () => {
+      beforeEach(async () => {
+        ws = makeWs()
+        handlers.open(ws)
+        await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address: 'nonsense' } }))
+      })
+
+      it('should close the socket without consulting the deny list', () => {
+        expect(ws.end).toHaveBeenCalled()
+        expect(denyList.isDenylisted).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('and the challenge cannot be sent', () => {
+      beforeEach(async () => {
+        ws = makeWs()
+        ws.send.mockReturnValue(0)
+        handlers.open(ws)
+        await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address } }))
+      })
+
+      it('should close the socket rather than wait for a reply that cannot come', () => {
+        expect(ws.end).toHaveBeenCalled()
+      })
+    })
+
+    describe('and the second packet is not a signed challenge', () => {
+      beforeEach(async () => {
+        ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-x' } as Partial<WsUserData>)
+        await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 0, y: 0, z: 0 } } }))
+      })
+
+      it('should close the socket', () => {
+        expect(ws.end).toHaveBeenCalled()
+      })
+    })
+
+    describe('and the auth chain is malformed', () => {
+      beforeEach(async () => {
+        ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-x' } as Partial<WsUserData>)
+        await handlers.message(
+          ws,
+          encode({ $case: 'signedChallenge', signedChallenge: { authChainJson: JSON.stringify([{ bogus: true }]) } })
+        )
+      })
+
+      it('should close the socket without attempting to validate the signature', () => {
+        expect(ws.end).toHaveBeenCalled()
+        expect(validateSignature).not.toHaveBeenCalled()
+      })
+    })
+
+    describe('and the auth chain json is not parseable', () => {
+      beforeEach(async () => {
+        ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-x' } as Partial<WsUserData>)
+        await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson: '{{{' } }))
+      })
+
+      it('should contain the parse failure and close the socket', () => {
+        expect(ws.end).toHaveBeenCalled()
+      })
+    })
+  })
+
+  describe('when the signature does not validate', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: false, message: 'bad signature' })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should close the socket without registering the peer', () => {
+      expect(ws.end).toHaveBeenCalled()
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the same identity reconnects while an older socket is live', () => {
+    let previousWs: StubWebSocket
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, previousWs)
+
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should kick and close the previous socket', () => {
+      expect(previousWs.send).toHaveBeenCalled()
+      expect(previousWs.end).toHaveBeenCalled()
+    })
+
+    it('should register the new socket in its place', () => {
+      expect(peersRegistry.getPeerWs(address)).toBe(ws)
+    })
+  })
+
+  describe('when the kick to the previous socket cannot be sent', () => {
+    let previousWs: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+      previousWs.send.mockReturnValue(0)
+      peersRegistry.onPeerConnected(address, previousWs)
+
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      const ws = makeWs({
+        stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+        challengeToSign: 'dcl-challenge'
+      } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should still close it, so the old session cannot linger', () => {
+      expect(previousWs.end).toHaveBeenCalled()
     })
   })
 

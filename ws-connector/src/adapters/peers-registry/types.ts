@@ -1,10 +1,6 @@
 import { IBaseComponent } from '@well-known-components/interfaces'
 import { InternalWebSocket } from '../../types'
 
-export type WsApp = {
-  publish(topic: string, payload: Uint8Array, binary: boolean): void
-}
-
 export type IPeersRegistryComponent = IBaseComponent & {
   /**
    * Registers a peer's live socket, replacing any socket already held for that id.
