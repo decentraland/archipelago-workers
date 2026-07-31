@@ -172,7 +172,7 @@ rollback that recreates the config must match, especially the flush frequency, w
 
 > **Do not remove `COMMS_GATEKEEPER_URL`.** Core read it too, but **WS Connector still does** —
 > it gates the per-handshake ban check and the periodic ban sweep
-> ([ban-checker.ts](../ws-connector/src/adapters/ban-checker.ts)). The check **fails open**: with
+> ([ban-checker/component.ts](../ws-connector/src/adapters/ban-checker/component.ts)). The check **fails open**: with
 > the URL unset, every handshake is allowed and the only signal is one `logger.warn` at boot.
 > Dropping it while tidying core's variables silently disables ban enforcement at the WS entry
 > point.

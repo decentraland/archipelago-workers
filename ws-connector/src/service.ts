@@ -2,6 +2,7 @@ import { IslandChangedMessage } from '@dcl/protocol/out-js/decentraland/kernel/c
 import { Lifecycle } from '@well-known-components/interfaces'
 import { setupRoutes } from './controllers/routes'
 import { craftMessage } from './logic/craft-message'
+import { normalizeAddress } from './logic/address'
 import { guarded } from './logic/nats'
 import { AppComponents, TestComponents } from './types'
 
@@ -24,8 +25,8 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     'engine.peer.*.island_changed',
     guarded('island_changed', logger, (message) => {
       // Peers register under their lower-cased address and this lookup is an exact string
-      // match, so a checksummed address on the wire would silently drop the message here.
-      const id = message.subject.split('.')[2]
+      // match, so normalize the subject token before hitting the registry.
+      const id = normalizeAddress(message.subject.split('.')[2])
       logger.debug(`publishing island change for ${id}`)
       const ws = peersRegistry.getPeerWs(id)
       if (!ws) {

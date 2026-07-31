@@ -116,6 +116,19 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
+  describe('and the message subject carries a checksummed address', () => {
+    beforeEach(async () => {
+      connectPeer(PEER)
+      publishIslandChanged(PEER.toUpperCase(), { islandId: 'island-C8' })
+      await settle()
+    })
+
+    it('should normalize the subject address before looking up the peer socket', () => {
+      const packet = lastForwarded()
+      expect(packet.message?.$case === 'islandChanged' && packet.message.islandChanged.islandId).toBe('island-C8')
+    })
+  })
+
   describe('and the message carries a previous island', () => {
     beforeEach(async () => {
       connectPeer(PEER)
