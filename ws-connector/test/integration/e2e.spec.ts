@@ -19,7 +19,7 @@ function expectPacket<T>(packet: ServerPacket, packetType: string): T {
   return packet.message[packetType]
 }
 
-test('end to end test', ({ components }) => {
+test('end to end test', ({ components, stubComponents }) => {
   const aliceIdentity = createEphemeralIdentity('alice')
   const bobIdentity = createEphemeralIdentity('bob')
 
@@ -69,7 +69,7 @@ test('end to end test', ({ components }) => {
     return Object.assign(ws, { welcomeMessage, channel, identity, challengeMessage, authChainJson })
   }
 
-  it('connecting one socket and sending nothing should disconnect it after one second', async () => {
+  it('should disconnect a socket that sends nothing after one second', async () => {
     const ws = await createWs('/ws')
     const fut = futureWithTimeout(3000, 'The socket was not closed')
 
@@ -79,7 +79,7 @@ test('end to end test', ({ components }) => {
     await fut
   })
 
-  it('connecting one socket and sending noise should disconnect it immediately', async () => {
+  it('should disconnect a socket that sends noise immediately', async () => {
     const ws = await createWs('/ws')
     const fut = futureWithTimeout(3000, 'The socket was not closed')
 
@@ -95,7 +95,7 @@ test('end to end test', ({ components }) => {
     expect(reason).toEqual('Cannot decode ClientPacket')
   })
 
-  it('sends different address', async () => {
+  it('should welcome the authenticated address, not the claimed one', async () => {
     const ws = await createWs('/ws')
     const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
 
@@ -134,12 +134,12 @@ test('end to end test', ({ components }) => {
     ws.close()
   })
 
-  it('connects the websocket and authenticates', async () => {
+  it('should complete the handshake and welcome the peer', async () => {
     const ws = await connectSocket(aliceIdentity)
     ws.close()
   })
 
-  it('connects the websocket and authenticates, doing it twice disconnects former connection', async () => {
+  it('should kick the former connection when the same identity connects twice', async () => {
     const ws1 = await connectSocket(aliceIdentity)
     const ws2 = await connectSocket(aliceIdentity)
 
@@ -206,6 +206,91 @@ test('end to end test', ({ components }) => {
     },
     60 * 1000
   )
+
+  // These two drive the real handshake against the real handler. They replace unit "tests" that
+  // re-implemented the deny-list and platform-ban branches inside the spec file and so passed
+  // regardless of what ws-handler.ts actually did.
+  describe('when the authenticated address is deny-listed', () => {
+    beforeEach(() => {
+      // Denies alice only. Bob's claimed address still passes the pre-auth check, so this
+      // exercises the post-auth check specifically — the bypass the guard exists for.
+      stubComponents.denyList.isDenylisted.mockImplementation(
+        async (address: string) => address === aliceIdentity.address.toLowerCase()
+      )
+    })
+
+    it('should close the socket instead of sending welcome, even when a clean address was claimed', async () => {
+      const ws = await createWs('/ws')
+      const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
+      const closed = futureWithTimeout(5000, 'The socket was not closed for the deny-listed wallet')
+      ws.on('close', closed.resolve)
+
+      await socketConnected(ws)
+      await socketSend(
+        ws,
+        ClientPacket.encode({
+          message: { $case: 'challengeRequest', challengeRequest: { address: bobIdentity.address } }
+        }).finish()
+      )
+
+      const packet = await channel.yield(0, 'challenge message did not arrive')
+      const challengeMessage = expectPacket<ChallengeResponseMessage>(packet, 'challengeResponse')
+
+      await socketSend(
+        ws,
+        ClientPacket.encode({
+          message: {
+            $case: 'signedChallenge',
+            signedChallenge: {
+              authChainJson: JSON.stringify(await aliceIdentity.sign(challengeMessage.challengeToSign))
+            }
+          }
+        }).finish()
+      )
+
+      await closed
+      ws.close()
+    })
+  })
+
+  describe('when the authenticated address is platform banned', () => {
+    beforeEach(() => {
+      stubComponents.banChecker.isBanned.mockResolvedValue(true)
+    })
+
+    it('should close the socket instead of sending welcome', async () => {
+      const ws = await createWs('/ws')
+      const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
+      const closed = futureWithTimeout(5000, 'The socket was not closed for the banned wallet')
+      ws.on('close', closed.resolve)
+
+      await socketConnected(ws)
+      await socketSend(
+        ws,
+        ClientPacket.encode({
+          message: { $case: 'challengeRequest', challengeRequest: { address: aliceIdentity.address } }
+        }).finish()
+      )
+
+      const packet = await channel.yield(0, 'challenge message did not arrive')
+      const challengeMessage = expectPacket<ChallengeResponseMessage>(packet, 'challengeResponse')
+
+      await socketSend(
+        ws,
+        ClientPacket.encode({
+          message: {
+            $case: 'signedChallenge',
+            signedChallenge: {
+              authChainJson: JSON.stringify(await aliceIdentity.sign(challengeMessage.challengeToSign))
+            }
+          }
+        }).finish()
+      )
+
+      await closed
+      ws.close()
+    })
+  })
 })
 
 function socketConnected(socket: WebSocket): Promise<void> {

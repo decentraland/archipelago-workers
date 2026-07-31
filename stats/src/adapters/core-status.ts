@@ -14,8 +14,9 @@ export function createCoreStatusComponent({ clock }: Pick<BaseComponents, 'clock
     onServiceDiscoveryReceived(message: ServiceDiscoveryMessage) {
       lastMessage = message
     },
-    // If last heartbeat is less than 90 seconds old, we consider the service healthy
-    isHealthy: () => !!lastMessage?.status && clock.now() - lastMessage.status.currentTime < 90000,
+    // Healthy when the last heartbeat is under 90s old. Absolute delta: `currentTime` is
+    // stamped on the publisher's host, so forward clock skew must not read as fresh.
+    isHealthy: () => !!lastMessage?.status && Math.abs(clock.now() - lastMessage.status.currentTime) < 90000,
     getUserCount: () => lastMessage?.status?.userCount ?? 0
   }
 }
