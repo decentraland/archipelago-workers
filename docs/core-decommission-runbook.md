@@ -15,7 +15,7 @@ responsibility.
 | --- | --- | --- |
 | Clustering author | archipelago-core | **Pulse** — union-find over 100 u grid cells, uncapped clusters, `C{n}` IDs |
 | Per-peer assignment feed | `engine.peer.{addr}.island_changed` from core | **Pulse** publishes `peer.{addr}.cluster_change` |
-| LiveKit conn-string minting | archipelago-core | **comms-gatekeeper**, which subscribes to `cluster_change` and re-publishes the same `engine.peer.{addr}.island_changed` |
+| LiveKit conn-string minting | archipelago-core | **comms-gatekeeper**, which subscribes to `cluster_change` and re-publishes `engine.peer.{addr}.island_changed` — shape-compatible, not value-identical: `islandId` is the room name `island-C{n}` (core's `I{n}` *was* the room) and `peers` is always empty; clients read only `connStr` |
 | `engine.islands` / `engine.discovery` | archipelago-core | **Pulse** |
 | WS Connector | forwards `island_changed` to clients | **unchanged** — no code change, no client protocol change |
 | archipelago-stats | every endpoint | **unchanged** — client heartbeats stay in iteration 1, so `/peers`, `/parcels`, `/hot-scenes` are untouched. Only the topology source moved |
@@ -100,8 +100,9 @@ unprefixed names. A deployment carrying `Nats__SubjectPrefix=staging.` publishes
 `staging.engine.islands`, which nothing here reads — no error on either side.
 
 If `healthy` is false while Pulse is publishing, check `current_time`: the health window is
-`Date.now() - current_time < 90s`, and a `uint32`-truncated timestamp reads permanently
-unhealthy. `ServiceStatus.current_time` must be `uint64`
+`Math.abs(clock.now() - current_time) < 90s` — an absolute delta, so a publisher clock skewed
+*forward* reads unhealthy too, not just a stale one — and a `uint32`-truncated timestamp reads
+permanently unhealthy. `ServiceStatus.current_time` must be `uint64`
 ([protocol#453](https://github.com/decentraland/protocol/pull/453)); this repo pins the release
 that contains it and `stats/test/unit/pulse-topology.spec.ts` guards the round trip.
 
@@ -167,7 +168,7 @@ rollback that recreates the config must match, especially the flush frequency, w
 | `CHECK_HEARTBEAT_INTERVAL` | `60000` (ms) | — Pulse cleans up departed peers in ~5 s |
 | `ARCHIPELAGO_STATUS_UPDATE_INTERVAL` | `10000` (ms) | `Nats:DiscoveryIntervalMs` (`10000`) |
 | `ROOM_PREFIX` | unset, defaulting to `I` | `Clusters:IdPrefix` (`C`) |
-| `LIVEKIT_ISLAND_SIZE` | unset, defaulting to `100` | — no equivalent; clusters are uncapped and gatekeeper shards rooms |
+| `LIVEKIT_ISLAND_SIZE` | unset, defaulting to `100` | — no equivalent; clusters are uncapped and each maps to a single LiveKit room |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST` | required — core exited at startup without them | Held by comms-gatekeeper, which mints the tokens now |
 
 > **Do not remove `COMMS_GATEKEEPER_URL`.** Core read it too, but **WS Connector still does** —
@@ -198,8 +199,10 @@ adjacency at 100 u with no cap — so expect fewer, larger clusters.
 
 At capacity on a full-size realm the partition effectively collapses: Pulse's own benchmark
 measures **2 clusters with the larger holding 4091 of 4095 peers**
-(`Pulse/docs/clustering-on-aoi.md` §3.2). That follows from the 100 u cell size, and it is why
-gatekeeper's LiveKit room sharding is load-bearing. Sparse and mid-density realms are
-unaffected.
+(`Pulse/docs/clustering-on-aoi.md` §3.2). That follows from the 100 u cell size — and nothing
+downstream splits it back up: gatekeeper shipped without room sharding, so one cluster maps to
+one LiveKit room and at this density a percolated cluster becomes one oversized room. The risk
+is tracked as an open question in `Pulse/docs/clustering-on-aoi.md`. Sparse and mid-density
+realms are unaffected.
 
 `GET /islands` is the place to look if cluster sizes seem wrong after cutover.
