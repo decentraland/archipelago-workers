@@ -34,6 +34,10 @@ export async function createDenyListComponent(
     try {
       const response = await fetch.fetch(url)
       if (!response.ok) {
+        // Release the body before discarding it: an unconsumed undici body pins its socket and
+        // buffers the received bytes until GC. Bounded by the TTL here, unlike the ban check,
+        // but the same leak.
+        await response.body?.cancel().catch(() => {})
         throw new Error(`Failed to fetch deny list, status: ${response.status}`)
       }
       const data = (await response.json()) as { users?: { wallet: string }[] }

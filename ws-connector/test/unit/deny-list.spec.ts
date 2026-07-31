@@ -1,7 +1,7 @@
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
 import { createDenyListComponent, IDenyListComponent } from '../../src/adapters/deny-list'
-import { createFetchMockedComponent } from '../mocks/fetch-mock'
+import { buildResponse, createFetchMockedComponent } from '../mocks/fetch-mock'
 
 const DENIED = '0xdenied0000000000000000000000000000000001'
 const ALLOWED = '0xallowed000000000000000000000000000000001'
@@ -106,13 +106,22 @@ describe('deny list adapter', () => {
   })
 
   describe('when the fetch returns a non-OK status', () => {
+    let response: ReturnType<typeof buildResponse>
+
     beforeEach(async () => {
-      fetch.fetch.mockResolvedValue({ ok: false, status: 503, json: async () => ({}) } as unknown as Response)
+      response = buildResponse({ ok: false, status: 503 })
+      fetch.fetch.mockResolvedValue(response)
       denyList = await build()
     })
 
     it('should fail open', async () => {
       await expect(denyList.isDenylisted(DENIED)).resolves.toBe(false)
+    })
+
+    it('should release the body it is discarding', async () => {
+      await denyList.isDenylisted(DENIED)
+
+      expect(response.body.cancel).toHaveBeenCalled()
     })
   })
 

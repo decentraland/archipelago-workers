@@ -46,8 +46,29 @@ export async function createBanSweep(
   const intervalMs = (await config.getNumber('BAN_SWEEP_INTERVAL_MS')) ?? DEFAULT_BAN_SWEEP_INTERVAL_MS
 
   let handle: NodeJS.Timeout | undefined
+  let sweeping = false
 
   async function sweep(): Promise<void> {
+    // setInterval does not await an async callback, so a sweep slower than the interval would
+    // otherwise have the next one start on top of it. Each sweep carries its own concurrency
+    // budget, so overlapping them multiplies load on comms-gatekeeper — and the thing that
+    // makes a sweep slow is a struggling gatekeeper, so the pile-up feeds itself. Worth
+    // logging: it means the interval is too short for the peer count, or the ban check is
+    // degraded.
+    if (sweeping) {
+      logger.warn(`Skipping ban sweep, the previous one is still running`)
+      return
+    }
+
+    sweeping = true
+    try {
+      await runSweep()
+    } finally {
+      sweeping = false
+    }
+  }
+
+  async function runSweep(): Promise<void> {
     const peers = peersRegistry.snapshot()
     if (peers.length === 0) return
     await mapWithConcurrency(peers, BAN_SWEEP_CONCURRENCY, async ({ id }) => {

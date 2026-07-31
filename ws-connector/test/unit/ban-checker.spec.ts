@@ -1,6 +1,6 @@
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createBanChecker, IBanCheckerComponent } from '../../src/adapters/ban-checker'
-import { createFetchMockedComponent } from '../mocks/fetch-mock'
+import { buildResponse, createFetchMockedComponent } from '../mocks/fetch-mock'
 import { createLoggerMockedComponent } from '../mocks/logger-mock'
 
 const ADDRESS = '0xbanned0000000000000000000000000000000001'
@@ -110,13 +110,25 @@ describe('ban checker adapter', () => {
   })
 
   describe('when the gatekeeper returns a non-OK status', () => {
+    let response: ReturnType<typeof buildResponse>
+
     beforeEach(async () => {
-      respondWith({}, false, 503)
+      response = buildResponse({ ok: false, status: 503 })
+      fetch.fetch.mockResolvedValue(response)
       banChecker = await build()
     })
 
     it('should fail open, since an outage must not lock everyone out', async () => {
       await expect(banChecker.isBanned(ADDRESS)).resolves.toBe(false)
+    })
+
+    it('should release the body it is discarding', async () => {
+      // An unconsumed undici body pins its socket until GC. This runs on every handshake, so a
+      // 5xx-ing gatekeeper would otherwise leak a connection per connecting player — during the
+      // outage this path exists to survive.
+      await banChecker.isBanned(ADDRESS)
+
+      expect(response.body.cancel).toHaveBeenCalled()
     })
 
     it('should log the status it got back', async () => {

@@ -37,6 +37,11 @@ export async function createBanChecker(
       })
 
       if (!response.ok) {
+        // Release the body we are about to discard. An unconsumed undici body pins its socket
+        // and buffers the received bytes until GC — and this runs on every handshake, so a
+        // gatekeeper returning 5xx (exactly the outage this fails open for) would otherwise
+        // leak a connection per connecting player.
+        await response.body?.cancel().catch(() => {})
         logger.warn(`Ban check returned non-OK status, allowing connection`, {
           address,
           status: response.status

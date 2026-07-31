@@ -109,6 +109,38 @@ describe('ban sweep', () => {
     })
   })
 
+  describe('when a sweep is still running as the next interval fires', () => {
+    it('should skip the overlapping tick rather than stack another concurrency budget', async () => {
+      // setInterval does not await the async callback. Each sweep carries its own budget of
+      // BAN_SWEEP_CONCURRENCY in-flight ban checks, so overlapping sweeps multiply load on
+      // comms-gatekeeper — and a slow gatekeeper is exactly what makes a sweep outrun its
+      // interval, so the pile-up compounds the problem that caused it.
+      const { sweep } = await buildSweep(['0xa'], new Set())
+      let release: () => void = () => {}
+      ;(banChecker.isBanned as jest.Mock).mockImplementation(
+        () => new Promise<boolean>((resolve) => (release = () => resolve(false)))
+      )
+      await sweep[START_COMPONENT]!({} as never)
+
+      // advanceTimersByTimeAsync drains microtasks between timers, which the sync variant does
+      // not — the guard is cleared in a `finally`, several microtask hops behind the resolve.
+      // First tick starts a sweep that never completes...
+      await jest.advanceTimersByTimeAsync(100)
+      expect(banChecker.isBanned).toHaveBeenCalledTimes(1)
+
+      // ...and two further ticks must not start their own.
+      await jest.advanceTimersByTimeAsync(200)
+      expect(banChecker.isBanned).toHaveBeenCalledTimes(1)
+
+      // Once it finishes, the next tick sweeps again.
+      release()
+      await jest.advanceTimersByTimeAsync(100)
+      expect(banChecker.isBanned).toHaveBeenCalledTimes(2)
+
+      await sweep[STOP_COMPONENT]!()
+    })
+  })
+
   describe('when a banned peer disconnects between the snapshot and the ban check', () => {
     it('should skip it instead of acting on a socket that is already gone', async () => {
       const { sweep } = await buildSweep(['0xbanned'], new Set(['0xbanned']))
