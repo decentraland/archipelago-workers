@@ -94,11 +94,6 @@ stats' own heartbeat-derived peer map, silently skipping wallets it does not kno
 reporting `peers: []` means the join is failing even though the topology arrived — and an
 island-count-only check would pass.
 
-If `/islands` is empty while Pulse's `published_total` climbs, suspect a **subject prefix
-mismatch**: Pulse applies `Nats:SubjectPrefix` to every subject and stats subscribes to the
-unprefixed names. A deployment carrying `Nats__SubjectPrefix=staging.` publishes to
-`staging.engine.islands`, which nothing here reads — no error on either side.
-
 If `healthy` is false while Pulse is publishing, check `current_time`: the health window is
 `Math.abs(clock.now() - current_time) < 90s` — an absolute delta, so a publisher clock skewed
 *forward* reads unhealthy too, not just a stale one — and a `uint32`-truncated timestamp reads
