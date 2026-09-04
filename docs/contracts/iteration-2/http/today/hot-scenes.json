@@ -1,0 +1,24 @@
+{
+  "request": "GET /hot-scenes",
+  "status": 200,
+  "note": "bare array, sorted by usersTotalCount desc, max 100 entries; first entry verbatim (public Catalyst scene metadata)",
+  "body": [
+    {
+      "id": "bafkreig4zx2kowhjlinc4s4fnvj3s3ak7dbzxe3zxfk5lcjjrf46wycmau",
+      "name": "Genesis Plaza",
+      "baseCoords": [-3, -2],
+      "usersTotalCount": 9,
+      "parcels": [
+        [-1, -4], [0, -4], [1, -4], [-1, -3], [0, -3], [1, -3], [-3, -2], [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2], [3, -2],
+        [-3, -1], [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1], [3, -1], [-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0],
+        [-3, 1], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [3, 1], [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2], [-2, 3], [-1, 3], [0, 3],
+        [1, 3], [2, 3], [-2, 4], [-1, 4], [0, 4], [1, 4], [2, 4], [-2, 5], [2, 5], [-2, 6], [2, 6], [-2, 7], [2, 7], [-2, 8], [-1, 8],
+        [0, 8], [1, 8], [2, 8], [0, 9], [-1, 5], [0, 5], [1, 5], [-1, 6], [0, 6], [1, 6], [-1, 7], [0, 7], [1, 7]
+      ],
+      "thumbnail": "https://peer.decentraland.org/content//contents/bafybeihjx4ugiye3ruqfcv54tu5p5keuy3x2l2u2o5otfczlb6dfp734bq",
+      "creator": "Decentraland Foundation",
+      "projectId": "c0137195-4c6b-4d23-af5b-457d253cdb0f",
+      "description": "Decentraland's official spawn point and your #1 place to meet new people, hang out, and stay up to date with what's happening in our virtual world."
+    }
+  ]
+}

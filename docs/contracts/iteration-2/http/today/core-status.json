@@ -1,0 +1,9 @@
+{
+  "request": "GET /core-status",
+  "status": 200,
+  "note": "retires in iteration 2; realm-provider reads Pulse /about (userCount) + /health (200 == healthy) instead",
+  "body": {
+    "healthy": true,
+    "userCount": 27
+  }
+}
