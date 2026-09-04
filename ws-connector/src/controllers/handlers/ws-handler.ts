@@ -23,6 +23,10 @@ export async function registerWsHandler(
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
 
+  // `??` rather than `||`: 0 is uWS's "never time out", and coercing it back to 90 would silently
+  // ignore an operator who asked for exactly that.
+  const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
+
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
     data.timeout = setTimeout(() => {
@@ -55,7 +59,7 @@ export async function registerWsHandler(
   }
 
   server.app.ws<WsUserData>('/ws', {
-    idleTimeout: 90,
+    idleTimeout,
     upgrade: (res, req, context) => {
       logger.debug('upgrade requested')
       const { labels, end } = onRequestStart(metrics, req.getMethod(), '/ws')
