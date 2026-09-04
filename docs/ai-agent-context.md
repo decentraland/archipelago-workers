@@ -24,6 +24,13 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 
 **Endpoint:** `/ws` (WebSocket)
 
+**Connection liveness:** the socket is held open by the server, not by the client. uWebSockets pings
+an idle connection (`sendPingsAutomatically`) and the pong resets the idle timer, so a client that
+sends nothing — as iteration 2's heartbeat-free clients will — is never dropped and keeps receiving
+`island_changed`. `WS_IDLE_TIMEOUT_SECONDS` (default `90`) sets how long that silence may run
+before uWS gives up; uWS accepts only `0` or values ≥ 8, rounded to multiples of 4.
+`ws-connector/test/integration/ws-idle.spec.ts` pins the behaviour.
+
 **Auth flow:**
 ```
 Client connects
