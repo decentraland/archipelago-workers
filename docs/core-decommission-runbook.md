@@ -162,7 +162,7 @@ rollback that recreates the config must match, especially the flush frequency, w
 | `ARCHIPELAGO_FLUSH_FREQUENCY` | `2.0` — **seconds**, multiplied by 1000 in code | `Clusters:PassIntervalMs` (`1000`), plus `Clusters:DwellPasses` (`3`) before a reassignment publishes |
 | `CHECK_HEARTBEAT_INTERVAL` | `60000` (ms) | — Pulse cleans up departed peers in ~5 s |
 | `ARCHIPELAGO_STATUS_UPDATE_INTERVAL` | `10000` (ms) | `Nats:DiscoveryIntervalMs` (`10000`) |
-| `ROOM_PREFIX` | unset, defaulting to `I` | `Clusters:IdPrefix` (`C`) |
+| `ROOM_PREFIX` | `island-ea-` in prod (probed 2026-09-04: island ids `island-ea-8ep`, …; the code default was `I`) | `Clusters:IdPrefix` (`C`); gatekeeper's room name `island-C{n}` keeps the `island-` family |
 | `LIVEKIT_ISLAND_SIZE` | unset, defaulting to `100` | — no equivalent by design; clusters are uncapped and each maps to a single LiveKit room; any future size bound belongs in Pulse, not in a consumer |
 | `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_HOST` | required — core exited at startup without them | Held by comms-gatekeeper, which mints the tokens now |
 
