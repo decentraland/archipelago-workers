@@ -60,6 +60,12 @@ export async function registerWsHandler(
 
   server.app.ws<WsUserData>('/ws', {
     idleTimeout,
+    // Iteration 2 takes away the client heartbeats, which were the only client→server traffic on
+    // this socket. uWS pings an otherwise idle client and the pong resets its idle timer, so a
+    // connected-but-silent client stays connected and keeps receiving its island assignments.
+    // This is uWS's own default; stated explicitly because the socket's survival now depends on
+    // it and nothing else.
+    sendPingsAutomatically: true,
     upgrade: (res, req, context) => {
       logger.debug('upgrade requested')
       const { labels, end } = onRequestStart(metrics, req.getMethod(), '/ws')
