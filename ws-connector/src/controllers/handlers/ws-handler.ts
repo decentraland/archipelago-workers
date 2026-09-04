@@ -27,6 +27,17 @@ export async function registerWsHandler(
   // ignore an operator who asked for exactly that.
   const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
 
+  // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
+  // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the
+  // key at fault nor the service, and ws-connector then crash-loops on deploy. Screen it here so
+  // the operator is told what to change.
+  if (idleTimeout !== 0 && idleTimeout < 8) {
+    throw new Error(
+      `WS_IDLE_TIMEOUT_SECONDS must be 0 (never time out, local debugging only) or at least 8: ` +
+        `uWebSockets accepts nothing in between. Got ${idleTimeout}.`
+    )
+  }
+
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
     data.timeout = setTimeout(() => {
