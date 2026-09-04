@@ -93,7 +93,7 @@ test('idle websocket test', ({ components, beforeStart }) => {
   }
 
   describe('when an authenticated client sends nothing for longer than the idle timeout', () => {
-    let ws: WebSocket
+    let ws: WebSocket | undefined
     let readyStateAfterSilence: number
     let closeCode: number | undefined
     // A dead socket breaks both guarantees at once, so the delivery failure is captured rather
@@ -102,6 +102,13 @@ test('idle websocket test', ({ components, beforeStart }) => {
     let deliveryError: unknown
 
     beforeAll(async () => {
+      // 18 s of silence only proves something if the route really got an 8 s timeout. Read the
+      // value back through the same `config` component `registerWsHandler` reads, so that an edit
+      // to `test/components.ts` which shadows the env override — exactly what already happens to
+      // `HANDSHAKE_TIMEOUT` there — fails here loudly, instead of quietly turning this spec into
+      // 18 s of silence against the 90 s default, which any socket survives.
+      expect(await components.config.requireNumber('WS_IDLE_TIMEOUT_SECONDS')).toBe(IDLE_TIMEOUT_SECONDS)
+
       const socket = await connectSocket()
       ws = socket.ws
       ws.on('close', (code) => {
@@ -129,7 +136,10 @@ test('idle websocket test', ({ components, beforeStart }) => {
     }, TEST_TIMEOUT_MS)
 
     afterAll(() => {
-      ws.close()
+      // Optional-chained: `ws` is only assigned once `connectSocket()` resolves, so a `beforeAll`
+      // that fails earlier (port taken, handshake timeout missed) must not bury the real error
+      // under a TypeError from the cleanup.
+      ws?.close()
     })
 
     it('should still be connected, because the server pings it instead of waiting to be spoken to', () => {
