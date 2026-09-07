@@ -1,0 +1,5 @@
+# test/fixtures/iteration-2/ holds byte-for-byte copies of the contract pack's goldens, and
+# test/fixture-integrity.test.js checks their sha256 against docs/contracts/iteration-2/manifest.json.
+# Without this, a checkout with core.autocrlf=true rewrites them to CRLF and every hash misses.
+# Same rule the pack itself carries in docs/contracts/iteration-2/.gitattributes.
+* text=auto eol=lf
