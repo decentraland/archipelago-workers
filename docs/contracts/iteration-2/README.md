@@ -114,3 +114,9 @@ node tools/gen-parcel-changes.js --check && node tools/gen-http-goldens.js --che
 ```
 
 `protobufjs` is resolved from the repository's `node_modules` (a transitive dependency of `@dcl/protocol`).
+
+## scene-participants fixtures — what is contractual
+
+In `scene-participants/*.json` the `catalyst.returns` / `worlds.returns` objects are illustrative mocks; only the
+scene `parcels` (and the pointer → scene resolution) are contractual. The real `fetchWorldSceneByPointer` type in
+comms-gatekeeper is `{ entityId, parcels }`. The `body` and `status` are exact.
