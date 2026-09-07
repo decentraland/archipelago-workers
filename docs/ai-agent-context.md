@@ -116,8 +116,16 @@ Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is ite
 
 ## NATS Message Reference
 
-Only the two `peer.<addr>.*` subjects at the bottom are published by this repo; the rest are the
-feeds it (or the service it shares a broker with) consumes. Payload types come from `@dcl/protocol`.
+This repo **publishes** exactly two subjects — `peer.<addr>.heartbeat` and
+`peer.<addr>.disconnect`, both from ws-connector and both gated by
+`HEARTBEAT_FORWARDING_ENABLED` — and **subscribes** to exactly five:
+`engine.peer.<addr>.island_changed` (ws-connector, `src/service.ts`) plus `engine.islands`,
+`engine.discovery` and those same two `peer.<addr>.*` subjects (archipelago-stats, which shares the
+broker — `stats/src/logic/subscriptions.ts`). The other two rows are here for the broker map only:
+nothing in `ws-connector/src` or `stats/src` reads `engine.parcel_changes` (its wire bytes are
+pinned here, in `ws-connector/test/contract/parcel-changes.spec.ts`, for the consumers that live in
+other repos) or `peer.<addr>.cluster_change` (not pinned here at all). Payload types come from
+`@dcl/protocol`.
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
