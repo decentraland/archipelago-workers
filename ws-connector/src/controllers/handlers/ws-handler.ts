@@ -27,6 +27,22 @@ export async function registerWsHandler(
   // ignore an operator who asked for exactly that.
   const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
 
+  // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
+  // their only consumer (archipelago-stats). This switches the republishing off ahead of deleting
+  // the code, so the rollout can flip it once heartbeat-free clients dominate and flip it back
+  // without a deploy. Defaults to true — today's behaviour, so a deploy that sets nothing is a
+  // no-op. Nothing else on the socket depends on it.
+  //
+  // Parsed strictly rather than as `!== 'false'`: this is a rollout switch an operator flips by
+  // hand, and a value like `0` or `off` would otherwise read as "still forwarding" with nothing
+  // said about it, leaving them to debug a flip that never happened.
+  // A blank value counts as unset: an env file may carry the key with nothing after the `=`.
+  const heartbeatForwardingRaw = ((await config.getString('HEARTBEAT_FORWARDING_ENABLED')) ?? '').trim().toLowerCase()
+  if (heartbeatForwardingRaw !== '' && heartbeatForwardingRaw !== 'true' && heartbeatForwardingRaw !== 'false') {
+    throw new Error(`HEARTBEAT_FORWARDING_ENABLED must be 'true' or 'false'. Got ${heartbeatForwardingRaw}.`)
+  }
+  const heartbeatForwardingEnabled = heartbeatForwardingRaw !== 'false'
+
   // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
   // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the
   // key at fault nor the service, and ws-connector then crash-loops on deploy. Screen it here so
@@ -258,7 +274,9 @@ export async function registerWsHandler(
             break
           }
           case Stage.HANDSHAKE_COMPLETED: {
-            if (packet.message && packet.message.$case === 'heartbeat') {
+            // Still decoded and accepted with forwarding off: clients on old builds keep sending
+            // heartbeats, and tearing their session down over one would be worse than ignoring it.
+            if (heartbeatForwardingEnabled && packet.message && packet.message.$case === 'heartbeat') {
               nats.publish(`peer.${userData.address}.heartbeat`, Heartbeat.encode(packet.message.heartbeat).finish())
             }
             break
@@ -282,8 +300,12 @@ export async function registerWsHandler(
         data.timeout = undefined
       }
       if (data.address) {
+        // The registry eviction is unconditional: `island_changed` forwarding keys off it, so it
+        // has nothing to do with whether the retired subjects are still published.
         peersRegistry.onPeerDisconnected(data.address, ws)
-        nats.publish(`peer.${data.address}.disconnect`)
+        if (heartbeatForwardingEnabled) {
+          nats.publish(`peer.${data.address}.disconnect`)
+        }
       }
     }
   })

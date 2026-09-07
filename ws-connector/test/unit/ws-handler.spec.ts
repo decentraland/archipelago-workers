@@ -483,4 +483,100 @@ describe('ws-handler', () => {
       expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.disconnect`)
     })
   })
+
+  // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
+  // their only consumer (archipelago-stats). `HEARTBEAT_FORWARDING_ENABLED` switches the intake
+  // off ahead of deleting the code, so it must default to today's behaviour — a deploy that sets
+  // nothing still publishes both subjects.
+  describe('when HEARTBEAT_FORWARDING_ENABLED is left unset', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+      handlers.close(ws, 1000, new ArrayBuffer(0))
+    })
+
+    it('should publish the heartbeat and the disconnect, exactly as before the flag existed', () => {
+      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+      expect(nats.publish).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED is explicitly true', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'true' })
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+      handlers.close(ws, 1000, new ArrayBuffer(0))
+    })
+
+    it('should publish the heartbeat and the disconnect', () => {
+      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+      expect(nats.publish).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds something that is neither', () => {
+    it.each([['0'], ['off'], ['no']])(
+      'should fail at startup on %p rather than quietly keep forwarding',
+      async (value) => {
+        await expect(build({ HEARTBEAT_FORWARDING_ENABLED: value })).rejects.toThrow(/HEARTBEAT_FORWARDING_ENABLED/)
+      }
+    )
+
+    it('should treat a blank value as unset, since an env file may carry the bare key', async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: '  ' })
+      const ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+
+      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.heartbeat`, expect.any(Uint8Array))
+    })
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED is false', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'false' })
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, ws)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+    })
+
+    it('should publish nothing for the heartbeat', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    // Clients on old builds keep sending heartbeats after the flip; the packet stays a valid
+    // message on a live session, so the socket must survive it rather than be torn down.
+    it('should still accept the packet and keep the session open', () => {
+      expect(ws.end).not.toHaveBeenCalled()
+      expect(ws.getUserData().isClosed).toBeFalsy()
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+    })
+
+    describe('and the socket then closes', () => {
+      beforeEach(() => {
+        handlers.close(ws, 1000, new ArrayBuffer(0))
+      })
+
+      it('should publish nothing for the disconnect either', () => {
+        expect(nats.publish).not.toHaveBeenCalled()
+      })
+
+      it('should still evict the peer from the registry, which is what forwarding relies on', () => {
+        expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
+        expect(peersRegistry.getPeerCount()).toBe(0)
+      })
+    })
+  })
 })
