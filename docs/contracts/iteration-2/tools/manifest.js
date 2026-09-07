@@ -13,7 +13,7 @@ const crypto = require('crypto')
 
 const ROOT = path.join(__dirname, '..')
 const CHECK = process.argv.includes('--check')
-const SKIP = new Set(['manifest.json', 'README.md', 'tools'])
+const SKIP = new Set(['manifest.json', 'README.md', 'ROLLOUT-INFRA.md', '.gitattributes', 'tools'])
 
 function walk(dir, rel = '') {
   const out = []
