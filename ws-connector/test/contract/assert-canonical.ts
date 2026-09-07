@@ -10,6 +10,11 @@ import { ParcelChangesBatch } from '@dcl/protocol/out-js/decentraland/pulse/puls
  * dropping presence over one mis-cased realm is worse than carrying it. Hence `assert` rather than
  * a normalizing filter — silently lowercasing here would hide the producer bug from everyone.
  *
+ * The message names the field and where in the batch it sits, and never the value: `address` is a
+ * wallet, and a copy of this helper running in a consumer would otherwise put one in an error log
+ * and a crash reporter the first time a producer regressed. Server name, `seq` and the change index
+ * are enough to pull the batch off the subject and look.
+ *
  * @param batch - a decoded batch, as it came off the wire.
  * @throws if any `realm` or `address` is not already its own lowercase form.
  */
@@ -19,8 +24,8 @@ export function assertCanonicalBatch(batch: ParcelChangesBatch): void {
       const value = change[field]
       if (value !== value.toLowerCase()) {
         throw new Error(
-          `Non-canonical ${field} on ${batch.serverName} seq ${batch.seq} change ${index}: ${value}. ` +
-            `C1 §5 requires realms and addresses lowercased at the producer.`
+          `Non-canonical ${field} on ${batch.serverName} seq ${batch.seq} change ${index} ` +
+            `(value withheld: it may be a wallet). C1 §5 requires realms and addresses lowercased at the producer.`
         )
       }
     }
