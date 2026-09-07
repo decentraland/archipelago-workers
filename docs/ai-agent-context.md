@@ -124,7 +124,7 @@ broker-map rows below are published elsewhere; the broker-map ones are not consu
 either, but their wire bytes are pinned in `ws-connector/test/contract/` and documented here for
 context. None of these carry a queue group, so each subscribing replica receives its own copy —
 except comms-gatekeeper's `connect` subscription, which is grouped so exactly one of its replicas
-answers.
+answers. Payload types come from `@dcl/protocol`.
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
