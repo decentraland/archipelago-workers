@@ -58,6 +58,15 @@ Derived values, exactly as Pulse computes them:
 - island `radius` = farthest member distance from the centre **on the XZ plane** (`ClusterTracker.BuildCluster`)
 - cluster ids `C{n}` come from one global counter, so they are unique across realms; `maxPeers` is 0
 
+## replay.json semantics
+
+`steps[*].map` is the expected presence map for a seq-aware consumer after applying that batch.
+`steps[*].statusEvents` is the **per-change derivation** (every change maps to ONLINE or OFFLINE, one event per entry)
+before the consumer's own dedupe: a consumer that publishes only on status change (social-service's
+`notifyPeerStatusChange`) emits a subset — e.g. `02-delta-move` derives `ONLINE(W2)` but publishes nothing, because W2
+was already ONLINE. Assert the two halves separately: the pure mapping equals `statusEvents` verbatim; the published
+stream equals `statusEvents` folded through a running status map (only transitions survive).
+
 ## Numeric tolerance
 
 Pulse computes positions, centroids and radii in `float32`; goldens are written with up to six
