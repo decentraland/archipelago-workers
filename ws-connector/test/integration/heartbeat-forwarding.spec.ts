@@ -20,9 +20,14 @@ import { NatsMsg } from '@well-known-components/nats-component/dist/types'
  * sending heartbeats, and the socket exists to deliver `island_changed`.
  *
  * So this drives the real `/ws` route against a real uWebSockets server and a real NATS broker,
- * with the flag off: a real client authenticates, sends a heartbeat, and must still get its island
- * assignment. The unit spec (`test/unit/ws-handler.spec.ts`) pins which subjects are published in
- * either flag state; this one pins that nothing else on the socket noticed.
+ * with the flag off: a real client authenticates, sends a heartbeat, closes, and must still get its
+ * island assignment while neither retired subject is delivered. Both publish sites are inside the
+ * window that gets asserted — the heartbeat one and the close one — which is why the socket is
+ * closed in `beforeAll` rather than `afterAll`.
+ *
+ * The flag-on side of the pair lives in the unit spec (`test/unit/ws-handler.spec.ts`), which pins
+ * the two publishes by subject, order and count for every value that reads as on; running a second
+ * program here to re-check it would need its own server and port for no extra coverage.
  */
 const { HTTP_SERVER_HOST, HTTP_SERVER_PORT } = defaultServerConfig()
 
@@ -131,17 +136,23 @@ test('heartbeat forwarding disabled', ({ components, beforeStart }) => {
       } catch (error) {
         deliveryError = error
       }
-    })
 
-    afterAll(async () => {
-      // Optional-chained: `ws` is only assigned once `connectSocket()` resolves, so a `beforeAll`
-      // that fails earlier must not bury the real error under a TypeError from the cleanup.
-      ws?.close()
-      // The close handler is the other publish site; let it run before the subjects are asserted.
+      // The close handler is the other publish site, so the session has to be *over* before the
+      // subjects are asserted. Closing in `afterAll` does not do it: jest runs `afterAll` after
+      // every `it`, so the assertion would only ever see the window before the socket closed and
+      // an unconditional `peer.<addr>.disconnect` would sail through this spec.
+      ws.close()
       await settle()
     })
 
-    it('should not republish the heartbeat on NATS', () => {
+    afterAll(() => {
+      // Cleanup for the path where `beforeAll` threw before the close above: `ws` is only assigned
+      // once `connectSocket()` resolves, so the optional chain keeps a TypeError here from burying
+      // the real error. Closing an already-closed socket is a no-op.
+      ws?.close()
+    })
+
+    it('should republish neither the heartbeat nor the disconnect on NATS', () => {
       expect(peerSubjects).toEqual([])
     })
 
