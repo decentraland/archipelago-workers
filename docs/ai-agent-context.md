@@ -40,10 +40,23 @@ of 4, and ws-connector refuses to start on anything in between.
 **Heartbeat retirement:** `HEARTBEAT_FORWARDING_ENABLED` (default `true`) controls whether the client
 heartbeat is still republished as `peer.<addr>.heartbeat` and the session close as
 `peer.<addr>.disconnect`. Iteration 2 retires both — archipelago-stats was their only consumer, and
-Pulse reads positions from its own transport — so the switch exists to flip the intake off ahead of
-deleting the code, and back without a deploy. With it off the heartbeat packet is still decoded and
-accepted (clients on old builds keep sending it) and nothing else on the socket changes: the registry
-eviction on close, `island_changed` forwarding, the idle pings. Only `true` and `false` are accepted.
+Pulse reads positions from its own transport — so the switch exists to turn the intake off ahead of
+deleting the code. With it off the heartbeat packet is still decoded and accepted (clients on old
+builds keep sending it) and nothing else on the socket changes: the registry eviction on close,
+`island_changed` forwarding, the idle pings. The value is read leniently and never fails a deploy:
+`false`/`0`/`no`/`off` turn forwarding off, `true`/`1`/`yes`/`on`/blank/unset leave it on, and
+anything else leaves it on with a warning naming the key and the value — a typo in the switch must
+not take `/ws` down with it.
+
+**Flip it to `false` only when nothing reads archipelago-stats any more** — after the CloudFlare cut
+(rollout step 5) has moved every stats path to Pulse and comms-gatekeeper — *and* heartbeat-free
+clients are ≥ 95 % of sessions (step 7); together that is rollout step 8, and the code goes at step
+9. The first condition is the one that bites: stats has no time-based peer expiry (see its section
+below), so with the intake off its peer map freezes rather than empties — no arrivals, no
+departures, and every session that ends inside the off-window stays "online" in `/peers`, `/parcels`
+and `/hot-scenes`, which feeds places. This is not a free canary: flipping back resumes publishing
+but does not clear those entries, because the sessions that left will never announce it. Clearing
+them means restarting archipelago-stats, or waiting for its retirement.
 
 **Wire-contract tests:** `ws-connector/test/contract/` pins what Pulse publishes, in bytes —
 `pulse-wire.spec.ts` for `engine.discovery` / `engine.islands` (moved from `stats`, which iteration 2
@@ -105,20 +118,25 @@ Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is ite
 
 ## NATS Message Reference
 
-Every `peer.*` subject is published by this repo; the `engine.*` ones are published elsewhere
-and consumed here. None of these carry a queue group, so each subscribing replica receives its
-own copy — except comms-gatekeeper's `connect` subscription, which is grouped so exactly one of
-its replicas answers.
+This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by
+`HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. The `engine.*` rows and the
+broker-map rows below are published elsewhere; the broker-map ones are not consumed by this repo
+either, but their wire bytes are pinned in `ws-connector/test/contract/` and documented here for
+context. None of these carry a queue group, so each subscribing replica receives its own copy —
+except comms-gatekeeper's `connect` subscription, which is grouped so exactly one of its replicas
+answers.
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
-| `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position) |
-| `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat) |
-| `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8 |
+| `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
+| `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
+| `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8. Never gated |
 | `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
 | `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`; an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.islands` | Pulse | Stats | cluster topology |
 | `engine.discovery` | Pulse | Stats | service discovery heartbeat |
+| `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea | `decentraland.pulse.ParcelChangesBatch` — per-parcel presence deltas (snapshot or delta, `seq`-ordered), iteration 2's only source of online-player information. Nothing in this repo consumes it; its wire bytes are pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
+| `peer.{addr}.cluster_change` | Pulse | comms-gatekeeper (queue group) | `decentraland.pulse.PeerClusterChange { cluster_id, realm, session, displaced_session, displaced_cluster_id }` — one peer's published cluster assignment changed; gatekeeper mints the LiveKit token from it. Nothing in this repo consumes it; pinned alongside the other broker-map fixtures in `ws-connector/test/contract/` |
 
 ## Technology Stack
 
