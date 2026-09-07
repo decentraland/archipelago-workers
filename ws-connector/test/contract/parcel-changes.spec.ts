@@ -111,17 +111,49 @@ describe('engine.parcel_changes wire contract', () => {
       expect(() => assertCanonicalBatch(ParcelChangesBatch.decode(readBin(name)))).not.toThrow()
     })
 
-    it('should reject 07-invalid-mixed-case-realm, naming the offending value', () => {
+    it('should reject 07-invalid-mixed-case-realm, naming the field and the change', () => {
       const batch = ParcelChangesBatch.decode(readBin('07-invalid-mixed-case-realm'))
 
-      expect(() => assertCanonicalBatch(batch)).toThrow(/realm.*Main/)
+      expect(() => assertCanonicalBatch(batch)).toThrow(/realm.*change 0/)
     })
 
     it('should reject a non-lowercase address just as it rejects a realm', () => {
       const batch = ParcelChangesBatch.decode(readBin('06-mixed-case'))
-      batch.changes[0].address = '0x00000000000000000000000000000000000000AB'
+      batch.changes[0].address = MIXED_CASE_ADDRESS
 
-      expect(() => assertCanonicalBatch(batch)).toThrow(/address.*0x00000000000000000000000000000000000000AB/)
+      expect(() => assertCanonicalBatch(batch)).toThrow(/address.*change 0/)
+    })
+
+    /**
+     * The helper exists to be copied into every consumer, so its message has to be safe to hand a
+     * log line or a crash reporter: an `address` is a wallet, and the first producer regression
+     * would otherwise spray one across both. The batch is located by server, seq and change index
+     * instead — enough to fetch the offending bytes, nothing to leak.
+     */
+    it('should not echo the offending value, whichever field it was', () => {
+      const withBadAddress = ParcelChangesBatch.decode(readBin('06-mixed-case'))
+      withBadAddress.changes[0].address = MIXED_CASE_ADDRESS
+      const withBadRealm = ParcelChangesBatch.decode(readBin('07-invalid-mixed-case-realm'))
+
+      const addressError = errorFrom(() => assertCanonicalBatch(withBadAddress))
+      expect(addressError.message).not.toContain(MIXED_CASE_ADDRESS)
+      expect(addressError.message).not.toContain(MIXED_CASE_ADDRESS.toLowerCase())
+
+      const realmError = errorFrom(() => assertCanonicalBatch(withBadRealm))
+      expect(realmError.message).not.toContain(withBadRealm.changes[0].realm)
     })
   })
 })
+
+/** The wallet from `06-mixed-case`, re-cased: a value the guard must reject and must not repeat. */
+const MIXED_CASE_ADDRESS = '0x00000000000000000000000000000000000000AB'
+
+function errorFrom(run: () => void): Error {
+  try {
+    run()
+  } catch (error) {
+    return error as Error
+  }
+
+  throw new Error('expected assertCanonicalBatch to throw, and it did not')
+}
