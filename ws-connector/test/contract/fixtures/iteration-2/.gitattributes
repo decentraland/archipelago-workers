@@ -1,5 +1,4 @@
-# Fixture bytes must survive every checkout unchanged: these are compared with the pack's
-# manifest.json by sha256, and git's autocrlf would rewrite eight of the ten .bin files (they
-# carry 0x0a and no NUL, so git reads them as text).
-*.bin binary
+# Fixture bytes must survive every checkout unchanged.
+# Order matters: the generic rule first, the binary override last (a later line wins).
 * text=auto eol=lf
+*.bin -text -diff -merge
