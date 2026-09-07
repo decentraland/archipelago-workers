@@ -1,0 +1,22 @@
+{
+  "name": "iteration-2-shadow-diffs",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Iteration-2 verification harness: four shadow diffs (Pulse vs LiveKit/heartbeats) sharing one tolerance-report format",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "shadow-diff": "./bin/shadow-diff.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "shadow-diffs:test": "node --test",
+    "scene-participants": "node bin/shadow-diff.js scene-participants",
+    "live-data": "node bin/shadow-diff.js live-data",
+    "online-set": "node bin/shadow-diff.js online-set",
+    "hot-scenes": "node bin/shadow-diff.js hot-scenes",
+    "summarize": "node bin/shadow-diff.js summarize"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "request": "GET /live-data",
+  "note": "Hand-written for the shadow-diff harness (the pack has no /live-data golden). LiveKit-fed answer for the pack peer set, plus one draining world LiveKit still lists after its last occupant left. Shape per worlds-content-server src/controllers/handlers/live-data-handler.ts.",
+  "status": 200,
+  "body": {
+    "data": {
+      "totalUsers": 4,
+      "perWorld": [
+        { "worldName": "cozyfarm.dcl.eth", "users": 1 },
+        { "worldName": "quiet.dcl.eth", "users": 3 }
+      ]
+    },
+    "lastUpdated": "2026-09-04T09:52:47.834Z"
+  }
+}
