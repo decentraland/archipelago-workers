@@ -12,6 +12,13 @@ import { getErrorMessage } from '../../logic/errors'
 import { Authenticator } from '@dcl/crypto'
 import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 
+// The vocabulary `HEARTBEAT_FORWARDING_ENABLED` understands, trimmed and lower-cased. Deliberately
+// symmetric: `0`/`no`/`off` turn the forwarding off because `1`/`yes`/`on` turn it on, and an
+// operator who reaches for one expects the other to work. `''` is unset, or a bare key in an env
+// file. Everything outside both lists reads as on and is warned about — see below.
+const HEARTBEAT_FORWARDING_OFF_VALUES = ['false', '0', 'no', 'off']
+const HEARTBEAT_FORWARDING_ON_VALUES = ['', 'true', '1', 'yes', 'on']
+
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
@@ -29,20 +36,25 @@ export async function registerWsHandler(
 
   // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
   // their only consumer (archipelago-stats). This switches the republishing off ahead of deleting
-  // the code, so the rollout can flip it once heartbeat-free clients dominate and flip it back
-  // without a deploy. Defaults to true — today's behaviour, so a deploy that sets nothing is a
-  // no-op. Nothing else on the socket depends on it.
+  // the code, so the rollout can flip it once heartbeat-free clients dominate. Defaults to true —
+  // today's behaviour, so a deploy that sets nothing is a no-op. Nothing else on the socket
+  // depends on it.
   //
-  // Parsed strictly rather than as `!== 'false'`: this is a rollout switch an operator flips by
-  // hand, and a value like `0` or `off` would otherwise read as "still forwarding" with nothing
-  // said about it, leaving them to debug a flip that never happened.
-  // A blank value counts as unset: an env file may carry the key with nothing after the `=`.
+  // Read leniently, and it never throws. This is a rollback switch an operator types by hand under
+  // time pressure, and `registerWsHandler` is awaited inside the Lifecycle entrypoint: a throw here
+  // means the `/ws` route is never registered and every client loses its gateway over a typo.
+  // So anything that is not a recognised "off" reads as on — the flag's own default and today's
+  // behaviour — and an unrecognised value is warned about, so the flip that did not happen is
+  // visible instead of silent. A blank value counts as unset: an env file may carry the bare key.
   const heartbeatForwardingRaw = (await config.getString('HEARTBEAT_FORWARDING_ENABLED')) ?? ''
   const heartbeatForwarding = heartbeatForwardingRaw.trim().toLowerCase()
-  if (heartbeatForwarding !== '' && heartbeatForwarding !== 'true' && heartbeatForwarding !== 'false') {
-    throw new Error(`HEARTBEAT_FORWARDING_ENABLED must be 'true' or 'false'. Got ${heartbeatForwardingRaw}.`)
+  const heartbeatForwardingEnabled = !HEARTBEAT_FORWARDING_OFF_VALUES.includes(heartbeatForwarding)
+  if (heartbeatForwardingEnabled && !HEARTBEAT_FORWARDING_ON_VALUES.includes(heartbeatForwarding)) {
+    logger.warn(
+      `HEARTBEAT_FORWARDING_ENABLED is set to '${heartbeatForwardingRaw}', which this key does not ` +
+        `recognise; heartbeat forwarding stays ON, its default. Set it to 'false' to turn it off.`
+    )
   }
-  const heartbeatForwardingEnabled = heartbeatForwarding !== 'false'
 
   // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
   // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the

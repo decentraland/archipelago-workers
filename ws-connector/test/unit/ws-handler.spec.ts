@@ -39,6 +39,7 @@ describe('ws-handler', () => {
   let denyList: ReturnType<typeof createDenyListMockedComponent>
   let nats: { publish: jest.Mock; subscribe: jest.Mock }
   let validateSignature: jest.SpyInstance
+  let loggerWarn: jest.Mock
 
   const identity = createEphemeralIdentity('handler-spec')
   const address = identity.address.toLowerCase()
@@ -57,14 +58,31 @@ describe('ws-handler', () => {
     return ClientPacket.encode({ message }).finish() as unknown as ArrayBuffer
   }
 
+  /** A completed session that sends one heartbeat and then goes away — both publish sites, in order. */
+  async function heartbeatThenClose(): Promise<StubWebSocket> {
+    const ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+    peersRegistry.onPeerConnected(address, ws)
+
+    await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+    handlers.close(ws, 1000, new ArrayBuffer(0))
+
+    return ws
+  }
+
   async function build(configOverrides: Record<string, string> = {}): Promise<void> {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
     denyList = createDenyListMockedComponent()
     nats = { publish: jest.fn(), subscribe: jest.fn() }
+    loggerWarn = jest.fn()
 
     const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS), ...configOverrides })
-    const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
+    // The real logger, with only `warn` made observable: the rest of this file relies on its
+    // actual behaviour (the protocol-violation cases print through it on purpose).
+    const realLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
+    const logs = {
+      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn })
+    }
     const server = {
       app: {
         ws: jest.fn((_path: string, registered: WsHandlers & RouteOptions) => {
@@ -489,13 +507,8 @@ describe('ws-handler', () => {
   // off ahead of deleting the code, so it must default to today's behaviour — a deploy that sets
   // nothing still publishes both subjects.
   describe('when HEARTBEAT_FORWARDING_ENABLED is left unset', () => {
-    let ws: StubWebSocket
-
     beforeEach(async () => {
-      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-
-      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
-      handlers.close(ws, 1000, new ArrayBuffer(0))
+      await heartbeatThenClose()
     })
 
     it('should publish the heartbeat and the disconnect, exactly as before the flag existed', () => {
@@ -503,41 +516,64 @@ describe('ws-handler', () => {
       expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
       expect(nats.publish).toHaveBeenCalledTimes(2)
     })
-  })
 
-  describe('when HEARTBEAT_FORWARDING_ENABLED is explicitly true', () => {
-    let ws: StubWebSocket
-
-    beforeEach(async () => {
-      await build({ HEARTBEAT_FORWARDING_ENABLED: 'true' })
-      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-
-      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
-      handlers.close(ws, 1000, new ArrayBuffer(0))
-    })
-
-    it('should publish the heartbeat and the disconnect', () => {
-      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
-      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
-      expect(nats.publish).toHaveBeenCalledTimes(2)
+    it('should say nothing about a key nobody set', () => {
+      expect(loggerWarn).not.toHaveBeenCalled()
     })
   })
 
-  describe('when HEARTBEAT_FORWARDING_ENABLED holds something that is neither', () => {
-    it.each([['0'], ['off'], ['no']])(
-      'should fail at startup on %p rather than quietly keep forwarding',
+  // The value is read leniently, and never throws: this is a rollback switch an operator types by
+  // hand under time pressure, and `registerWsHandler` runs inside the Lifecycle entrypoint — a
+  // throw here means `/ws` is never registered and every client loses its gateway over a typo.
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value that reads as on', () => {
+    it.each([['true'], ['TRUE'], [' true '], ['1'], ['yes'], ['on'], [''], ['  ']])(
+      'should publish both subjects for %p, as today',
       async (value) => {
-        await expect(build({ HEARTBEAT_FORWARDING_ENABLED: value })).rejects.toThrow(/HEARTBEAT_FORWARDING_ENABLED/)
+        await build({ HEARTBEAT_FORWARDING_ENABLED: value })
+        await heartbeatThenClose()
+
+        expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+        expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+        expect(nats.publish).toHaveBeenCalledTimes(2)
+        expect(loggerWarn).not.toHaveBeenCalled()
       }
     )
+  })
 
-    it('should treat a blank value as unset, since an env file may carry the bare key', async () => {
-      await build({ HEARTBEAT_FORWARDING_ENABLED: '  ' })
-      const ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value that reads as off', () => {
+    it.each([['false'], ['FALSE'], [' false '], ['0'], ['no'], ['off']])(
+      'should publish neither subject for %p',
+      async (value) => {
+        await build({ HEARTBEAT_FORWARDING_ENABLED: value })
+        await heartbeatThenClose()
 
-      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+        expect(nats.publish).not.toHaveBeenCalled()
+        expect(loggerWarn).not.toHaveBeenCalled()
+      }
+    )
+  })
 
-      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.heartbeat`, expect.any(Uint8Array))
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value it does not recognise', () => {
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'maybe' })
+    })
+
+    it('should keep forwarding, which is the default and today’s behaviour, rather than fail the deploy', async () => {
+      await heartbeatThenClose()
+
+      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+    })
+
+    it('should warn, naming the key and the value, so the flip that did not happen is visible', () => {
+      expect(loggerWarn).toHaveBeenCalledTimes(1)
+      const [message] = loggerWarn.mock.calls[0]
+      expect(message).toContain('HEARTBEAT_FORWARDING_ENABLED')
+      expect(message).toContain('maybe')
+    })
+
+    it.each([['disabled'], ['1)'], ['ture'], ['null']])('should not throw on %p', async (value) => {
+      await expect(build({ HEARTBEAT_FORWARDING_ENABLED: value })).resolves.toBeUndefined()
     })
   })
 
