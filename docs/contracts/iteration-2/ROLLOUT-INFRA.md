@@ -47,10 +47,7 @@ Rollback: revert the rule; archipelago-stats keeps running until step 9.
 
 ## Known risks to clear before step 6
 
-- **Phantom peers after a hard client kill** (found in WP1 acceptance): the transport raises no disconnect, so a
-  killed client stays present until the transport times out (observed: minutes). Archipelago's 60 s heartbeat
-  timeout used to mask this. Pulse needs an input-idle timeout (no `MovementInput` for N s ⇒ treated as left) before
-  LiveKit fallbacks are switched off.
+- **Silent clients** (refined after the WP1 review): a hard-killed client is detected by the transport keepalive in about 5 s in production and emits its exit entry (the minutes-long lingering seen in local acceptance came from the Development config's 5-minute `Transport:PeerTimeoutMs`). The residual gap is a client that keeps ACKing but stops sending input: `/peers` shows a frozen `lastPing` and the feed carries no staleness field. Pulse needs an input-idle timeout (no `MovementInput` for N s => treated as left) before LiveKit fallbacks are switched off.
 - **`/realms` on realm-provider lists only `main`** today because catalyst `/about` has no `comms` block; WP6 keeps
   that behaviour. Decide separately whether third-party catalysts should be listed.
 - **Semantic shift visible on place cards**: `connected_addresses` becomes "standing on the scene's parcels" and will
