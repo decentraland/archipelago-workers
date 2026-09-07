@@ -17,8 +17,8 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 **Key responsibilities:**
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
-- Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed)
-- Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device
+- Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed), unless `HEARTBEAT_FORWARDING_ENABLED=false`
+- Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device — never gated by `HEARTBEAT_FORWARDING_ENABLED`
 - Subscribes to `engine.peer.{addr}.island_changed.{session}` and, for an assignment that carries no session (an older Pulse), the legacy `engine.peer.{addr}.island_changed` — and forwards the island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Registers sockets by (wallet, session key) and forwards `engine.peer.{addr}.island_changed.{session}` only to the socket holding that session. A second device of the same wallet coexists; only the same device's zombie socket is replaced (and told `kicked`)
@@ -36,6 +36,19 @@ it makes ghost peers (and their `peersRegistry` entries) linger longer; `0` disa
 entirely and is for local debugging only. uWS accepts just `0` or values ≥ 8, rounded to multiples
 of 4, and ws-connector refuses to start on anything in between.
 `ws-connector/test/integration/ws-idle.spec.ts` pins the behaviour.
+
+**Heartbeat retirement:** `HEARTBEAT_FORWARDING_ENABLED` (default `true`) controls whether the client
+heartbeat is still republished as `peer.<addr>.heartbeat` and the session close as
+`peer.<addr>.disconnect`. Iteration 2 retires both — archipelago-stats was their only consumer, and
+Pulse reads positions from its own transport — so the switch exists to flip the intake off ahead of
+deleting the code, and back without a deploy. With it off the heartbeat packet is still decoded and
+accepted (clients on old builds keep sending it) and nothing else on the socket changes: the registry
+eviction on close, `island_changed` forwarding, the idle pings. Only `true` and `false` are accepted.
+
+**Wire-contract tests:** `ws-connector/test/contract/` pins what Pulse publishes, in bytes —
+`pulse-wire.spec.ts` for `engine.discovery` / `engine.islands` (moved from `stats`, which iteration 2
+deletes) and `parcel-changes.spec.ts` for `engine.parcel_changes`, against fixtures copied verbatim
+from the contract pack. ws-connector consumes none of these feeds; it is the workspace that remains.
 
 **Auth flow:**
 ```
@@ -81,7 +94,8 @@ Read-only monitoring service. Not in the client data path.
 - Exposes REST endpoints for island/peer statistics and clustering-service health
 - Integrates with Catalyst for content server metadata
 
-Unchanged by iteration 1, deliberately: the peer map is still heartbeat-fed, so `/peers`, `/parcels` and `/hot-scenes` behave exactly as before. Only the island topology's source moved — `GET /islands` now serves `C{n}` IDs with `maxPeers: 0`, and `/core-status` reports Pulse's health without changing its response shape. `stats/test/unit/pulse-topology.spec.ts` pins the wire contract.
+Unchanged by iteration 1, deliberately: the peer map is still heartbeat-fed, so `/peers`, `/parcels` and `/hot-scenes` behave exactly as before. Only the island topology's source moved — `GET /islands` now serves `C{n}` IDs with `maxPeers: 0`, and `/core-status` reports Pulse's health without changing its response shape. The wire contract is pinned in `ws-connector/test/contract/pulse-wire.spec.ts`; what is left in
+`stats/test/unit/pulse-topology.spec.ts` covers stats' own decode and handlers.
 
 Stats has **no** time-based peer expiry: it drops a peer only on `peer.*.disconnect`, so a missed disconnect leaves one in `/peers`, `/parcels` and `/hot-scenes` indefinitely. `CHECK_HEARTBEAT_INTERVAL` was core's, not stats'.
 
