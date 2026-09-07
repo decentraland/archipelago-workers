@@ -127,3 +127,11 @@ comms-gatekeeper is `{ entityId, parcels }`. The `body` and `status` are exact.
 entry. A peer dropped before its first placement (e.g. in `PENDING_AUTH`) was never on the feed and emits nothing.
 Pulse's `/about` may carry additional fields beyond `commitHash` and `userCount` (e.g. `featureFlagOverrides`);
 consumers read the two documented keys.
+
+## Consumer rule — additions (raised by WP2 review)
+
+- **Prime entries** (from `/peers?all=true`) carry no `server_name`. Keep them until a publisher re-asserts the wallet
+  (ownership transfers) or until a prime TTL (≈ snapshot interval + margin, 90 s) expires. Never drop them on another
+  publisher's snapshot.
+- **Publisher liveness.** A `server_name` silent for more than ≈ 2.5 × the snapshot interval (150 s) is presumed gone:
+  drop its entries and forget its `seq`. When it returns it starts with a snapshot, as on any restart.
