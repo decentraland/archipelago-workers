@@ -120,3 +120,10 @@ node tools/gen-parcel-changes.js --check && node tools/gen-http-goldens.js --che
 In `scene-participants/*.json` the `catalyst.returns` / `worlds.returns` objects are illustrative mocks; only the
 scene `parcels` (and the pointer → scene resolution) are contractual. The real `fetchWorldSceneByPointer` type in
 comms-gatekeeper is `{ entityId, parcels }`. The `body` and `status` are exact.
+
+## C1 §2 clarification (raised by WP1)
+
+"Every exit path emits exactly one parcel-absent entry" applies to peers that previously received a non-null
+entry. A peer dropped before its first placement (e.g. in `PENDING_AUTH`) was never on the feed and emits nothing.
+Pulse's `/about` may carry additional fields beyond `commitHash` and `userCount` (e.g. `featureFlagOverrides`);
+consumers read the two documented keys.
