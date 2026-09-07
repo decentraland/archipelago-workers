@@ -37,11 +37,12 @@ export async function registerWsHandler(
   // hand, and a value like `0` or `off` would otherwise read as "still forwarding" with nothing
   // said about it, leaving them to debug a flip that never happened.
   // A blank value counts as unset: an env file may carry the key with nothing after the `=`.
-  const heartbeatForwardingRaw = ((await config.getString('HEARTBEAT_FORWARDING_ENABLED')) ?? '').trim().toLowerCase()
-  if (heartbeatForwardingRaw !== '' && heartbeatForwardingRaw !== 'true' && heartbeatForwardingRaw !== 'false') {
+  const heartbeatForwardingRaw = (await config.getString('HEARTBEAT_FORWARDING_ENABLED')) ?? ''
+  const heartbeatForwarding = heartbeatForwardingRaw.trim().toLowerCase()
+  if (heartbeatForwarding !== '' && heartbeatForwarding !== 'true' && heartbeatForwarding !== 'false') {
     throw new Error(`HEARTBEAT_FORWARDING_ENABLED must be 'true' or 'false'. Got ${heartbeatForwardingRaw}.`)
   }
-  const heartbeatForwardingEnabled = heartbeatForwardingRaw !== 'false'
+  const heartbeatForwardingEnabled = heartbeatForwarding !== 'false'
 
   // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
   // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the
