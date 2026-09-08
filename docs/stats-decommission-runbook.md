@@ -44,16 +44,17 @@ Two visible consequences that are not this repo's to fix:
 
 Rollout steps 1–8 must be done and their gates green. Verbatim from the plan's rollout table, with
 one substitution: the plan words step 7's gate "ws-connector heartbeat rate → 0", and **there is no
-such metric** — `ws-connector/src/metrics.ts` declares only the default HTTP metrics and the
-logger's, so looking for a heartbeat rate on `/metrics` finds an absent series, not a zero one. The
-row below carries the observable form of the same gate;
+such metric** — `ws-connector/src/metrics.ts` declares the default HTTP metrics, the logger's and
+one counter for a failed `peer.<addr>.connect` publish ([§7](#7-the-handshake-announcement-is-on-the-broker)),
+and nothing about heartbeats, so looking for a heartbeat rate on `/metrics` finds an absent series,
+not a zero one. The row below carries the observable form of the same gate;
 [§5](#5-nothing-is-publishing-the-retired-subjects) is the procedure.
 
 | Step | Change | Gate | Rollback |
 |---|---|---|---|
 | 5 | realm-provider proxy + Pulse `/about`; CloudFlare cut for all paths | consumers' error rates flat | revert CF rule (stats still running) |
 | 6 | gatekeeper `LIVEKIT_PRESENCE_FALLBACK=false`; social-service + wcs `PRESENCE_SOURCE=pulse` | 24 h clean | flags back |
-| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % sessions on new build; `peer.*.heartbeat` silent on the broker **and** `HEARTBEAT_FORWARDING_ENABLED=false` read off the ws-connector deployment ([§5](#5-nothing-is-publishing-the-retired-subjects)) — the plan words this "heartbeat rate → 0"; no such metric exists | flag ramps down |
+| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % sessions on new build; `peer.*.heartbeat` silent on the broker **and** `HEARTBEAT_FORWARDING_ENABLED=false` read off the ws-connector deployment ([§5](#5-nothing-is-publishing-the-retired-subjects)) — the plan words this "heartbeat rate → 0"; no such metric exists. **Before the ramp starts:** `peer.*.connect` observed on the broker with gatekeeper re-emitting from it ([§7](#7-the-handshake-announcement-is-on-the-broker)) | flag ramps down |
 | 8 | heartbeat intake off; wcs stops `peer.*.world.*` publish; delete social-service worlds-stats | no subscriber logs for retired subjects for 48 h | redeploy previous images |
 | 9 | delete `stats`; remove fallback flags everywhere; wcs removes `/wallet/:wallet/connected-world` | runbook verification list green | redeploy last stats image + CF revert |
 
@@ -160,9 +161,11 @@ never becomes ready, so `warming` is the answer for the whole life of the proces
 
 `peer.<addr>.heartbeat` and `peer.<addr>.disconnect` must have been silent for 48 h (step 8's gate).
 
-**There is no ws-connector metric for this.** `ws-connector/src/metrics.ts` declares only the
-default HTTP metrics and the logger's, so a heartbeat rate is not on `/metrics` and cannot be
-graphed. Verify it the two ways that do work:
+**There is no ws-connector metric for this.** `ws-connector/src/metrics.ts` declares no heartbeat
+series at all — the default HTTP metrics, the logger's and
+`ws_connector_peer_connect_publish_failures_total` ([§7](#7-the-handshake-announcement-is-on-the-broker))
+are the whole of it — so a heartbeat rate is not on `/metrics` and cannot be graphed. Verify it the
+two ways that do work:
 
 ```bash
 # on the broker, over a window long enough to cover an arrival and a departure
@@ -199,6 +202,42 @@ Step 3 turned it on and step 5's CloudFlare rule already routes `/hot-scenes` to
 has to have been `true` since before the cut; but step 3's own rollback is
 `PRESENCE_MAP_ENABLED=false`, and a shadow-window revert that was never restored looks exactly like a
 map that is still priming. Read the value off the deployment — do not infer it from a retry.
+
+### 7. The handshake announcement is on the broker
+
+**This item gates step 7, not the cut, and it had to be green before the explorer's heartbeat flag
+started ramping.** `peer.<addr>.connect` is what a reconnecting client gets instead of a heartbeat:
+comms-gatekeeper publishes `engine.peer.<addr>.island_changed` only when Pulse reports a cluster
+change, so a socket that reconnects while its cluster is unchanged receives no island at all.
+archipelago-core used the next client heartbeat to re-send the assignment. Take heartbeats away
+before both halves of the replacement are live and a network blip — or the explorer's own
+`ForceFreshIslandAssignmentAsync` after repeated LiveKit failures — leaves a client holding a
+working socket that never tells it which room to join.
+
+The two halves ship from different repos and both must be deployed:
+
+| Half | Repo | What it does |
+| --- | --- | --- |
+| publisher | archipelago-workers | ws-connector publishes `peer.<addr>.connect` after every successful handshake — empty payload, lower-cased address, ungated |
+| consumer | comms-gatekeeper | re-emits that peer's current `engine.peer.<addr>.island_changed` on receipt |
+
+```bash
+# on the broker, while a client reconnects (drop its socket, or restart the explorer)
+nats sub 'peer.*.connect'
+nats sub 'engine.peer.*.island_changed'
+```
+
+Expect one `peer.<addr>.connect` per handshake and an `engine.peer.<addr>.island_changed` for the
+same wallet right behind it, with no cluster change in between. The first without the second means
+the publisher shipped and the consumer did not — the state that must not survive into step 7, and
+the one that is silent: every session still works, and only reconnects lose their island.
+
+Unlike the retired pair this subject is **not** gated by `HEARTBEAT_FORWARDING_ENABLED`, so reading
+that key ([§6](#6-the-consumers-are-off-the-old-sources)) says nothing about it — do not treat
+`false` there as evidence either way. What ws-connector does expose is the failure counter
+`ws_connector_peer_connect_publish_failures_total` on its `/metrics`: one increment per completed
+handshake whose announcement the broker refused. It should be flat at zero; a rising series is a
+broker problem presenting as clients with live sockets and no island.
 
 ## The cut
 

@@ -2,7 +2,7 @@
 
 **Service Purpose:** Monorepo with one service supporting Decentraland's real-time layer: the WS Connector, the only entry point clients talk to. Players are grouped into clusters by proximity and each cluster maps to a LiveKit room.
 
-> **Iterations 1 and 2 of the Archipelago ⇒ Pulse migration are complete on this side.** `archipelago-core` was removed in iteration 1 and `archipelago-stats` in iteration 2, leaving `ws-connector` as the only workspace. Pulse authors the clustering, publishes `engine.islands` / `engine.discovery` / `engine.parcel_changes`, and serves the online-player endpoints; comms-gatekeeper mints LiveKit connection strings, publishes `engine.peer.{addr}.island_changed`, and serves `/hot-scenes`. WS Connector is unchanged by either. Runbooks: [core-decommission-runbook.md](./core-decommission-runbook.md), [stats-decommission-runbook.md](./stats-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of core's algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
+> **Iterations 1 and 2 of the Archipelago ⇒ Pulse migration are complete on this side.** `archipelago-core` was removed in iteration 1 and `archipelago-stats` in iteration 2, leaving `ws-connector` as the only workspace. Pulse authors the clustering, publishes `engine.islands` / `engine.discovery` / `engine.parcel_changes`, and serves the online-player endpoints; comms-gatekeeper mints LiveKit connection strings, publishes `engine.peer.{addr}.island_changed`, and serves `/hot-scenes`. WS Connector keeps the socket and gained exactly two things in iteration 2: the heartbeat-republishing switch, and the `peer.{addr}.connect` announcement gatekeeper re-emits an island assignment from. Runbooks: [core-decommission-runbook.md](./core-decommission-runbook.md), [stats-decommission-runbook.md](./stats-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of core's algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 **Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client, publishes its heartbeats, and forwards island assignments for the lifetime of the session. The LiveKit connection string it forwards is what the client uses to join the voice/CRDT room.
 
@@ -18,6 +18,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
 - Publishes heartbeats and disconnects to NATS, unless `HEARTBEAT_FORWARDING_ENABLED=false`. Both subjects are consumer-less now: core read them until iteration 1 removed it, archipelago-stats until iteration 2 removed it
+- Publishes `peer.{addr}.connect` on every successful handshake — never gated — so comms-gatekeeper re-emits that peer's current island assignment. This is what a reconnecting socket gets instead of the retired client heartbeat
 - Subscribes to `engine.peer.{id}.island_changed` and forwards island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Kicks duplicate sessions (same address reconnects evicts previous)
@@ -46,8 +47,20 @@ builds keep sending it) and nothing else on the socket changes: the registry evi
 anything else leaves it on with a warning naming the key and the value — a typo in the switch must
 not take `/ws` down with it.
 
-**Both subjects now have no subscriber at all**, so `false` is the value production wants: the flag
-was flipped at rollout step 8 and the stats workspace was deleted at step 9. The switch stays in the
+**Reconnects do not depend on that switch.** `peer.<addr>.connect`, published after every
+successful handshake and gated by nothing, is what tells comms-gatekeeper to re-emit the peer's
+current `engine.peer.<addr>.island_changed`. Gatekeeper otherwise publishes an assignment only when
+Pulse reports a cluster change, so without the announcement a socket that reconnects while its
+cluster is unchanged — a network blip, or the explorer's own `ForceFreshIslandAssignmentAsync` after
+repeated LiveKit failures — would sit there with no island until the crowd moved; the next client
+heartbeat used to cover that. Both halves had to be deployed before rollout step 7 turned client
+heartbeats off ([stats-decommission-runbook.md](./stats-decommission-runbook.md#7-the-handshake-announcement-is-on-the-broker)).
+A publish that the broker refuses is contained, logged and counted on
+`ws_connector_peer_connect_publish_failures_total`: the handshake completes either way, because a
+client with no island re-handshakes and a client with no socket is broken.
+
+**Both retired subjects now have no subscriber at all**, so `false` is the value production wants:
+the flag was flipped at rollout step 8 and the stats workspace was deleted at step 9. The switch stays in the
 tree on purpose — it is the writer half of the stats rollback
 ([stats-decommission-runbook.md](./stats-decommission-runbook.md#rollback) step 4), and a redeployed
 stats with the intake still off answers `200` with an empty peer map, which reads as "everyone left".
@@ -124,13 +137,14 @@ The `engine.islands` / `engine.discovery` wire contract survived the deletion, i
 
 ## NATS Message Reference
 
-This repo **publishes** exactly two subjects — `peer.<addr>.heartbeat` and
-`peer.<addr>.disconnect`, both from ws-connector and both gated by
+This repo **publishes** exactly three subjects, all from ws-connector — `peer.<addr>.connect` on
+every successful handshake, ungated and the only one of the three with a consumer, plus the retired
+pair `peer.<addr>.heartbeat` and `peer.<addr>.disconnect`, both gated by
 `HEARTBEAT_FORWARDING_ENABLED` — and **subscribes** to exactly one:
 `engine.peer.<addr>.island_changed` (ws-connector, `src/service.ts`). Deleting `stats` took the
-other four subscriptions with it, and stats was the only subscriber the two published subjects ever
+other four subscriptions with it, and stats was the only subscriber the retired pair ever
 had, so with the flag off at rollout step 8 this repo's broker traffic is one subject inbound and
-nothing outbound. Every other row below is broker-map context with no endpoint in this repo:
+one outbound. Every other row below is broker-map context with no endpoint in this repo:
 `engine.islands` and `engine.discovery` (subscriber-less since the deletion),
 `engine.parcel_changes` (consumed in other repos; its wire bytes are pinned here, in
 `ws-connector/test/contract/parcel-changes.spec.ts`) and `peer.<addr>.cluster_change` (not pinned
@@ -143,6 +157,7 @@ here at all). Payload types come from `@dcl/protocol`.
 | `engine.islands` | Pulse | **nobody** | `IslandStatusMessage` — full island topology, `C{n}` ids, `maxPeers: 0`. Fed stats' `GET /islands`, which Pulse serves itself now; still published, and still pinned in `ws-connector/test/contract/pulse-wire.spec.ts` |
 | `engine.discovery` | Pulse | **nobody** | `ServiceDiscoveryMessage` — clustering-service heartbeat every 10 s, `current_time` as `uint64`. Fed stats' `/core-status`, which retired; pinned in the same spec |
 | `engine.peer.<addr>.island_changed` | comms-gatekeeper | **ws-connector** | `IslandChangedMessage` — island id plus the LiveKit connection string with an embedded token; forwarded to that peer's socket unchanged. `peers` arrives empty by design |
+| `peer.<addr>.connect` | **ws-connector** | comms-gatekeeper | empty payload — published on handshake so comms-gatekeeper re-emits the current island assignment. Lower-cased address. Not gated by `HEARTBEAT_FORWARDING_ENABLED`: gatekeeper's `island_changed` otherwise follows only a Pulse cluster change, so this is what a reconnecting socket has instead of the retired client heartbeat. Failures are counted on `ws_connector_peer_connect_publish_failures_total` |
 | `peer.<addr>.heartbeat` | **ws-connector** | **nobody** | `Heartbeat` — the client's position, republished. archipelago-stats was its only consumer; gated by `HEARTBEAT_FORWARDING_ENABLED`, turned off at rollout step 8 |
 | `peer.<addr>.disconnect` | **ws-connector** | **nobody** | empty payload — the session closed; was stats' only way of dropping a peer. comms-gatekeeper deliberately never subscribed (it expires assignments on a TTL instead). Gated by the same flag and retired with it |
 
