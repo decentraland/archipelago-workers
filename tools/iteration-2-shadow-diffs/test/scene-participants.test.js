@@ -17,6 +17,15 @@ const DEFAULTS = {
   requestsLabelFilter: { handler: '/scene-participants' }
 }
 
+// A minimal /metrics page with the two counters diff 1 reads, for the runs that need to move a
+// counter between scrapes.
+const metricsText = ({ diff, requests }) =>
+  [
+    `presence_shadow_diff{kind="land"} ${diff}`,
+    `http_requests_total{method="GET",handler="/scene-participants",code="200"} ${requests}`,
+    ''
+  ].join('\n')
+
 const withTempDir = (body) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shadow-diff-'))
   try {
@@ -57,11 +66,13 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.deepEqual(result.counters, { diff: 15, requests: 944, 'diff.land': 12, 'diff.world': 3 })
   })
 
-  test('a counter reset between runs takes the new value as the delta', () => {
+  test('a counter that went backwards skips the run instead of reporting a lifetime counter', () => {
     const previous = { at: '...', counters: { diff: 900, requests: 90000, 'diff.land': 800, 'diff.world': 100 } }
     const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
-    assert.equal(result.sampleSize, 944)
-    assert.equal(result.agree, 929)
+
+    assert.equal(result.counterReset, true)
+    assert.equal(result.sampleSize, undefined, 'a reset run has no sample at all')
+    assert.match(result.reason, /backwards/i)
   })
 
   test('no requests since the last run is an empty sample, not a division by zero', () => {
@@ -110,23 +121,47 @@ describe('scene-participants: gatekeeper shadow counters', () => {
 describe('state file', () => {
   test('a missing state file reads as undefined', () => {
     withTempDir((dir) => {
-      assert.equal(readState(dir, 'scene-participants'), undefined)
+      assert.equal(readState(dir, 'scene-participants', 'zone'), undefined)
     })
   })
 
   test('what is written is what comes back', () => {
     withTempDir((dir) => {
-      const state = { at: '2026-09-05T10:00:00.000Z', counters: { diff: 15, requests: 944 } }
-      const file = writeState(dir, 'scene-participants', state)
-      assert.equal(path.basename(file), 'scene-participants.state.json')
-      assert.deepEqual(readState(dir, 'scene-participants'), state)
+      const state = { at: '2026-09-05T10:00:00.000Z', counters: { diff: 15, compare: 944 } }
+      const file = writeState(dir, 'scene-participants', 'zone', state)
+      assert.equal(path.basename(file), 'zone-scene-participants.json')
+      assert.equal(path.basename(path.dirname(file)), 'state')
+      assert.deepEqual(readState(dir, 'scene-participants', 'zone'), state)
+    })
+  })
+
+  test('the state file is keyed by env, so zone and org can share one OUT_DIR', () => {
+    withTempDir((dir) => {
+      writeState(dir, 'scene-participants', 'zone', { counters: { compare: 100 } })
+      writeState(dir, 'scene-participants', 'org', { counters: { compare: 7000 } })
+
+      assert.deepEqual(readState(dir, 'scene-participants', 'zone'), { counters: { compare: 100 } })
+      assert.deepEqual(readState(dir, 'scene-participants', 'org'), { counters: { compare: 7000 } })
+      assert.deepEqual(fs.readdirSync(path.join(dir, 'state')).sort(), [
+        'org-scene-participants.json',
+        'zone-scene-participants.json'
+      ])
+    })
+  })
+
+  test('an env label from the environment cannot escape OUT_DIR', () => {
+    withTempDir((dir) => {
+      const file = writeState(dir, 'scene-participants', '../../etc/zone', { counters: {} })
+      assert.ok(file.startsWith(path.join(dir, 'state')), `${file} escaped ${dir}`)
+      assert.doesNotMatch(path.basename(file), /[/\\]|\.\./)
     })
   })
 
   test('a corrupt state file reads as undefined rather than killing the cron', () => {
     withTempDir((dir) => {
-      fs.writeFileSync(path.join(dir, 'scene-participants.state.json'), '{ not json')
-      assert.equal(readState(dir, 'scene-participants'), undefined)
+      fs.mkdirSync(path.join(dir, 'state'), { recursive: true })
+      fs.writeFileSync(path.join(dir, 'state', 'zone-scene-participants.json'), '{ not json')
+      assert.equal(readState(dir, 'scene-participants', 'zone'), undefined)
     })
   })
 })
@@ -170,6 +205,44 @@ describe('scene-participants run', () => {
 
       const lines = fs.readFileSync(path.join(dir, 'scene-participants.jsonl'), 'utf8').trim().split('\n')
       assert.equal(lines.length, 2)
+    })
+  })
+
+  test('a counter that went backwards logs, writes no line and re-baselines', async () => {
+    await withTempDir(async (dir) => {
+      const printed = []
+      const env = {
+        OUT_DIR: dir,
+        SHADOW_DIFF_ENV: 'zone',
+        GATEKEEPER_METRICS_URL: 'https://gatekeeper.example.com/metrics'
+      }
+      const at = (minute) => () => new Date(`2026-09-05T10:0${minute}:00.000Z`)
+      const jsonl = path.join(dir, 'scene-participants.jsonl')
+
+      await run({ env, fetchText: async () => metricsText({ diff: 50, requests: 9000 }), now: at(0), out: () => {} })
+      assert.equal(fs.readFileSync(jsonl, 'utf8').trim().split('\n').length, 1)
+
+      // The exporter restarted (or a load balancer sent this scrape to another task).
+      const skipped = await run({
+        env,
+        fetchText: async () => metricsText({ diff: 1, requests: 20 }),
+        now: at(5),
+        out: (text) => printed.push(text)
+      })
+
+      assert.equal(skipped.skipped, true)
+      assert.match(printed.join('\n'), /backwards/i)
+      assert.equal(fs.readFileSync(jsonl, 'utf8').trim().split('\n').length, 1, 'no line for a skipped run')
+
+      // The skipped run still left the new counters behind, so the next window is measurable.
+      const next = await run({
+        env,
+        fetchText: async () => metricsText({ diff: 1, requests: 25 }),
+        now: at(9),
+        out: () => {}
+      })
+      assert.equal(next.sampleSize, 5)
+      assert.equal(fs.readFileSync(jsonl, 'utf8').trim().split('\n').length, 2)
     })
   })
 
