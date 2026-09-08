@@ -88,8 +88,10 @@ describe('counter deltas between two runs', () => {
     assert.equal(counterDelta(944, null), 944)
   })
 
-  test('a counter that went backwards is a process restart, so the new value is the delta', () => {
-    assert.equal(counterDelta(12, 900), 12)
+  test('a counter that went backwards yields no delta at all', () => {
+    // A restart (or a scrape that landed on another task) means the window cannot be measured.
+    // Taking the whole current value here would report a lifetime counter as one window's traffic.
+    assert.equal(counterDelta(12, 900), undefined)
   })
 
   test('an unchanged counter is a zero delta, not a missing sample', () => {

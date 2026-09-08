@@ -84,13 +84,18 @@ const parseLabelFilter = (raw) => {
   return filter
 }
 
-// A counter that went backwards means the exporter restarted, so everything it now reports has
-// accumulated since the last run: take the whole value.
+// The delta since the previous scrape, or `undefined` when there is no measurable window.
+//
+// A counter that went backwards means this scrape and the previous one did not come from the same
+// process lifetime: the exporter restarted, or the scrape landed on another task. Taking the whole
+// current value there would publish a lifetime counter as one five-minute window — a huge sample at
+// the service's lifetime ratio, which reads green and is fiction. The caller must skip the run
+// instead; `undefined` is what says so.
 const counterDelta = (current, previous) => {
   if (previous === undefined || previous === null || !Number.isFinite(Number(previous))) {
     return current
   }
-  return current < previous ? current : current - previous
+  return current < previous ? undefined : current - previous
 }
 
 module.exports = { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries }

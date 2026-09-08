@@ -60,10 +60,18 @@ Each run appends one line to `${OUT_DIR}/<diff>.jsonl` and prints a human summar
   notes: worlds legacy=2 pulse=1; onlyLegacy: quiet.dcl.eth
 ```
 
-A single run exits non-zero **only** when it could not collect a sample (a missing variable, an
-unreachable endpoint, a `/metrics` page without the request counter). An out-of-tolerance verdict is
-data, not a failure — one 03:00 sample of four peers is noise, and paging on it trains people to
-ignore the cron. The verdict that matters is the window verdict, below.
+A single run exits non-zero **only** on a configuration or transport failure (a missing variable, an
+unreachable endpoint, a `/metrics` page that does not export the configured counter). An
+out-of-tolerance verdict is data, not a failure — one 03:00 sample of four peers is noise, and
+paging on it trains people to ignore the cron. The verdict that matters is the window verdict, below.
+
+Two situations write **no line at all** and still exit 0, because there is genuinely nothing to
+sample and a fabricated sample would be worse than a gap: diff 1 when the gatekeeper counters went
+*backwards* since the previous scrape (an exporter restart, or a scrape that landed on another
+task — the run logs `SKIPPED — counters went backwards …` and keeps the new counters as the next
+baseline), and diff 4 while gatekeeper answers `503 warming` (that one does write a line, with
+`sampleSize: 0`; see below). Grep the cron log for `SKIPPED` when `runs` is short of the expected
+count.
 
 The report line, identical for all four diffs:
 
@@ -85,7 +93,7 @@ breach.
 
 | variable | used by | default | notes |
 |---|---|---|---|
-| `OUT_DIR` | all | `<harness>/out` | where `<diff>.jsonl` and the state file live |
+| `OUT_DIR` | all | `<harness>/out` | `<diff>.jsonl` here, `state/<env>-<diff>.json` beside it; may be shared between environments |
 | `SHADOW_DIFF_ENV` | all | `zone` | the `env` label written into every line |
 | `MAX_DISAGREE_RATIO` | all | `0.05` | global tolerance override, in `[0, 1]` |
 | `MAX_DISAGREE_RATIO_<DIFF>` | all | — | per-diff override, wins over the global one; the diff name upper-snake-cased (`MAX_DISAGREE_RATIO_LIVE_DATA`) |
@@ -152,9 +160,20 @@ HARNESS=/opt/archipelago-workers/tools/iteration-2-shadow-diffs
 ```
 
 5 minutes gives ~2 000 samples per diff per week, enough that a real regression shows up as a ratio
-rather than as one loud line. `OUT_DIR` may be shared between the two environments: every line
-carries its own `env` and the summary splits on it. Nothing rotates `<diff>.jsonl` — it is a few MB
-a week and it is the evidence; archive it after the cut-over rather than truncating it.
+rather than as one loud line (diff 1's sample is the number of *comparisons* gatekeeper performed in
+the window, which tracks `/scene-participants` traffic, not the cron interval).
+
+`OUT_DIR` may be shared between the two environments. Every report line carries its own `env` and
+the summary splits on it, and diff 1's counter state is **per environment**: it lives in
+`${OUT_DIR}/state/<env>-<diff>.json`, keyed by `SHADOW_DIFF_ENV`, so the `zone` and `org` crons
+cannot overwrite each other's previous scrape. Sharing one state file across environments would make
+each run read the other deployment's lifetime counters as its own baseline — a huge sample at the
+service's lifetime ratio, roughly every second run, with nothing in `notes` to say so. If you change
+`SHADOW_DIFF_ENV` for an existing cron, its next run is a first run again (it has no baseline under
+the new label) and reports the lifetime counters once; drop that line before reading the window.
+
+Nothing rotates `<diff>.jsonl` — it is a few MB a week and it is the evidence; archive it after the
+cut-over rather than truncating it.
 
 Diffs 2, 3 and 4 need their sources to be running in shadow mode first, per the rollout table in
 `docs/contracts/iteration-2/ROLLOUT-INFRA.md`: diffs 1 and 4 gate step 3

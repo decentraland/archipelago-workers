@@ -12,7 +12,7 @@ const { fetchText: defaultFetchText, requireEnv } = require('../http')
 const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../prometheus')
 const { joinNotes } = require('../notes')
 const { finishRun } = require('../finish-run')
-const { resolveOutDir } = require('../report')
+const { resolveEnvLabel, resolveOutDir } = require('../report')
 const { readState, writeState } = require('../state')
 
 const DIFF = 'scene-participants'
@@ -51,6 +51,21 @@ const compareSceneParticipants = ({ text, previous, diffMetric, requestsMetric, 
   const first = previousCounters === undefined
   const delta = (key) => counterDelta(counters[key], first ? undefined : previousCounters[key])
 
+  // A counter that went backwards means the previous scrape and this one are not from the same
+  // process lifetime, so no window can be measured. The run is skipped with the new counters kept
+  // as the next baseline; emitting the lifetime counter as a delta would look like a clean, huge
+  // window at the service's average ratio.
+  const wentBackwards = Object.keys(counters).filter((key) => delta(key) === undefined)
+  if (wentBackwards.length > 0) {
+    return {
+      counterReset: true,
+      reason:
+        `counters went backwards since the previous scrape (${wentBackwards.join(', ')}): ` +
+        'exporter restart or a scrape from another task; no window to measure',
+      counters
+    }
+  }
+
   const requestsDelta = delta('requests')
   const diffDelta = delta('diff')
   const sign = first ? '' : '+'
@@ -75,20 +90,30 @@ const compareSceneParticipants = ({ text, previous, diffMetric, requestsMetric, 
   }
 }
 
-const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Date(), out } = {}) => {
+const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Date(), out = console.log } = {}) => {
   const metricsUrl = requireEnv(env, 'GATEKEEPER_METRICS_URL')
   const outDir = resolveOutDir(env)
+  const envLabel = resolveEnvLabel(env)
 
   const text = await fetchText(metricsUrl)
   const result = compareSceneParticipants({
     text,
-    previous: readState(outDir, DIFF),
+    previous: readState(outDir, DIFF, envLabel),
     diffMetric: env.SHADOW_DIFF_METRIC ?? DEFAULT_DIFF_METRIC,
     requestsMetric: env.SHADOW_REQUESTS_METRIC ?? DEFAULT_REQUESTS_METRIC,
     requestsLabelFilter: parseLabelFilter(env.SHADOW_REQUESTS_LABELS ?? DEFAULT_REQUESTS_LABELS)
   })
 
   const at = now().toISOString()
+
+  if (result.counterReset === true) {
+    // Logged, not thrown: a gatekeeper deploy is expected and must not page anyone, but the gap in
+    // the window has to be visible in the cron log and must not become a data point.
+    out(`[${DIFF}] env=${envLabel} at=${at} SKIPPED — ${result.reason}`)
+    writeState(outDir, DIFF, envLabel, { at, counters: result.counters })
+    return { diff: DIFF, at, env: envLabel, skipped: true, reason: result.reason }
+  }
+
   const line = finishRun({
     diff: DIFF,
     env,
@@ -99,7 +124,7 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     notes: result.notes
   })
   // Written after the line so a crash mid-report replays the same window rather than losing it.
-  writeState(outDir, DIFF, { at, counters: result.counters })
+  writeState(outDir, DIFF, envLabel, { at, counters: result.counters })
   return line
 }
 
