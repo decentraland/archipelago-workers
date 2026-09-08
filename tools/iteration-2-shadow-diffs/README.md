@@ -126,7 +126,7 @@ out is a whole week of "the source answered nothing" reading as a whole week of 
 | `SHADOW_DIFF_ENV` | all | `zone` | the `env` label written into every line |
 | `MAX_DISAGREE_RATIO` | all | `0.05` | global tolerance override, in `[0, 1]` |
 | `MAX_DISAGREE_RATIO_<DIFF>` | all | — | per-diff override, wins over the global one; the diff name upper-snake-cased (`MAX_DISAGREE_RATIO_LIVE_DATA`) |
-| `GATEKEEPER_METRICS_URL` | 1 | — | full URL of comms-gatekeeper's Prometheus page |
+| `GATEKEEPER_METRICS_URL` | 1 | — | comms-gatekeeper's Prometheus page: **one URL per task**, comma-separated (see the load-balancer caveat) |
 | `SHADOW_DIFF_METRIC` | 1 | `presence_shadow_diff` | the numerator; pinned by the contract |
 | `SHADOW_COMPARE_METRIC` | 1 | `presence_shadow_compare_total` | the denominator: comparisons performed, not requests served |
 | `SHADOW_COMPARE_LABELS` | 1 | *(empty)* | comma-separated `key=value` (quotes optional); empty sums the compare counter over every `kind` |
@@ -144,6 +144,38 @@ out is a whole week of "the source answered nothing" reading as a whole week of 
 
 A trailing slash on any base URL is fine. Base URLs must not carry a query string — the path is
 appended verbatim.
+
+**Diff 1, one scrape URL per task — do not scrape through a load balancer.** Counter deltas need
+successive scrapes to come from the same process. A public service URL sends each scrape to whatever
+task the load balancer picks, and those tasks' lifetime counters are unrelated numbers: roughly half
+the runs would see the counter go *down* and the rest an inflated jump, so the window's sample would
+be tens of times the real traffic and its ratio would converge on the service's lifetime average —
+a disagreement rate that jumps to 30 % on day 8 could not move the verdict.
+
+The harness will not paper over that. Give `GATEKEEPER_METRICS_URL` one address per task,
+comma-separated:
+
+```bash
+GATEKEEPER_METRICS_URL=https://gk-task-1.internal:5000/metrics,https://gk-task-2.internal:5000/metrics
+```
+
+Each target is subtracted against **its own** previous scrape and the deltas are summed, so the
+sample is the whole service's traffic measured once. Three cases are handled explicitly and none of
+them is guessed at:
+
+* a task that **just appeared** (a scale-up) has no previous scrape, so its whole lifetime counter
+  is taken — it is a young process, so that is close to the window — and `notes` says
+  `new targets=1`;
+* a task whose counter **went backwards** (a restart, or a rescheduled task reusing an address)
+  makes the whole run log `SKIPPED` and write no line: reporting the remaining tasks would publish
+  part of the traffic as all of it;
+* a task that **disappeared** simply stops contributing; the traffic it served since the last scrape
+  is lost, which is a small under-count rather than an invented one.
+
+If per-task addresses are not reachable from the cron host, do not point this at the service URL:
+query a Prometheus that has already summed the tasks (`sum(presence_shadow_diff)` /
+`sum(presence_shadow_compare_total)`) and set `SHADOW_COMPARE_METRIC` / `SHADOW_DIFF_METRIC` against
+its `/federate` output, or run the cron on the same network as the tasks.
 
 **Diff 1, checking the two counters once per environment.** Both are exported by comms-gatekeeper
 itself (`src/metrics.ts`), so the defaults need no configuration — but check the live page once,
@@ -216,9 +248,11 @@ HARNESS=/opt/archipelago-workers/tools/iteration-2-shadow-diffs
 0 9 * * *       deploy  set -a; . /etc/shadow-diffs/org.env; set +a; for d in scene-participants live-data online-set hot-scenes; do node $HARNESS/bin/shadow-diff.js summarize $d; done > /var/log/shadow-diffs/org-summary.md 2>&1
 ```
 
-5 minutes gives ~2 000 samples per diff per week, enough that a real regression shows up as a ratio
-rather than as one loud line (diff 1's sample is the number of *comparisons* gatekeeper performed in
-the window, which tracks `/scene-participants` traffic, not the cron interval).
+5 minutes gives ~2 000 *runs* per diff per week, enough that a real regression shows up as a ratio
+rather than as one loud line. Diff 1's `sampleSize` is not the run count: it is the number of
+*comparisons* gatekeeper performed in the window, summed over its tasks, so it tracks
+`/scene-participants` traffic. If the weekly total is orders of magnitude away from the traffic you
+expect, the scrape targets are wrong (a load balancer in front of them) before anything else is.
 
 `OUT_DIR` may be shared between the two environments. Every report line carries its own `env` and
 the summary splits on it, and diff 1's counter state is **per environment**: it lives in

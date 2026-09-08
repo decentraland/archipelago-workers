@@ -5,7 +5,15 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { test, describe } = require('node:test')
 
-const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../src/prometheus')
+const {
+  counterDelta,
+  hasSeries,
+  parseLabelFilter,
+  parseScrapeUrls,
+  parsePrometheusText,
+  sumCounterDeltas,
+  sumSeries
+} = require('../src/prometheus')
 
 const SAMPLE = fs.readFileSync(path.join(__dirname, 'fixtures', 'gatekeeper-metrics.txt'), 'utf8')
 
@@ -111,5 +119,63 @@ describe('counter deltas between two runs', () => {
 
   test('an unchanged counter is a zero delta, not a missing sample', () => {
     assert.equal(counterDelta(900, 900), 0)
+  })
+})
+
+describe('scrape targets', () => {
+  test('a comma-separated list of URLs becomes one target per task', () => {
+    assert.deepEqual(parseScrapeUrls('https://a.example.com/metrics'), ['https://a.example.com/metrics'])
+    assert.deepEqual(parseScrapeUrls(' https://a.example.com/metrics , https://b.example.com/metrics '), [
+      'https://a.example.com/metrics',
+      'https://b.example.com/metrics'
+    ])
+    // A repeated or empty entry is an env-file typo, not a second task.
+    assert.deepEqual(parseScrapeUrls('https://a.example.com/metrics,,https://a.example.com/metrics'), [
+      'https://a.example.com/metrics'
+    ])
+  })
+
+  test('an empty list is rejected rather than scraping nothing', () => {
+    assert.throws(() => parseScrapeUrls('   '), /at least one/i)
+    assert.throws(() => parseScrapeUrls(','), /at least one/i)
+  })
+})
+
+describe('summing counter deltas across targets', () => {
+  const A = 'https://a.example.com/metrics'
+  const B = 'https://b.example.com/metrics'
+
+  test('each target is subtracted against its own previous scrape, then summed', () => {
+    const result = sumCounterDeltas(
+      { [A]: { compare: 100, diff: 5 }, [B]: { compare: 40, diff: 1 } },
+      { [A]: { compare: 90, diff: 4 }, [B]: { compare: 30, diff: 1 } }
+    )
+
+    assert.deepEqual(result.deltas, { compare: 20, diff: 1 })
+    assert.deepEqual(result.wentBackwards, [])
+    assert.deepEqual(result.newTargets, [])
+  })
+
+  test('a target with no previous scrape contributes its whole counter and is named', () => {
+    const result = sumCounterDeltas({ [A]: { compare: 100 }, [B]: { compare: 7 } }, { [A]: { compare: 90 } })
+
+    assert.deepEqual(result.deltas, { compare: 17 }, '10 measured on A, 7 lifetime on the task that just appeared')
+    assert.deepEqual(result.newTargets, [B])
+  })
+
+  test('the first ever run has no previous state at all', () => {
+    const result = sumCounterDeltas({ [A]: { compare: 100 } }, undefined)
+    assert.deepEqual(result.deltas, { compare: 100 })
+    assert.deepEqual(result.newTargets, [A])
+  })
+
+  test('a target whose counter went backwards is named and nothing is summed for it', () => {
+    const result = sumCounterDeltas(
+      { [A]: { compare: 100 }, [B]: { compare: 3 } },
+      { [A]: { compare: 90 }, [B]: { compare: 60 } }
+    )
+
+    assert.deepEqual(result.wentBackwards, [B])
+    assert.equal(result.deltas.compare, 10, 'the sound target is still measured; the caller decides what to do')
   })
 })
