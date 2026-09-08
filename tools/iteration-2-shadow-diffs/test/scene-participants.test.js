@@ -638,3 +638,116 @@ describe('scene-participants run: a fresh target', () => {
     })
   })
 })
+
+describe('scene-participants run: a target that no longer answers', () => {
+  // Task addresses on a container scheduler are ephemeral: a deploy replaces the tasks and the
+  // addresses in GATEKEEPER_METRICS_URL stop resolving. Failing the whole run there would drop
+  // every run from the evidence until someone refreshes the env file -- exactly the window in
+  // which the shadow's numbers are being watched.
+  const refused = (url) => {
+    const error = new Error(`GET ${url} failed: connect ECONNREFUSED`)
+    return error
+  }
+
+  test('one unreachable target is logged, and the targets that answered are still reported', async () => {
+    await withTempDir(async (dir) => {
+      const printed = []
+      const env = { OUT_DIR: dir, GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}` }
+      const texts = {
+        [TASK_A]: metricsText({ diff: 2, compares: 100 }),
+        [TASK_B]: metricsText({ diff: 1, compares: 50 })
+      }
+      const fetchText = async (url) => {
+        if (texts[url] === undefined) {
+          throw refused(url)
+        }
+        return texts[url]
+      }
+      const at = (minute) => () => new Date(`2026-09-05T10:0${minute}:00.000Z`)
+
+      await run({ env, fetchText, now: at(0), out: () => {} })
+
+      // The deploy moved task 2; task 1 kept serving.
+      delete texts[TASK_B]
+      texts[TASK_A] = metricsText({ diff: 4, compares: 140 })
+      const line = await run({ env, fetchText, now: at(5), out: (text) => printed.push(text) })
+
+      assert.equal(line.sampleSize, 40, "task 1's window, measured")
+      assert.match(line.notes, /unreachable targets=1/)
+      assert.match(printed.join('\n'), /did not answer/)
+      assert.match(printed.join('\n'), /gk-task-2\.example\.com/)
+      assert.equal(
+        fs.readFileSync(path.join(dir, 'scene-participants.jsonl'), 'utf8').trim().split('\n').length,
+        2,
+        'a moved address must not delete a run from the evidence'
+      )
+    })
+  })
+
+  test('an unreachable target keeps its last known counters, so its return is not a lifetime jump', async () => {
+    await withTempDir(async (dir) => {
+      const env = { OUT_DIR: dir, GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}` }
+      const texts = {
+        [TASK_A]: metricsText({ diff: 0, compares: 100 }),
+        [TASK_B]: metricsText({ diff: 0, compares: 500 })
+      }
+      const fetchText = async (url) => {
+        if (texts[url] === undefined) {
+          throw refused(url)
+        }
+        return texts[url]
+      }
+      const at = (minute) => () => new Date(`2026-09-05T10:0${minute}:00.000Z`)
+
+      await run({ env, fetchText, now: at(0), out: () => {} })
+      delete texts[TASK_B]
+      await run({ env, fetchText, now: at(5), out: () => {} })
+
+      // Task 2 answers again from the same process: 30 comparisons since its last scrape, not 530.
+      texts[TASK_B] = metricsText({ diff: 0, compares: 530 })
+      const line = await run({ env, fetchText, now: at(9), out: () => {} })
+
+      assert.equal(line.sampleSize, 30)
+      assert.doesNotMatch(line.notes, /new targets/, 'a target that came back is not a new target')
+    })
+  })
+
+  test('every target unreachable fails the run: that is not a moved task, it is no data', async () => {
+    await withTempDir(async (dir) => {
+      await assert.rejects(
+        () =>
+          run({
+            env: { OUT_DIR: dir, GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}` },
+            fetchText: async (url) => {
+              throw refused(url)
+            },
+            now: () => new Date('2026-09-05T10:00:00.000Z'),
+            out: () => {}
+          }),
+        /no scrape target answered/
+      )
+    })
+  })
+
+  test('a 401 fails the run, because a bad token is wrong for every target', async () => {
+    await withTempDir(async (dir) => {
+      await assert.rejects(
+        () =>
+          run({
+            env: { OUT_DIR: dir, GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}` },
+            fetchText: async (url) => {
+              if (url === TASK_A) {
+                const error = new Error(`GET ${url} answered 401`)
+                error.status = 401
+                throw error
+              }
+              return metricsText({ diff: 1, compares: 10 })
+            },
+            now: () => new Date('2026-09-05T10:00:00.000Z'),
+            out: () => {}
+          }),
+        /answered 401/
+      )
+    })
+  })
+})

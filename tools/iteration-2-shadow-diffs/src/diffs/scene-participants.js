@@ -16,7 +16,7 @@
 // "difference count / comparisons since the last run". The counters cannot say which side an
 // address was missing from, so `onlyLegacy` and `onlyPulse` stay 0 and the raw counts go in `notes`.
 
-const { authHeaders, fetchText: defaultFetchText, redactUrl, requireEnv } = require('../http')
+const { authHeaders, fetchText: defaultFetchText, redactUrl, requireEnv, scrub } = require('../http')
 const {
   hasSeries,
   parseLabelFilter,
@@ -192,15 +192,49 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
   const envLabel = resolveEnvLabel(env)
 
   const headers = authHeaders(env, 'GATEKEEPER_METRICS_URL')
+  const previous = readState(outDir, DIFF, envLabel)
   const targets = []
+  const unreachable = []
   for (const url of parseScrapeUrls(metricsUrl)) {
     // Sequentially: a handful of tasks, and one scrape at a time keeps the cron footprint flat.
-    targets.push({ url, text: await fetchText(url, { headers }) })
+    try {
+      targets.push({ url, text: await fetchText(url, { headers }) })
+    } catch (error) {
+      // Task addresses are ephemeral on a container scheduler: a deploy replaces the tasks and the
+      // addresses in GATEKEEPER_METRICS_URL stop answering. That is the same fact as a task that
+      // disappeared -- the traffic it served since the last scrape is lost, a small under-count --
+      // so it is logged and the run goes on with the tasks that did answer. 401/403 is different:
+      // the token is wrong, and it is wrong for every target, so that stays fatal.
+      if (error !== null && error !== undefined && (error.status === 401 || error.status === 403)) {
+        throw error
+      }
+      // Scrubbed a second time: a message must never carry `user:password@` out to a cron log.
+      unreachable.push({ url, message: scrub(error?.message ?? error) })
+    }
   }
+  if (targets.length === 0) {
+    // Nothing answered: not a moved task but an outage, a wrong port, or a stale env file all the
+    // way through. A run with no source at all must be loud.
+    throw new Error(
+      `no scrape target answered (${plural(unreachable.length, 'target')}): ${unreachable[0].message}`
+    )
+  }
+
+  // An unreachable target keeps the counters its last successful scrape left behind, so when it
+  // answers again the delta is measured from there instead of reading as a brand-new task whose
+  // whole lifetime counter belongs to one window.
+  const carried = {}
+  for (const { url } of unreachable) {
+    const before = previous === undefined || previous === null ? undefined : previous.targets?.[url]
+    if (before !== null && typeof before === 'object') {
+      carried[url] = before
+    }
+  }
+  const nextState = (counters) => ({ ...carried, ...counters })
 
   const result = compareSceneParticipants({
     targets,
-    previous: readState(outDir, DIFF, envLabel),
+    previous,
     diffMetric: env.SHADOW_DIFF_METRIC ?? DEFAULT_DIFF_METRIC,
     compareMetric: env.SHADOW_COMPARE_METRIC ?? DEFAULT_COMPARE_METRIC,
     compareLabelFilter: parseLabelFilter(env.SHADOW_COMPARE_LABELS ?? DEFAULT_COMPARE_LABELS)
@@ -212,7 +246,7 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     // Logged, not thrown: a gatekeeper deploy is expected and must not page anyone, but the gap in
     // the window has to be visible in the cron log and must not become a data point.
     out(`[${DIFF}] env=${envLabel} at=${at} SKIPPED — ${result.reason}`)
-    writeState(outDir, DIFF, envLabel, { at, targets: result.counters })
+    writeState(outDir, DIFF, envLabel, { at, targets: nextState(result.counters) })
     return { diff: DIFF, at, env: envLabel, skipped: true, reason: result.reason }
   }
 
@@ -227,6 +261,14 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     )
   }
 
+  if (unreachable.length > 0) {
+    out(
+      `[${DIFF}] env=${envLabel} at=${at} INFO — ${plural(unreachable.length, 'target')} did not answer ` +
+        `(${unreachable.map(({ url }) => redactUrl(url)).join(', ')}): the traffic served since the last ` +
+        'scrape is not counted. Refresh GATEKEEPER_METRICS_URL if a deploy moved the task.'
+    )
+  }
+
   const line = finishRun({
     diff: DIFF,
     env,
@@ -234,10 +276,13 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     out,
     counts: result,
     explainedBy: EXPLAINED_BY,
-    notes: result.notes
+    notes:
+      unreachable.length === 0
+        ? result.notes
+        : joinNotes([result.notes, `unreachable targets=${unreachable.length}`])
   })
   // Written after the line so a crash mid-report replays the same window rather than losing it.
-  writeState(outDir, DIFF, envLabel, { at, targets: result.counters })
+  writeState(outDir, DIFF, envLabel, { at, targets: nextState(result.counters) })
   return line
 }
 
