@@ -135,6 +135,16 @@ describe('tolerance arithmetic', () => {
   })
 })
 
+describe('the human summary', () => {
+  test('a run with no sample prints NO DATA rather than a verdict', () => {
+    const line = buildReportLine({ ...BASE, sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0 })
+    const summary = formatHumanSummary(line)
+
+    assert.match(summary, /NO DATA/)
+    assert.doesNotMatch(summary, /WITHIN TOLERANCE|OUT OF TOLERANCE/)
+  })
+})
+
 describe('tolerance resolution from the environment', () => {
   test('defaults to 0.05 for every diff', () => {
     assert.equal(DEFAULT_MAX_DISAGREE_RATIO, 0.05)

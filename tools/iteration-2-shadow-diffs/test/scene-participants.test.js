@@ -168,6 +168,23 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.equal(result.agree, 10)
   })
 
+  test('a compare counter no series matches the label filter is a hard error, not an empty sample', () => {
+    // The label value drifted (a remounted route, a middleware emitting `route=` instead of
+    // `handler=`). The name is still on the page, so a name-only check passes and every run for a
+    // week reports a clean empty sample.
+    assert.throws(
+      () =>
+        compareSceneParticipants({
+          text: METRICS,
+          previous: undefined,
+          diffMetric: 'presence_shadow_diff',
+          compareMetric: 'presence_shadow_compare_total',
+          compareLabelFilter: { kind: 'genesis' }
+        }),
+      /presence_shadow_compare_total/
+    )
+  })
+
   test('a metrics page without the compare counter is a hard error', () => {
     assert.throws(
       () => compareSceneParticipants({ text: 'presence_shadow_diff{kind="land"} 3\n', previous: undefined, ...DEFAULTS }),

@@ -128,6 +128,11 @@ const summarize = (lines, options = {}) => {
         ? `no runs in the ${windowDays} d window since ${since}`
         : `${runs.length} ${runs.length === 1 ? 'run' : 'runs'} in the ${windowDays} d window since ${since}`,
       `${runsWithinTolerance}/${runs.length} within their own tolerance`,
+      // Runs happened and none of them sampled anything: the sources were silent, or a filter or a
+      // shadow never matched. That is not a clean window, and `withinTolerance` says so too.
+      runs.length > 0 && totals.sampleSize === 0
+        ? 'no samples in the window: nothing was compared, so this is not agreement'
+        : undefined,
       mixedTolerance ? `mixed tolerance across the window, strictest kept (${strictest})` : undefined
     ]
       .filter((part) => part !== undefined)
@@ -202,7 +207,9 @@ const toMarkdownTable = (rows, options = {}) => {
       String(row.onlyPulse),
       `${disagreeCount(row)} (${percent(disagreeRatio(row))})`,
       percent(row.tolerance.maxDisagreeRatio),
-      row.withinTolerance ? 'within' : 'OUT'
+      // Nothing was sampled, so there is no verdict to print: `OUT` would read as a measured
+      // disagreement and `within` as measured agreement. Neither happened.
+      row.sampleSize === 0 ? 'no data' : row.withinTolerance ? 'within' : 'OUT'
     ].join(' | ')
   )
 

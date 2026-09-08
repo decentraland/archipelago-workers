@@ -54,7 +54,11 @@ const sumSeries = (samples, name, filter = {}) =>
     0
   )
 
-const hasSeries = (samples, name) => samples.some((sample) => sample.name === name)
+// Name AND labels: a sum of 0 cannot tell "nothing happened" from "the filter matches no series at
+// all", and only the second is a configuration error. Callers use this to fail loudly on a drifted
+// label value instead of publishing a clean empty sample every run.
+const hasSeries = (samples, name, filter = {}) =>
+  samples.some((sample) => sample.name === name && matchesLabels(sample, filter))
 
 // `handler=/scene-participants,code=200` -> { handler: '/scene-participants', code: '200' }.
 // Quotes are optional; a label value containing a comma cannot be expressed here (drop that label

@@ -155,7 +155,9 @@ const appendReportLine = (dir, line) => {
 const percent = (ratio) => `${(ratio * 100).toFixed(2)}%`
 
 const formatHumanSummary = (line) => {
-  const verdict = line.withinTolerance ? 'WITHIN TOLERANCE' : 'OUT OF TOLERANCE'
+  // A zero-sample run has no verdict to print: "OUT OF TOLERANCE" would read as a disagreement
+  // that was measured, and the whole point is that nothing was.
+  const verdict = line.sampleSize === 0 ? 'NO DATA' : line.withinTolerance ? 'WITHIN TOLERANCE' : 'OUT OF TOLERANCE'
   const rows = [
     `[${line.diff}] env=${line.env} at=${line.at} ${verdict}`,
     `  sample=${line.sampleSize} agree=${line.agree} onlyLegacy=${line.onlyLegacy} onlyPulse=${line.onlyPulse}` +

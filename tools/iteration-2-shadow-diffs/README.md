@@ -248,6 +248,11 @@ Mixed tolerances inside a window take the strictest and say so in `notes`. Runs 
 window are dropped (the boundary run is kept); a run whose clock is slightly ahead is kept, since
 that is cron-host skew rather than a bad sample.
 
+A window whose runs summed to **no sample at all** — every run empty, or no runs in the window —
+verdicts `withinTolerance: false`, says `no samples in the window` / `no runs` in `notes`, and its
+table row reads `no data` instead of `within` or `OUT`. `--gate` therefore exits 1 on it: an absence
+of evidence must not open a cut-over. Both halves are pinned by tests, per run and per window.
+
 ## The cut-over gate
 
 A consumer may be switched off its LiveKit or heartbeat path when, for the diffs that cover it:
