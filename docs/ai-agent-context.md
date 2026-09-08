@@ -107,7 +107,7 @@ The `stats` workspace no longer exists. It was read-only monitoring, never in th
 
 | Stats served | Now served by |
 | --- | --- |
-| `/peers`, `/peers/{id}`, `/parcels`, `/islands`, `/islands/{id}`, `/status`, and every `/comms`-prefixed alias | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`; Pulse itself answers `308` from the legacy paths, and the `?id=<wallet>` query forms are served directly, across all realms |
+| `/peers`, `/peers/{id}`, `/parcels`, `/islands`, `/islands/{id}`, `/status`, and every `/comms`-prefixed alias | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`. Pulse itself answers `308` to `/realms/main/…` from the collection paths — `/peers`, `/parcels`, `/islands`, `/islands/{id}` and their `/comms/…` copies. Answered **directly**, across all realms: `/status`, the `?id=<wallet>` / `?all=true` query forms of `/peers` **and** `/comms/peers`, and the single-peer path form `/peers/{id}` **and** `/comms/peers/{id}` (stats served that alias, so it stays live rather than redirecting) |
 | `/about`, `/health` | **Pulse HTTP** — `/health` is the CloudFlare origin health check |
 | `/hot-scenes` | **comms-gatekeeper**, from its `engine.parcel_changes` presence map; `realm-provider` proxies it. Gatekeeper also serves `/scene-participants` |
 | `/core-status` | **retired outright** — realm-provider stopped reading it at rollout step 5 |
