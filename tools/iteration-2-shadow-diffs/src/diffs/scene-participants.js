@@ -16,8 +16,15 @@
 // "difference count / comparisons since the last run". The counters cannot say which side an
 // address was missing from, so `onlyLegacy` and `onlyPulse` stay 0 and the raw counts go in `notes`.
 
-const { authHeaders, fetchText: defaultFetchText, requireEnv } = require('../http')
-const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../prometheus')
+const { authHeaders, fetchText: defaultFetchText, redactUrl, requireEnv } = require('../http')
+const {
+  hasSeries,
+  parseLabelFilter,
+  parsePrometheusText,
+  parseScrapeUrls,
+  sumCounterDeltas,
+  sumSeries
+} = require('../prometheus')
 const { joinNotes } = require('../notes')
 const { finishRun } = require('../finish-run')
 const { resolveEnvLabel, resolveOutDir } = require('../report')
@@ -43,16 +50,8 @@ const KINDS = ['land', 'world']
 
 const NO_COMPARISONS = 'no comparisons in window'
 
-const compareSceneParticipants = ({ text, previous, diffMetric, compareMetric, compareLabelFilter = {} }) => {
-  const samples = parsePrometheusText(text)
-
-  // A page with no compare counter under the configured name and labels means the metric name or
-  // the label filter is wrong. Reading that as "no traffic" would report a clean empty sample every
-  // run, forever.
-  if (!hasSeries(samples, compareMetric, compareLabelFilter)) {
-    throw new Error(`${compareMetric} is not exported by the scraped /metrics page`)
-  }
-
+// The counters one scraped page carries, per kind and in total.
+const readCounters = (samples, { diffMetric, compareMetric, compareLabelFilter }) => {
   // The diff counter is absent until the first disagreement, which is a real zero, not an error.
   const counters = {
     diff: sumSeries(samples, diffMetric),
@@ -62,30 +61,51 @@ const compareSceneParticipants = ({ text, previous, diffMetric, compareMetric, c
     counters[`diff.${kind}`] = sumSeries(samples, diffMetric, { kind })
     counters[`compare.${kind}`] = sumSeries(samples, compareMetric, { ...compareLabelFilter, kind })
   }
+  return counters
+}
 
-  const previousCounters = previous === undefined || previous === null ? undefined : previous.counters
-  const first = previousCounters === undefined
-  const delta = (key) => counterDelta(counters[key], first ? undefined : previousCounters[key])
+// `targets` is one `{ url, text }` per gatekeeper task; each is subtracted against its own previous
+// scrape and the deltas are summed (see `sumCounterDeltas`).
+const compareSceneParticipants = ({ targets, previous, diffMetric, compareMetric, compareLabelFilter = {} }) => {
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error('at least one scrape target is required')
+  }
+
+  const counters = {}
+  for (const { url, text } of targets) {
+    const samples = parsePrometheusText(text)
+    // A page with no compare counter under the configured name and labels means the metric name or
+    // the label filter is wrong. Reading that as "no traffic" would report a clean empty sample
+    // every run, forever.
+    if (!hasSeries(samples, compareMetric, compareLabelFilter)) {
+      throw new Error(`${compareMetric} is not exported by the /metrics page at ${redactUrl(url)}`)
+    }
+    counters[url] = readCounters(samples, { diffMetric, compareMetric, compareLabelFilter })
+  }
+
+  const previousTargets = previous === undefined || previous === null ? undefined : previous.targets
+  const first = previousTargets === undefined
+  const { deltas, newTargets, wentBackwards } = sumCounterDeltas(counters, previousTargets)
 
   // A counter that went backwards means the previous scrape and this one are not from the same
-  // process lifetime, so no window can be measured. The run is skipped with the new counters kept
-  // as the next baseline; emitting the lifetime counter as a delta would look like a clean, huge
-  // window at the service's average ratio.
-  const wentBackwards = Object.keys(counters).filter((key) => delta(key) === undefined)
+  // process lifetime, so that task has no measurable window. One task out of several is enough to
+  // skip the whole run: reporting the rest would publish part of the traffic as all of it. The new
+  // counters are kept as the next baseline; emitting a lifetime counter as a delta would look like
+  // a clean, huge window at the service average ratio.
   if (wentBackwards.length > 0) {
     return {
       counterReset: true,
       reason:
-        `counters went backwards since the previous scrape (${wentBackwards.join(', ')}): ` +
-        'exporter restart or a scrape from another task; no window to measure',
+        `counters went backwards since the previous scrape (${wentBackwards.map(redactUrl).join(', ')}): ` +
+        'exporter restart, a rescheduled task, or a scrape through a load balancer; no window to measure',
       counters
     }
   }
 
-  const compareDelta = delta('compare')
-  const diffDelta = delta('diff')
+  const compareDelta = deltas.compare
+  const diffDelta = deltas.diff
   const sign = first ? '' : '+'
-  const perKind = (prefix) => KINDS.map((kind) => `${kind}=${sign}${delta(`${prefix}.${kind}`)}`).join(' ')
+  const perKind = (prefix) => KINDS.map((kind) => `${kind}=${sign}${deltas[`${prefix}.${kind}`]}`).join(' ')
 
   const notes = joinNotes([
     // The distinction WP2's compare counter exists to make: a flat compare count is a shadow that
@@ -94,6 +114,10 @@ const compareSceneParticipants = ({ text, previous, diffMetric, compareMetric, c
     (first ? 'first run: ' : '') +
       `diffAddresses=${sign}${diffDelta} (${perKind('diff')}); ` +
       `compares=${sign}${compareDelta} (${perKind('compare')})`,
+    targets.length > 1 ? `targets=${targets.length}` : undefined,
+    // A task that just scaled up has no previous scrape, so its whole (short) lifetime counter is
+    // in this window. Worth saying: it is the one case where the sample is not exactly the window.
+    first || newTargets.length === 0 ? undefined : `new targets=${newTargets.length}`,
     'counter-based: the direction of each difference is not observable'
   ])
 
@@ -116,9 +140,15 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
   const outDir = resolveOutDir(env)
   const envLabel = resolveEnvLabel(env)
 
-  const text = await fetchText(metricsUrl, { headers: authHeaders(env, 'GATEKEEPER_METRICS_URL') })
+  const headers = authHeaders(env, 'GATEKEEPER_METRICS_URL')
+  const targets = []
+  for (const url of parseScrapeUrls(metricsUrl)) {
+    // Sequentially: a handful of tasks, and one scrape at a time keeps the cron footprint flat.
+    targets.push({ url, text: await fetchText(url, { headers }) })
+  }
+
   const result = compareSceneParticipants({
-    text,
+    targets,
     previous: readState(outDir, DIFF, envLabel),
     diffMetric: env.SHADOW_DIFF_METRIC ?? DEFAULT_DIFF_METRIC,
     compareMetric: env.SHADOW_COMPARE_METRIC ?? DEFAULT_COMPARE_METRIC,
@@ -131,7 +161,7 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     // Logged, not thrown: a gatekeeper deploy is expected and must not page anyone, but the gap in
     // the window has to be visible in the cron log and must not become a data point.
     out(`[${DIFF}] env=${envLabel} at=${at} SKIPPED — ${result.reason}`)
-    writeState(outDir, DIFF, envLabel, { at, counters: result.counters })
+    writeState(outDir, DIFF, envLabel, { at, targets: result.counters })
     return { diff: DIFF, at, env: envLabel, skipped: true, reason: result.reason }
   }
 
@@ -145,7 +175,7 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     notes: result.notes
   })
   // Written after the line so a crash mid-report replays the same window rather than losing it.
-  writeState(outDir, DIFF, envLabel, { at, counters: result.counters })
+  writeState(outDir, DIFF, envLabel, { at, targets: result.counters })
   return line
 }
 

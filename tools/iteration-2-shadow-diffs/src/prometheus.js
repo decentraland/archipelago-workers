@@ -102,4 +102,74 @@ const counterDelta = (current, previous) => {
   return current < previous ? undefined : current - previous
 }
 
-module.exports = { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries }
+// One scrape URL per gatekeeper task, comma-separated. Scraping a service through its load
+// balancer is not supported and cannot be made to work with counter deltas: successive scrapes land
+// on different tasks, whose lifetime counters are unrelated numbers, so half the runs read as a
+// restart and the rest as an inflated jump. Point the harness at the task addresses (or at a
+// Prometheus that has already summed them) instead.
+const parseScrapeUrls = (raw) => {
+  const urls = []
+  for (const part of String(raw ?? '').split(',')) {
+    const url = part.trim()
+    // A repeated entry is an env-file typo, and counting one task twice would double its traffic.
+    if (url !== '' && !urls.includes(url)) {
+      urls.push(url)
+    }
+  }
+  if (urls.length === 0) {
+    throw new Error('at least one scrape URL is required')
+  }
+  return urls
+}
+
+// Per-target counter state: `{ '<url>': { '<counter>': value } }` for this scrape and the previous
+// one. Each target is subtracted against its own previous scrape and the deltas are summed, so a
+// service with several tasks is measured once, not once per lifetime.
+//
+// Targets that cannot be subtracted are named rather than guessed at: `newTargets` had no previous
+// scrape (a task that just scaled up, so its lifetime is short and its whole counter is close
+// enough to the window), `wentBackwards` moved down (a restart, or the same address answering from
+// a different process) and contributes nothing.
+const sumCounterDeltas = (current, previous) => {
+  const deltas = {}
+  const newTargets = []
+  const wentBackwards = []
+
+  for (const [url, counters] of Object.entries(current)) {
+    const raw = previous === undefined || previous === null ? undefined : previous[url]
+    const before = raw !== null && typeof raw === 'object' ? raw : undefined
+    if (before === undefined) {
+      newTargets.push(url)
+    }
+
+    const measured = {}
+    let backwards = false
+    for (const [key, value] of Object.entries(counters)) {
+      const delta = counterDelta(value, before === undefined ? undefined : before[key])
+      if (delta === undefined) {
+        backwards = true
+        break
+      }
+      measured[key] = delta
+    }
+    if (backwards) {
+      wentBackwards.push(url)
+      continue
+    }
+    for (const [key, delta] of Object.entries(measured)) {
+      deltas[key] = (deltas[key] ?? 0) + delta
+    }
+  }
+
+  return { deltas, newTargets, wentBackwards }
+}
+
+module.exports = {
+  counterDelta,
+  hasSeries,
+  parseLabelFilter,
+  parsePrometheusText,
+  parseScrapeUrls,
+  sumCounterDeltas,
+  sumSeries
+}

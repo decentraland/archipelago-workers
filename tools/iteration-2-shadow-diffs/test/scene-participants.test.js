@@ -17,16 +17,25 @@ const DEFAULTS = {
   compareLabelFilter: {}
 }
 
+// One gatekeeper task per URL: the harness scrapes each task, not the service behind its load
+// balancer, and keeps one set of counters per target.
+const TASK_A = 'https://gk-task-1.example.com/metrics'
+const TASK_B = 'https://gk-task-2.example.com/metrics'
+
+const scrape = (text, url = TASK_A) => [{ url, text }]
+
 // The state a previous scrape of the fixture page would have left behind.
-const previousCounters = (overrides = {}) => ({
-  counters: {
-    diff: 15,
-    compare: 944,
-    'diff.land': 12,
-    'diff.world': 3,
-    'compare.land': 900,
-    'compare.world': 44,
-    ...overrides
+const previousCounters = (overrides = {}, url = TASK_A) => ({
+  targets: {
+    [url]: {
+      diff: 15,
+      compare: 944,
+      'diff.land': 12,
+      'diff.world': 3,
+      'compare.land': 900,
+      'compare.world': 44,
+      ...overrides
+    }
   }
 })
 
@@ -50,7 +59,7 @@ const withTempDir = (body) => {
 
 describe('scene-participants: gatekeeper shadow counters', () => {
   test('the first run takes the counters as they stand', () => {
-    const result = compareSceneParticipants({ text: METRICS, previous: undefined, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous: undefined, ...DEFAULTS })
 
     assert.equal(result.sampleSize, 944, 'the 944 comparisons gatekeeper performed, not its 944 HTTP requests')
     assert.equal(result.agree, 929)
@@ -74,7 +83,7 @@ describe('scene-participants: gatekeeper shadow counters', () => {
       'http_requests_total{method="GET",handler="/scene-participants",code="500"} 40',
       ''
     ].join('\n')
-    const result = compareSceneParticipants({ text, previous: undefined, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(text), previous: undefined, ...DEFAULTS })
     assert.equal(result.sampleSize, 100)
     assert.equal(result.agree, 95)
   })
@@ -84,7 +93,7 @@ describe('scene-participants: gatekeeper shadow counters', () => {
       at: '2026-09-05T09:00:00.000Z',
       ...previousCounters({ diff: 13, compare: 900, 'diff.land': 10, 'compare.land': 860, 'compare.world': 40 })
     }
-    const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous, ...DEFAULTS })
 
     assert.equal(result.sampleSize, 44)
     assert.equal(result.agree, 42)
@@ -95,30 +104,33 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.match(result.notes, /world=\+4/)
   })
 
-  test('the new counters are handed back for the next run', () => {
-    const result = compareSceneParticipants({ text: METRICS, previous: undefined, ...DEFAULTS })
+  test('the new counters are handed back for the next run, one set per target', () => {
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous: undefined, ...DEFAULTS })
     assert.deepEqual(result.counters, {
-      diff: 15,
-      compare: 944,
-      'diff.land': 12,
-      'diff.world': 3,
-      'compare.land': 900,
-      'compare.world': 44
+      [TASK_A]: {
+        diff: 15,
+        compare: 944,
+        'diff.land': 12,
+        'diff.world': 3,
+        'compare.land': 900,
+        'compare.world': 44
+      }
     })
   })
 
   test('a counter that went backwards skips the run instead of reporting a lifetime counter', () => {
     const previous = { at: '...', ...previousCounters({ diff: 900, compare: 90000, 'compare.land': 89000 }) }
-    const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous, ...DEFAULTS })
 
     assert.equal(result.counterReset, true)
     assert.equal(result.sampleSize, undefined, 'a reset run has no sample at all')
     assert.match(result.reason, /backwards/i)
+    assert.match(result.reason, /gk-task-1\.example\.com/, 'the reason names the target that moved')
   })
 
   test('a flat compare counter is a shadow that never ran, not two sources agreeing', () => {
     const previous = { at: '...', ...previousCounters() }
-    const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous, ...DEFAULTS })
 
     assert.equal(result.sampleSize, 0, 'no comparisons happened, so there is no sample')
     assert.equal(result.agree, 0)
@@ -130,16 +142,81 @@ describe('scene-participants: gatekeeper shadow counters', () => {
       at: '...',
       ...previousCounters({ diff: 0, compare: 939, 'diff.land': 0, 'diff.world': 0, 'compare.land': 895 })
     }
-    const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(METRICS), previous, ...DEFAULTS })
     assert.equal(result.sampleSize, 5)
     assert.equal(result.agree, 0)
     assert.match(result.notes, /diffAddresses=\+15/)
   })
 
+  test('two tasks are scraped separately and their deltas are summed', () => {
+    // The normal shape for a service with more than one task: the harness is pointed at each task,
+    // because scraping through a load balancer lands successive scrapes on different lifetimes.
+    const previous = {
+      at: '...',
+      targets: {
+        [TASK_A]: { diff: 10, compare: 500, 'diff.land': 10, 'diff.world': 0, 'compare.land': 500, 'compare.world': 0 },
+        [TASK_B]: { diff: 4, compare: 300, 'diff.land': 4, 'diff.world': 0, 'compare.land': 300, 'compare.world': 0 }
+      }
+    }
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: metricsText({ diff: 12, compares: 520 }) },
+        { url: TASK_B, text: metricsText({ diff: 6, compares: 330 }) }
+      ],
+      previous,
+      ...DEFAULTS
+    })
+
+    assert.equal(result.sampleSize, 50, '20 comparisons on task 1 plus 30 on task 2')
+    assert.equal(result.agree, 46, '4 differing addresses across the two tasks')
+    assert.match(result.notes, /targets=2/)
+  })
+
+  test('a task that appeared since the last run contributes its own counter and says so', () => {
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: metricsText({ diff: 12, compares: 520 }) },
+        { url: TASK_B, text: metricsText({ diff: 1, compares: 9 }) }
+      ],
+      previous: {
+        at: '...',
+        targets: {
+          [TASK_A]: { diff: 10, compare: 500, 'diff.land': 10, 'diff.world': 0, 'compare.land': 500, 'compare.world': 0 }
+        }
+      },
+      ...DEFAULTS
+    })
+
+    assert.equal(result.sampleSize, 29, '20 measured on task 1, 9 lifetime on the task that scaled up')
+    assert.match(result.notes, /new targets=1/)
+  })
+
+  test('one task out of two going backwards skips the whole run', () => {
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: metricsText({ diff: 12, compares: 520 }) },
+        { url: TASK_B, text: metricsText({ diff: 0, compares: 2 }) }
+      ],
+      previous: {
+        at: '...',
+        targets: {
+          [TASK_A]: { diff: 10, compare: 500, 'diff.land': 10, 'diff.world': 0, 'compare.land': 500, 'compare.world': 0 },
+          [TASK_B]: { diff: 4, compare: 300, 'diff.land': 4, 'diff.world': 0, 'compare.land': 300, 'compare.world': 0 }
+        }
+      },
+      ...DEFAULTS
+    })
+
+    // Half a window is not a window: the surviving task's delta would be reported as the whole
+    // service's traffic and the ratio would drift with every restart.
+    assert.equal(result.counterReset, true)
+    assert.match(result.reason, /gk-task-2\.example\.com/)
+  })
+
   test('the diff and compare metric names are parameters', () => {
     const text = 'my_diff{kind="land"} 4\nmy_compares{route="/scene-participants"} 100\n'
     const result = compareSceneParticipants({
-      text,
+      targets: scrape(text),
       previous: undefined,
       diffMetric: 'my_diff',
       compareMetric: 'my_compares',
@@ -151,7 +228,7 @@ describe('scene-participants: gatekeeper shadow counters', () => {
 
   test('a request counter stays reachable as an override for a gatekeeper without the compare counter', () => {
     const result = compareSceneParticipants({
-      text: METRICS,
+      targets: scrape(METRICS),
       previous: undefined,
       diffMetric: 'presence_shadow_diff',
       compareMetric: 'http_requests_total',
@@ -163,7 +240,7 @@ describe('scene-participants: gatekeeper shadow counters', () => {
 
   test('a metrics page without the diff counter reads as zero diffs, not as a failure', () => {
     const text = 'presence_shadow_compare_total{kind="land"} 10\n'
-    const result = compareSceneParticipants({ text, previous: undefined, ...DEFAULTS })
+    const result = compareSceneParticipants({ targets: scrape(text), previous: undefined, ...DEFAULTS })
     assert.equal(result.sampleSize, 10)
     assert.equal(result.agree, 10)
   })
@@ -175,7 +252,7 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.throws(
       () =>
         compareSceneParticipants({
-          text: METRICS,
+          targets: scrape(METRICS),
           previous: undefined,
           diffMetric: 'presence_shadow_diff',
           compareMetric: 'presence_shadow_compare_total',
@@ -187,7 +264,12 @@ describe('scene-participants: gatekeeper shadow counters', () => {
 
   test('a metrics page without the compare counter is a hard error', () => {
     assert.throws(
-      () => compareSceneParticipants({ text: 'presence_shadow_diff{kind="land"} 3\n', previous: undefined, ...DEFAULTS }),
+      () =>
+        compareSceneParticipants({
+          targets: scrape('presence_shadow_diff{kind="land"} 3\n'),
+          previous: undefined,
+          ...DEFAULTS
+        }),
       /presence_shadow_compare_total/
     )
   })
@@ -360,6 +442,41 @@ describe('scene-participants run', () => {
         out: () => {}
       })
       assert.equal(line.sampleSize, 940)
+    })
+  })
+
+  test('GATEKEEPER_METRICS_URL takes one URL per task and scrapes all of them', async () => {
+    await withTempDir(async (dir) => {
+      const scraped = []
+      const env = {
+        OUT_DIR: dir,
+        GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}`,
+        GATEKEEPER_METRICS_TOKEN: 'not-a-real-token-0000'
+      }
+      const texts = {
+        [TASK_A]: metricsText({ diff: 2, compares: 100 }),
+        [TASK_B]: metricsText({ diff: 3, compares: 200 })
+      }
+      const fetchText = async (url, options) => {
+        scraped.push({ url, auth: options.headers.authorization })
+        return texts[url]
+      }
+
+      const first = await run({ env, fetchText, now: () => new Date('2026-09-05T10:00:00.000Z'), out: () => {} })
+
+      assert.deepEqual(
+        scraped.map((call) => call.url),
+        [TASK_A, TASK_B]
+      )
+      assert.ok(scraped.every((call) => call.auth === 'Bearer not-a-real-token-0000'))
+      assert.equal(first.sampleSize, 300, 'the first run takes both lifetime counters')
+
+      texts[TASK_A] = metricsText({ diff: 2, compares: 140 })
+      texts[TASK_B] = metricsText({ diff: 4, compares: 260 })
+      const second = await run({ env, fetchText, now: () => new Date('2026-09-05T10:05:00.000Z'), out: () => {} })
+
+      assert.equal(second.sampleSize, 100, '40 comparisons on task 1 plus 60 on task 2')
+      assert.equal(second.agree, 99)
     })
   })
 
