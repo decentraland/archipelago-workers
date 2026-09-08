@@ -100,6 +100,10 @@ describe('reading a set through redis-cli', () => {
       '-p',
       '6380',
       '--no-auth-warning',
+      // Explicit: the parser expects bare members one per line, which redis-cli only does in raw
+      // mode. It picks raw automatically when stdout is a pipe, but that is an assumption about the
+      // binary, and asking for it costs one argument.
+      '--raw',
       '-n',
       '2',
       'smembers',
