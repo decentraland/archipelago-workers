@@ -21,6 +21,18 @@ const { clampNotes } = require('./notes')
 const DEFAULT_WINDOW_DAYS = 7
 const DAY_MS = 24 * 60 * 60 * 1000
 
+// The documented cron interval (README). Used only to say how many runs a full window would have
+// produced: gate step 1 is "runs consistent with the cron interval", and counting 2 016 by eye is
+// how a two-day outage gets signed off as a clean week.
+const DEFAULT_INTERVAL_MINUTES = 5
+
+// Below this share of the expected runs, `notes` calls out the gap. Not a verdict: a cron that
+// started mid-window is a normal reason to be short, and the reader is the one who knows.
+const RUN_GAP_THRESHOLD = 0.9
+
+const expectedRuns = (windowDays, intervalMinutes) =>
+  intervalMinutes > 0 ? Math.floor((windowDays * 24 * 60) / intervalMinutes) : 0
+
 const assertKnownDiff = (diff) => {
   if (typeof diff !== 'string' || diff === '') {
     throw new Error(`a diff name is required; expected one of ${DIFF_NAMES.join(', ')}`)
@@ -82,8 +94,10 @@ const summarize = (lines, options = {}) => {
   assertKnownDiff(diff)
   const now = options.now ?? new Date()
   const windowDays = options.windowDays ?? DEFAULT_WINDOW_DAYS
+  const intervalMinutes = options.intervalMinutes ?? DEFAULT_INTERVAL_MINUTES
   const runs = selectRuns(lines, { diff, now, windowDays, env: options.env })
   const since = new Date(now.getTime() - windowDays * DAY_MS).toISOString()
+  const expected = expectedRuns(windowDays, intervalMinutes)
 
   const totals = { sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0 }
   const explainedBy = []
@@ -132,6 +146,11 @@ const summarize = (lines, options = {}) => {
       // shadow never matched. That is not a clean window, and `withinTolerance` says so too.
       runs.length > 0 && totals.sampleSize === 0
         ? 'no samples in the window: nothing was compared, so this is not agreement'
+        : undefined,
+      // Gate step 1, computed instead of eyeballed. A skipped diff-1 run (counter reset) and a dead
+      // cron both land here, and the cron log's SKIPPED lines tell them apart.
+      runs.length > 0 && expected > 0 && runs.length < expected * RUN_GAP_THRESHOLD
+        ? `run gap: ${runs.length} of ~${expected} expected at ${intervalMinutes} min`
         : undefined,
       mixedTolerance ? `mixed tolerance across the window, strictest kept (${strictest})` : undefined
     ]
@@ -236,6 +255,14 @@ const parseArgs = (argv) => {
       }
       options.windowDays = value
       i += 1
+    } else if (arg === '--interval-minutes') {
+      const raw = argv[i + 1]
+      const value = Number(raw)
+      if (!Number.isFinite(value) || value <= 0) {
+        throw new Error(`--interval-minutes must be a positive number, got "${raw}"`)
+      }
+      options.intervalMinutes = value
+      i += 1
     } else if (arg === '--env') {
       options.env = argv[i + 1]
       i += 1
@@ -248,6 +275,18 @@ const parseArgs = (argv) => {
   return { diff: positional[0], ...options }
 }
 
+const resolveIntervalMinutes = (env = {}) => {
+  const raw = env.CRON_INTERVAL_MINUTES
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return DEFAULT_INTERVAL_MINUTES
+  }
+  const value = Number(String(raw).trim())
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`CRON_INTERVAL_MINUTES must be a positive number, got "${raw}"`)
+  }
+  return value
+}
+
 const runSummarize = ({ argv = [], env = {}, now = () => new Date(), out = console.log } = {}) => {
   const parsed = parseArgs(argv)
   assertKnownDiff(parsed.diff)
@@ -255,7 +294,13 @@ const runSummarize = ({ argv = [], env = {}, now = () => new Date(), out = conso
   const at = now()
   const windowDays = parsed.windowDays ?? DEFAULT_WINDOW_DAYS
   const lines = readJsonl(resolveOutDir(env), parsed.diff)
-  const scope = { diff: parsed.diff, now: at, windowDays, env: parsed.env }
+  const scope = {
+    diff: parsed.diff,
+    now: at,
+    windowDays,
+    env: parsed.env,
+    intervalMinutes: parsed.intervalMinutes ?? resolveIntervalMinutes(env)
+  }
 
   const aggregate = summarize(lines, scope)
   const table = toMarkdownTable(summarizeByEnv(lines, scope), scope)
@@ -269,7 +314,9 @@ const runSummarize = ({ argv = [], env = {}, now = () => new Date(), out = conso
 module.exports = {
   COLUMNS,
   DAY_MS,
+  DEFAULT_INTERVAL_MINUTES,
   DEFAULT_WINDOW_DAYS,
+  expectedRuns,
   parseArgs,
   readJsonl,
   runSummarize,

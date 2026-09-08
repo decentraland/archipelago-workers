@@ -39,6 +39,7 @@ const DEFAULT_COMPARE_METRIC = 'presence_shadow_compare_total'
 // predates `presence_shadow_compare_total`).
 const DEFAULT_COMPARE_LABELS = ''
 
+// The three the brief pins, verbatim, then this diff's own shift (test/explained-by.test.js).
 const EXPLAINED_BY = [
   'no-comms peers visible to Pulse',
   '<= 2 s batching',

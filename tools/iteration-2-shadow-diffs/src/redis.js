@@ -264,12 +264,12 @@ const readSetViaResp = (url, key, options = {}) => {
         finish(error)
       }
     })
-    socket.on('connect', () => {
+    // Once, on the event that means "ready to speak RESP". A TLSSocket emits BOTH 'connect' and
+    // 'secureConnect' (tls.connect registers the handshake starter on 'connect'), so listening for
+    // both sent AUTH/SELECT/SMEMBERS twice and authenticated twice per read.
+    socket.on(parsed.tls ? 'secureConnect' : 'connect', () => {
       socket.write(commands.map(encodeCommand).join(''))
     })
-    if (parsed.tls) {
-      socket.on('secureConnect', () => socket.write(commands.map(encodeCommand).join('')))
-    }
   })
 }
 

@@ -9,7 +9,8 @@ const { finishRun } = require('../finish-run')
 
 const DIFF = 'live-data'
 
-// The three documented semantic shifts between a LiveKit-derived count and a Pulse-derived one.
+// The three documented semantic shifts between a LiveKit-derived count and a Pulse-derived one,
+// verbatim from the brief; every diff opens with these (test/explained-by.test.js).
 // The cut-over gate reads: the symmetric difference is explained only by these.
 const EXPLAINED_BY = ['no-comms peers visible to Pulse', '<= 2 s batching', '~5 s vs webhook latency']
 

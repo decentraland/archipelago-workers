@@ -37,7 +37,9 @@ const fakeSpawn = ({ stdout = '', stderr = '', code = 0, failWith } = {}) => {
 }
 
 // A stand-in for a socket: records what was written, answers with the given RESP frames.
-const fakeSocket = (replies) => {
+// `events` is what the socket emits once it is up -- a real TLSSocket emits BOTH 'connect' and
+// 'secureConnect', which is the whole point of the rediss:// test below.
+const fakeSocket = (replies, events = ['connect']) => {
   const written = []
   const connect = () => {
     const socket = new EventEmitter()
@@ -49,11 +51,40 @@ const fakeSocket = (replies) => {
       setImmediate(() => socket.emit('data', Buffer.from(replies, 'utf8')))
       return true
     }
-    setImmediate(() => socket.emit('connect'))
+    setImmediate(() => {
+      for (const event of events) {
+        socket.emit(event)
+      }
+    })
     return socket
   }
   return { written, connect }
 }
+
+describe('the RESP client over TLS', () => {
+  test('a rediss:// read writes the command batch once, not once per connect event', async () => {
+    // tls.connect() returns a TLSSocket whose connect(options, cb) registers the handshake starter
+    // on 'connect', so both events fire. Writing on both sent AUTH/SELECT/SMEMBERS twice.
+    const { written, connect } = fakeSocket('+OK\r\n+OK\r\n*1\r\n$4\r\n0xaa\r\n', [
+      'connect',
+      'secureConnect'
+    ])
+
+    const members = await readSetViaResp('rediss://:s3cret@redis.example.com:6380/2', 'peers:online', { connect })
+
+    assert.deepEqual(members, ['0xaa'])
+    assert.equal(written.length, 1, 'one batch, on the TLS handshake')
+    assert.equal(written.join('').match(/AUTH/g).length, 1, 'and exactly one AUTH')
+  })
+
+  test('a plain redis:// read still writes on connect', async () => {
+    const { written, connect } = fakeSocket('+OK\r\n*1\r\n$4\r\n0xaa\r\n')
+    const members = await readSetViaResp('redis://redis.example.com/2', 'peers:online', { connect })
+
+    assert.deepEqual(members, ['0xaa'])
+    assert.equal(written.length, 1)
+  })
+})
 
 describe('reading a set through redis-cli', () => {
   test('addresses the configured host, port and db and asks for the members', async () => {
