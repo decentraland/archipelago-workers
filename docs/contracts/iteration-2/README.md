@@ -135,3 +135,9 @@ consumers read the two documented keys.
   publisher's snapshot.
 - **Publisher liveness.** A `server_name` silent for more than ≈ 2.5 × the snapshot interval (150 s) is presumed gone:
   drop its entries and forget its `seq`. When it returns it starts with a snapshot, as on any restart.
+
+## Subjects (addendum)
+
+- `peer.{address}.connect` — published by ws-connector after every successful handshake (empty payload, lowercase
+  address). comms-gatekeeper re-emits the peer's current `engine.peer.{address}.island_changed` on it, so a
+  reconnecting WebSocket gets its island back without a cluster change (this is what heartbeats used to provide).
