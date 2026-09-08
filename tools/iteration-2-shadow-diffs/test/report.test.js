@@ -101,10 +101,12 @@ describe('tolerance arithmetic', () => {
     assert.equal(disagreeRatio({ sampleSize: 4, agree: 3 }), 0.25)
   })
 
-  test('an empty sample is 0, never NaN, and is within tolerance', () => {
+  test('an empty sample is 0, never NaN, and is never within tolerance', () => {
+    // Nothing was compared, so nothing agreed: a 0/0 run is an absence of evidence, and a gate
+    // read from `withinTolerance` must not count it as evidence of agreement.
     assert.equal(disagreeRatio({ sampleSize: 0, agree: 0 }), 0)
     const line = buildReportLine({ ...BASE, sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0 })
-    assert.equal(line.withinTolerance, true)
+    assert.equal(line.withinTolerance, false)
   })
 
   test('withinTolerance is inclusive at the boundary', () => {

@@ -131,11 +131,11 @@ describe('summarize', () => {
     assert.equal(summarize(lines, { diff: 'live-data', now: NOW, env: 'org' }).env, 'org')
   })
 
-  test('an empty window is reported as zero runs, within tolerance, never NaN', () => {
+  test('an empty window is reported as zero runs, never NaN, and never within tolerance', () => {
     const aggregate = summarize([], { diff: 'live-data', now: NOW })
     assert.equal(aggregate.runs, 0)
     assert.equal(aggregate.sampleSize, 0)
-    assert.equal(aggregate.withinTolerance, true)
+    assert.equal(aggregate.withinTolerance, false, 'no runs is not a clean week')
     assert.match(aggregate.notes, /no runs/i)
   })
 

@@ -23,17 +23,35 @@ tools/iteration-2-shadow-diffs/
 
 | # | name | today's answer | Pulse-fed answer | sample unit |
 |---|---|---|---|---|
-| 1 | `scene-participants` | LiveKit room members | comms-gatekeeper presence map | one `/scene-participants` request |
+| 1 | `scene-participants` | LiveKit room members | comms-gatekeeper presence map | one shadow comparison gatekeeper performed |
 | 2 | `live-data` | worlds-content-server `/live-data` | Pulse `/realms`, filtered to `.dcl.eth` | one world name |
 | 3 | `online-set` | social-service `PEERS_CACHE_KEY` | social-service `PEERS_CACHE_KEY_PULSE` | one address (counted, never named) |
 | 4 | `hot-scenes` | archipelago-stats `/hot-scenes` | comms-gatekeeper `/hot-scenes` | one scene id in the top 100 |
 
-Diff 1 is **counter-based**: comms-gatekeeper already compares both answers per request and
-increments `presence_shadow_diff{kind=land|world}` by the size of the symmetric difference, so this
-diff scrapes `/metrics` and subtracts the previous scrape (a state file next to the report). It
-therefore cannot say which side an address was missing from, and leaves `onlyLegacy` / `onlyPulse`
-at 0 with the raw difference count in `notes`. The other three see both answers directly and fill
-all four counts.
+Diff 1 is **counter-based**. comms-gatekeeper compares both answers per request and increments two
+counters per `kind` (`land` / `world`):
+
+| counter | meaning | role here |
+|---|---|---|
+| `presence_shadow_diff{kind}` | addresses in the symmetric difference | the numerator |
+| `presence_shadow_compare_total{kind}` | comparisons that actually produced two answers | the denominator |
+
+so this diff scrapes `/metrics` and subtracts the previous scrape (a per-environment state file next
+to the report) to get *difference count / comparisons since the last run*, per `kind` and in total.
+
+**The denominator is comparisons, not HTTP requests.** gatekeeper's compare runs only
+`if (shadowCompare && mapIsUsable)` and its body is inside a catch-and-log, so a failing LiveKit
+side (bad credentials, room-list timeout, rate limit) or a presence map still cold after a deploy
+leaves `presence_shadow_diff` flat while `/scene-participants` traffic keeps climbing. Divided by
+requests, that reads as `sampleSize: 940, agree: 940, withinTolerance: true` every five minutes —
+a perfect week over a shadow that never executed. Divided by comparisons it reads as what it is:
+`sampleSize: 0`, `withinTolerance: false`, `notes: "no comparisons in window"`. This is what
+`presence_shadow_compare_total`'s own help text was written to prevent, and 4xx/5xx responses and
+the `503 warming` answers that never reach the compare are out of the denominator by construction.
+
+Diff 1 cannot say which side an address was missing from, so it leaves `onlyLegacy` / `onlyPulse` at
+0 with the raw counts in `notes`. The other three see both answers directly and fill all four
+counts.
 
 Diff 3 never puts an address in its output. `compareOnlineSets` returns only
 `sampleSize`/`agree`/`onlyLegacy`/`onlyPulse`/`notes`; there is no field that could carry a member,
@@ -84,10 +102,15 @@ The report line, identical for all four diffs:
 ```
 
 `withinTolerance` is `disagree / sampleSize <= maxDisagreeRatio`, where `disagree = sampleSize -
-agree`. An empty sample (`sampleSize: 0`) is 0 %, never `NaN`, and is within tolerance. The
-comparison is inclusive at the boundary, with a small epsilon so an exact boundary is not lost to
-float64 — `0.29 * 100` is `28.999999999999996`, and 29 in 100 against a 29 % tolerance is not a
-breach.
+agree`. The comparison is inclusive at the boundary, with a small epsilon so an exact boundary is
+not lost to float64 — `0.29 * 100` is `28.999999999999996`, and 29 in 100 against a 29 % tolerance
+is not a breach.
+
+**An empty sample is never within tolerance.** `sampleSize: 0` ratios as 0 %, never `NaN`, but the
+verdict is `false` and `notes` says why: nothing was compared, so nothing agreed, and the gate is
+read off this flag. A window whose runs all have an empty sample verdicts `false` as well, and the
+Markdown table prints such a row as `no data` instead of a verdict — the failure mode this rules
+out is a whole week of "the source answered nothing" reading as a whole week of agreement.
 
 ## Environment variables
 
@@ -98,9 +121,9 @@ breach.
 | `MAX_DISAGREE_RATIO` | all | `0.05` | global tolerance override, in `[0, 1]` |
 | `MAX_DISAGREE_RATIO_<DIFF>` | all | — | per-diff override, wins over the global one; the diff name upper-snake-cased (`MAX_DISAGREE_RATIO_LIVE_DATA`) |
 | `GATEKEEPER_METRICS_URL` | 1 | — | full URL of comms-gatekeeper's Prometheus page |
-| `SHADOW_DIFF_METRIC` | 1 | `presence_shadow_diff` | |
-| `SHADOW_REQUESTS_METRIC` | 1 | `http_requests_total` | **verify against the deployed page** — see the caveat below |
-| `SHADOW_REQUESTS_LABELS` | 1 | `handler=/scene-participants` | comma-separated `key=value`; quotes optional |
+| `SHADOW_DIFF_METRIC` | 1 | `presence_shadow_diff` | the numerator; pinned by the contract |
+| `SHADOW_COMPARE_METRIC` | 1 | `presence_shadow_compare_total` | the denominator: comparisons performed, not requests served |
+| `SHADOW_COMPARE_LABELS` | 1 | *(empty)* | comma-separated `key=value` (quotes optional); empty sums the compare counter over every `kind` |
 | `WCS_URL` | 2 | — | worlds-content-server base URL; `/live-data` is appended |
 | `PULSE_URL` | 2 | — | Pulse base URL; `/realms` is appended |
 | `REDIS_URL` | 3 | — | `redis://[user:pass@]host[:port][/db]`, or `rediss://` for TLS |
@@ -112,18 +135,29 @@ breach.
 A trailing slash on any base URL is fine. Base URLs must not carry a query string — the path is
 appended verbatim.
 
-**Diff 1, the request-counter name.** `presence_shadow_diff` is pinned by the contract and is exact.
-The *request* counter is whatever the deployed comms-gatekeeper's HTTP middleware exports, which the
-harness does not pin. Check the live page once per environment before trusting the ratio:
+**Diff 1, checking the two counters once per environment.** Both are exported by comms-gatekeeper
+itself (`src/metrics.ts`), so the defaults need no configuration — but check the live page once,
+because a `/metrics` page that does not carry them at all is the one failure that cannot be
+distinguished from silence:
 
 ```bash
-curl -s "$GATEKEEPER_METRICS_URL" | grep -E '^[a-z_]*http[a-z_]*\{?.*scene-participants'
+curl -s -H "Authorization: Bearer $GATEKEEPER_METRICS_TOKEN" "$GATEKEEPER_METRICS_URL" \
+  | grep -E '^presence_shadow_(diff|compare_total)'
 ```
 
-If the name or labels differ (a `_count` suffix on a histogram, `route=` instead of `handler=`), set
-`SHADOW_REQUESTS_METRIC` / `SHADOW_REQUESTS_LABELS`. A page with **no** series under the configured
-name is a hard error, on purpose: reading it as "no traffic" would report a clean empty sample every
-run, forever, and the gate would pass on nothing at all.
+Expect one line per `kind`. A page with **no** series matching the configured name *and* label
+filter is a hard error, on purpose: reading it as "no traffic" would report a clean empty sample
+every run, forever, and the gate would pass on nothing at all. A page that carries the counter but
+whose compare count has not moved since the previous scrape is not an error — that is the
+`no comparisons in window` line above, `withinTolerance: false`, and it is a real finding about the
+shadow rather than about the harness.
+
+`SHADOW_COMPARE_METRIC` / `SHADOW_COMPARE_LABELS` exist for a gatekeeper deployed before
+`presence_shadow_compare_total` existed; the closest substitute is
+`SHADOW_COMPARE_METRIC=http_requests_total` with
+`SHADOW_COMPARE_LABELS=handler=/scene-participants,code=200`. Note what that costs: requests that
+never reached the compare are back in the denominator, so the ratio is diluted and a shadow that
+never ran can read as agreement again. Prefer deploying the counter.
 
 **Diff 3, credentials.** The password is read out of `REDIS_URL` and handed to `redis-cli` in
 `REDISCLI_AUTH`, never in argv (argv is world-readable in `/proc`). Error messages redact the

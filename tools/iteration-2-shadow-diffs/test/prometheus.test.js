@@ -12,18 +12,18 @@ const SAMPLE = fs.readFileSync(path.join(__dirname, 'fixtures', 'gatekeeper-metr
 describe('prometheus text parsing', () => {
   test('skips HELP and TYPE lines and keeps one entry per series', () => {
     const samples = parsePrometheusText(SAMPLE)
-    assert.equal(samples.length, 6)
+    assert.equal(samples.length, 8)
     assert.ok(samples.every((sample) => !sample.name.startsWith('#')))
   })
 
   test('reads the name, the labels and the value', () => {
     const samples = parsePrometheusText(SAMPLE)
     assert.deepEqual(samples[0], { name: 'presence_shadow_diff', labels: { kind: 'land' }, value: 12 })
-    assert.deepEqual(samples[2], {
-      name: 'http_requests_total',
-      labels: { method: 'GET', handler: '/scene-participants', code: '200' },
-      value: 940
-    })
+    assert.deepEqual(samples[2], { name: 'presence_shadow_compare_total', labels: { kind: 'land' }, value: 900 })
+    assert.deepEqual(
+      samples.find((sample) => sample.name === 'http_requests_total' && sample.labels.code === '200'),
+      { name: 'http_requests_total', labels: { method: 'GET', handler: '/scene-participants', code: '200' }, value: 940 }
+    )
   })
 
   test('reads an unlabelled series', () => {
@@ -50,6 +50,7 @@ describe('summing series', () => {
   test('sums every series of one metric name', () => {
     const samples = parsePrometheusText(SAMPLE)
     assert.equal(sumSeries(samples, 'presence_shadow_diff'), 15)
+    assert.equal(sumSeries(samples, 'presence_shadow_compare_total'), 944)
   })
 
   test('sums only the series matching the label filter', () => {

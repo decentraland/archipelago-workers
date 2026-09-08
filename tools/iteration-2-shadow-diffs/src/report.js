@@ -48,9 +48,17 @@ const disagreeCount = ({ sampleSize, agree }) => sampleSize - agree
 
 const disagreeRatio = ({ sampleSize, agree }) => (sampleSize === 0 ? 0 : disagreeCount({ sampleSize, agree }) / sampleSize)
 
+// An empty sample is NEVER within tolerance. Nothing was compared, so nothing agreed: a 0/0 run is
+// an absence of evidence, and the cut-over gate is read off this flag. Answering `true` here is how
+// a week of "the shadow never ran" (diff 1 with a flat compare counter, a label filter that matches
+// nothing, a source that answers nothing) reads as a clean week. `notes` says why the sample is
+// empty; the Markdown table shows such a row as "no data" rather than as a verdict.
 const withinTolerance = ({ sampleSize, agree, tolerance }) => {
+  if (sampleSize === 0) {
+    return false
+  }
   const disagree = disagreeCount({ sampleSize, agree })
-  if (sampleSize === 0 || disagree <= 0) {
+  if (disagree <= 0) {
     return true
   }
   return disagree <= tolerance.maxDisagreeRatio * sampleSize + RATIO_EPSILON
