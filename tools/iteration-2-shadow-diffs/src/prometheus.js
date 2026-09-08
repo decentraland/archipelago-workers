@@ -7,6 +7,12 @@
 // name{label="value",...} value [timestamp]
 const SERIES = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{([^}]*)\})?[ \t]+(.+)$/
 const LABEL = /([a-zA-Z_][a-zA-Z0-9_]*)[ \t]*=[ \t]*"((?:[^"\\]|\\.)*)"/g
+// `# HELP <name> …` / `# TYPE <name> <type>` — the only evidence a page gives that a metric exists
+// but has never been incremented. prom-client emits both for every registered metric, and no sample
+// line for a labelled counter until its first `inc()`, so this is what separates "this task has not
+// compared yet" from "the metric name is wrong". Both spellings, with or without the space after
+// `#`; a comment that is not HELP/TYPE, or one with no metric name, declares nothing.
+const META = /^#[ \t]*(?:HELP|TYPE)[ \t]+([a-zA-Z_:][a-zA-Z0-9_:]*)(?:[ \t]|$)/
 
 const unescapeLabelValue = (raw) => raw.replace(/\\(["\\n])/g, (_, ch) => (ch === 'n' ? '\n' : ch))
 
@@ -23,11 +29,23 @@ const parseLabels = (raw) => {
   return labels
 }
 
-const parsePrometheusText = (text) => {
+// One scraped page: its sample lines, and the names of every metric it *declares* via HELP/TYPE.
+// The two are different facts. A counter with `labelNames` publishes no sample line until its first
+// increment, so a task that has not performed a single shadow comparison declares the counter and
+// samples nothing — which is a zero for that window, not a missing metric.
+const parseMetricPage = (text) => {
   const samples = []
+  const declared = new Set()
   for (const rawLine of String(text ?? '').split('\n')) {
     const line = rawLine.replace(/\r$/, '').trim()
-    if (line === '' || line.startsWith('#')) {
+    if (line === '') {
+      continue
+    }
+    if (line.startsWith('#')) {
+      const meta = META.exec(line)
+      if (meta !== null) {
+        declared.add(meta[1])
+      }
       continue
     }
     const match = SERIES.exec(line)
@@ -42,8 +60,11 @@ const parsePrometheusText = (text) => {
     }
     samples.push({ name: match[1], labels: parseLabels(match[2]), value })
   }
-  return samples
+  return { samples, declared }
 }
+
+// The samples alone, for the callers that do not care what else the page declares.
+const parsePrometheusText = (text) => parseMetricPage(text).samples
 
 const matchesLabels = (sample, filter) =>
   Object.entries(filter).every(([key, value]) => sample.labels[key] === String(value))
@@ -168,6 +189,7 @@ module.exports = {
   counterDelta,
   hasSeries,
   parseLabelFilter,
+  parseMetricPage,
   parsePrometheusText,
   parseScrapeUrls,
   sumCounterDeltas,
