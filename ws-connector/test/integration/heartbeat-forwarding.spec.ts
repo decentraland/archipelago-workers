@@ -35,6 +35,14 @@ import { NatsMsg } from '@well-known-components/nats-component/dist/types'
  * archipelago-stats' peer map growing without bound. The unit spec
  * (`test/unit/ws-handler.spec.ts`) covers the rest of the value vocabulary against a stubbed nats.
  *
+ * The same three programs also pin `peer.<addr>.connect`, the announcement that replaces what the
+ * heartbeat used to provide: comms-gatekeeper publishes `engine.peer.<addr>.island_changed` only on a
+ * Pulse cluster change, so a reconnecting socket needs ws-connector to say it is there. It is
+ * deliberately **not** gated by this flag, and this file is where that is worth asserting — it is
+ * the only place every flag state is already built, and the state it matters most in is the off
+ * one, where nothing else on the socket announces anything. It is recorded in its own list so
+ * WP3b's `toEqual([])` keeps saying exactly what it said about the retired pair.
+ *
  * One program per flag state, each with its own server: `defaultServerConfig()` bumps a
  * module-level port counter on every call, so a second and third call cost nothing but a port.
  */
@@ -148,6 +156,8 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
       let ws: WebSocket | undefined
       let address: string
       let peerSubjects: string[]
+      let connectSubjects: string[]
+      let connectSubjectsAtHandshake: string[]
       let delivered: ServerPacket | undefined
       let deliveryError: unknown
 
@@ -160,15 +170,26 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
         // Both retired subjects, subscribed separately: the local broker matches `*` per token and
         // requires equal token counts, so there is no one pattern that covers them.
         peerSubjects = []
+        connectSubjects = []
         const record = (_error: Error | null, message: NatsMsg) => {
           peerSubjects.push(message.subject)
         }
         components.nats.subscribe('peer.*.heartbeat', record)
         components.nats.subscribe('peer.*.disconnect', record)
+        components.nats.subscribe('peer.*.connect', (_error: Error | null, message: NatsMsg) => {
+          connectSubjects.push(message.subject)
+        })
 
         const socket = await connectSocket()
         ws = socket.ws
         address = socket.address
+
+        // Snapshot before this program touches the broker itself. The announcement exists so that
+        // gatekeeper can re-emit the peer's current assignment, so it has to be out by the time any
+        // `island_changed` could be forwarded — asserting only on the end-of-program list would
+        // pass just as well if it were published on close.
+        await settle()
+        connectSubjectsAtHandshake = [...connectSubjects]
 
         await socketSend(
           ws,
@@ -217,6 +238,14 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
           expect(peerSubjects).toEqual([])
         })
       }
+
+      it('should have announced the handshake on the connect subject before forwarding anything', () => {
+        expect(connectSubjectsAtHandshake).toEqual([`peer.${address}.connect`])
+      })
+
+      it('should announce it once per handshake, whatever the heartbeat flag says', () => {
+        expect(connectSubjects).toEqual([`peer.${address}.connect`])
+      })
 
       it('should still deliver the island assignment, the message the socket exists to carry', () => {
         expect(deliveryError).toBeUndefined()

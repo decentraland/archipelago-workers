@@ -99,6 +99,32 @@ export async function registerWsHandler(
     }
   }
 
+  /**
+   * Announces a completed handshake so comms-gatekeeper re-emits this peer's current island.
+   *
+   * comms-gatekeeper publishes `engine.peer.<addr>.island_changed` only when Pulse reports a
+   * cluster change, so a socket that reconnects without the crowd moving — a network blip, or the
+   * explorer's own forced re-handshake after repeated LiveKit failures — receives nothing until it
+   * does. archipelago-core covered that with the next client heartbeat; iteration 2 took heartbeats
+   * away, so the handshake has to announce itself.
+   *
+   * Deliberately **not** gated by `HEARTBEAT_FORWARDING_ENABLED`. That switch retires subjects
+   * nothing consumes any more; this one is what keeps reconnects working once it is off, so gating
+   * them together would make the flip cost an island assignment on every reconnect.
+   *
+   * Never throws. `nats.publish` throws synchronously when the component was never started or the
+   * connection is gone, and by the time this runs the peer is registered and the welcome is next: a
+   * client with no island is degraded and re-handshakes, a client with no socket is broken.
+   */
+  function announcePeerConnected(address: string) {
+    try {
+      nats.publish(`peer.${address}.connect`)
+    } catch (error) {
+      logger.error(`Cannot announce the handshake on peer.${address}.connect: ${getErrorMessage(error)}`)
+      metrics.increment('ws_connector_peer_connect_publish_failures_total')
+    }
+  }
+
   server.app.ws<WsUserData>('/ws', {
     idleTimeout,
     // Iteration 2 takes away the client heartbeats, which were the only client→server traffic on
@@ -259,6 +285,12 @@ export async function registerWsHandler(
               }
 
               peersRegistry.onPeerConnected(address, ws)
+
+              // Registered first, so gatekeeper's re-emit cannot arrive before the socket the
+              // forwarder looks up to deliver it. If the welcome below then fails, the socket
+              // closes, the close handler evicts the peer, and the re-emit is dropped by the
+              // forwarder for want of a socket — harmless, and the client re-handshakes.
+              announcePeerConnected(address)
 
               // Set address and stage BEFORE sending welcome so the close handler
               // can clean up the registry if the send fails

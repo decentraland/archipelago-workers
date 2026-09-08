@@ -2,6 +2,7 @@ import { Authenticator } from '@dcl/crypto'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@dcl/metrics'
+import { IMetricsComponent } from '@well-known-components/interfaces'
 import { ClientPacket } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { registerWsHandler } from '../../src/controllers/handlers/ws-handler'
 import { metricDeclarations } from '../../src/metrics'
@@ -38,8 +39,11 @@ describe('ws-handler', () => {
   let banChecker: ReturnType<typeof createBanCheckerMockedComponent>
   let denyList: ReturnType<typeof createDenyListMockedComponent>
   let nats: { publish: jest.Mock; subscribe: jest.Mock }
+  let metrics: IMetricsComponent<keyof typeof metricDeclarations>
+  let incrementMetric: jest.SpyInstance
   let validateSignature: jest.SpyInstance
   let loggerWarn: jest.Mock
+  let loggerError: jest.Mock
 
   const identity = createEphemeralIdentity('handler-spec')
   const address = identity.address.toLowerCase()
@@ -69,19 +73,40 @@ describe('ws-handler', () => {
     return ws
   }
 
+  /**
+   * One real handshake, driven through the second stage exactly as a client does — so the peer is
+   * registered and the welcome sent by the production code, not by the spec.
+   */
+  async function completeHandshake(): Promise<StubWebSocket> {
+    validateSignature.mockResolvedValue({ ok: true })
+    const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+    const ws = makeWs({
+      stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+      challengeToSign: 'dcl-challenge'
+    } as Partial<WsUserData>)
+
+    await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+
+    return ws
+  }
+
   async function build(configOverrides: Record<string, string> = {}): Promise<void> {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
     denyList = createDenyListMockedComponent()
     nats = { publish: jest.fn(), subscribe: jest.fn() }
+    metrics = createTestMetricsComponent(metricDeclarations)
+    incrementMetric = jest.spyOn(metrics, 'increment')
     loggerWarn = jest.fn()
+    loggerError = jest.fn()
 
     const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS), ...configOverrides })
-    // The real logger, with only `warn` made observable: the rest of this file relies on its
-    // actual behaviour (the protocol-violation cases print through it on purpose).
+    // The real logger, with `warn` and `error` made observable — the switch warns on a value it
+    // does not recognise, and the handshake announcement logs a broker that refuses it, and both
+    // are asserted on. Everything else in this file relies on the logger's actual behaviour.
     const realLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
     const logs = {
-      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn })
+      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn, error: loggerError })
     }
     const server = {
       app: {
@@ -101,7 +126,7 @@ describe('ws-handler', () => {
       denyList,
       nats: nats as never,
       server: server as never,
-      metrics: createTestMetricsComponent(metricDeclarations)
+      metrics
     })
   }
 
@@ -613,6 +638,141 @@ describe('ws-handler', () => {
         expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
         expect(peersRegistry.getPeerCount()).toBe(0)
       })
+    })
+  })
+
+  // Iteration 2's replacement for what the client heartbeat used to provide. comms-gatekeeper
+  // publishes `engine.peer.<addr>.island_changed` only when Pulse reports a cluster change, so a
+  // socket that reconnects mid-cluster — a network blip, or the explorer’s own forced re-handshake
+  // after repeated LiveKit failures — would otherwise sit with no island until the crowd moved.
+  // archipelago-core covered that with the next heartbeat; `peer.<addr>.connect` is the explicit
+  // signal that replaces it.
+  describe('when a handshake completes', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      ws = await completeHandshake()
+    })
+
+    it('should announce the peer on its connect subject, with no payload', () => {
+      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.connect`)
+    })
+
+    it('should announce it exactly once, so gatekeeper re-emits one assignment per handshake', () => {
+      expect(nats.publish).toHaveBeenCalledTimes(1)
+    })
+
+    it('should announce it only once the peer is registered, so the re-emit cannot outrun the socket', () => {
+      expect(peersRegistry.onPeerConnected).toHaveBeenCalledWith(address, ws)
+      expect(peersRegistry.onPeerConnected.mock.invocationCallOrder[0]).toBeLessThan(
+        nats.publish.mock.invocationCallOrder[0]
+      )
+    })
+
+    it('should keep the session, unchanged by the announcement', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+  })
+
+  // The announcement is not part of the heartbeat intake: it is what keeps a reconnect working
+  // once that intake is off, so it must survive every value of the flag that retires it. The
+  // rollout order depends on it — step 7 turns client heartbeats off across the fleet.
+  describe.each([['false'], ['0'], ['no'], ['off'], ['true'], ['1'], [''], ['maybe']])(
+    'when a handshake completes with HEARTBEAT_FORWARDING_ENABLED set to %p',
+    (value) => {
+      beforeEach(async () => {
+        await build({ HEARTBEAT_FORWARDING_ENABLED: value })
+        await completeHandshake()
+      })
+
+      it('should still announce the handshake', () => {
+        expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.connect`)
+        expect(nats.publish).toHaveBeenCalledTimes(1)
+      })
+    }
+  )
+
+  // Every one of these rejects the connection before the peer is ever registered. Announcing on
+  // any of them asks gatekeeper to mint and publish an assignment for a wallet that has no socket.
+  describe('when a handshake does not complete', () => {
+    it('should announce nothing when the signature does not validate', async () => {
+      validateSignature.mockResolvedValue({ ok: false, message: 'bad signature' })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      const ws = makeWs({
+        stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+        challengeToSign: 'dcl-challenge'
+      } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should announce nothing when the authenticated wallet is deny-listed', async () => {
+      denyList.isDenylisted.mockResolvedValue(true)
+
+      await completeHandshake()
+
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should announce nothing when the authenticated wallet is platform-banned', async () => {
+      banChecker.isBanned.mockResolvedValue(true)
+
+      await completeHandshake()
+
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should announce nothing when the auth chain is malformed', async () => {
+      const ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-x' } as Partial<WsUserData>)
+
+      await handlers.message(
+        ws,
+        encode({ $case: 'signedChallenge', signedChallenge: { authChainJson: JSON.stringify([{ bogus: true }]) } })
+      )
+
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should announce nothing for a socket that only got as far as the challenge', async () => {
+      const ws = makeWs()
+      handlers.open(ws)
+
+      await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address } }))
+
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  // `nats.publish` throws synchronously when the component was never started or the connection is
+  // gone. By then the peer is registered and the welcome is about to go out: a client with no
+  // island is degraded and re-handshakes, a client with no socket is broken.
+  describe('when NATS cannot take the handshake announcement', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      nats.publish.mockImplementation(() => {
+        throw new Error('NATS component was not started yet')
+      })
+      ws = await completeHandshake()
+    })
+
+    it('should still finish the handshake and keep the socket', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+      expect(ws.getUserData().isClosed).toBeFalsy()
+      expect(ws.end).not.toHaveBeenCalled()
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('should log the failure, naming the subject that was lost', () => {
+      expect(loggerError).toHaveBeenCalledTimes(1)
+      expect(String(loggerError.mock.calls[0][0])).toContain(`peer.${address}.connect`)
+    })
+
+    it('should count it, so a broker that is refusing the announcement is visible on /metrics', () => {
+      expect(incrementMetric).toHaveBeenCalledWith('ws_connector_peer_connect_publish_failures_total')
     })
   })
 })
