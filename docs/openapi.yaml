@@ -18,7 +18,7 @@ info:
     
     Iteration 2 removed the Archipelago Stats service from this repository, and its observability endpoints are served by other systems now:
     
-    - `/realms*`, `/peers*`, `/comms/*`, `/parcels`, `/islands*`, `/status`, `/about`, `/health` — **Pulse** (`Pulse/docs/openapi.yaml`), which serves them realm-scoped and answers `308` from the legacy paths to `/realms/main/…`
+    - `/realms*`, `/peers*`, `/comms/*`, `/parcels`, `/islands*`, `/status`, `/about`, `/health` — **Pulse** (`Pulse/docs/openapi.yaml`), which serves them realm-scoped. The legacy collection paths (`/peers`, `/parcels`, `/islands*`) and their `/comms/…` copies answer `308` to `/realms/main/…`; `/status`, `/about`, `/health`, the `?id=`/`?all=` query forms of `/peers` and `/comms/peers`, and the single-peer path form of both (`/peers/{id}`, `/comms/peers/{id}`) are answered directly with `200`, across all realms
     - `/hot-scenes`, `/scene-participants` — **comms-gatekeeper**; `realm-provider` proxies `/hot-scenes`
     - `/core-status` — retired outright
     

@@ -17,7 +17,8 @@ left. Online-player information is Pulse's responsibility.
 
 | | Before | After |
 | --- | --- | --- |
-| `/peers`, `/peers/{id}`, `/parcels`, `/islands`, `/islands/{id}`, `/status` (and every `/comms`-prefixed alias) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`; the legacy paths answer `308` |
+| `/peers`, `/parcels`, `/islands`, `/islands/{id}` (and their `/comms`-prefixed aliases) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`; these legacy paths answer `308` to `/realms/main/…`, query string preserved |
+| `/peers/{id}`, `/peers?id=`, `/peers?all=true`, `/status` (and the `/comms/peers/{id}` and `/comms/peers?id=` aliases) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, answered **directly** with `200` — not `308` — and across every realm, because the caller does not know the realm |
 | `/about`, `/health` | — | **Pulse HTTP** (`/health` is the CloudFlare origin health check) |
 | `/hot-scenes` | archipelago-stats, joined against Catalyst | **comms-gatekeeper**, from its `engine.parcel_changes` presence map; `realm-provider` proxies it |
 | `/scene-participants` | — | **comms-gatekeeper** |
@@ -41,13 +42,18 @@ Two visible consequences that are not this repo's to fix:
 
 ## Preconditions
 
-Rollout steps 1–8 must be done and their gates green. Verbatim from the plan's rollout table:
+Rollout steps 1–8 must be done and their gates green. Verbatim from the plan's rollout table, with
+one substitution: the plan words step 7's gate "ws-connector heartbeat rate → 0", and **there is no
+such metric** — `ws-connector/src/metrics.ts` declares only the default HTTP metrics and the
+logger's, so looking for a heartbeat rate on `/metrics` finds an absent series, not a zero one. The
+row below carries the observable form of the same gate;
+[§5](#5-nothing-is-publishing-the-retired-subjects) is the procedure.
 
 | Step | Change | Gate | Rollback |
 |---|---|---|---|
 | 5 | realm-provider proxy + Pulse `/about`; CloudFlare cut for all paths | consumers' error rates flat | revert CF rule (stats still running) |
 | 6 | gatekeeper `LIVEKIT_PRESENCE_FALLBACK=false`; social-service + wcs `PRESENCE_SOURCE=pulse` | 24 h clean | flags back |
-| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % sessions on new build; ws-connector heartbeat rate → 0 | flag ramps down |
+| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % sessions on new build; `peer.*.heartbeat` silent on the broker **and** `HEARTBEAT_FORWARDING_ENABLED=false` read off the ws-connector deployment ([§5](#5-nothing-is-publishing-the-retired-subjects)) — the plan words this "heartbeat rate → 0"; no such metric exists | flag ramps down |
 | 8 | heartbeat intake off; wcs stops `peer.*.world.*` publish; delete social-service worlds-stats | no subscriber logs for retired subjects for 48 h | redeploy previous images |
 | 9 | delete `stats`; remove fallback flags everywhere; wcs removes `/wallet/:wallet/connected-world` | runbook verification list green | redeploy last stats image + CF revert |
 
@@ -66,6 +72,7 @@ Set these for the commands below:
 ```bash
 export STATS=https://archipelago-ea-stats.decentraland.org   # or the .zone host in dev
 export WALLET=0x0000000000000000000000000000000000000001      # any wallet with a live session
+export UNKNOWN=0x0000000000000000000000000000000000000009     # any wallet with no session, for the 404 probe
 ```
 
 ## Verification before the cut
@@ -95,17 +102,41 @@ Expected: `308` to `https://archipelago-ea-stats.decentraland.org/realms/main/pe
 seeing it is proof that Pulse is the origin — a `200` here means the rule did not take and stats is
 still serving.
 
-### 3. The wallet lookup answers with a realm
+### 3. The wallet lookup answers with a realm — in all four spellings
 
 ```bash
-curl -s "$STATS/comms/peers?id=$WALLET" | jq
-curl -s "$STATS/peers?id=$WALLET" | jq
+# the query form: all realms, unknown ids omitted from the array
+curl -s -w '\n%{http_code}\n' "$STATS/peers?id=$WALLET" | jq
+curl -s -w '\n%{http_code}\n' "$STATS/comms/peers?id=$WALLET" | jq
+
+# the path form: all realms, an unknown id is a 404
+curl -s -w '\n%{http_code}\n' "$STATS/peers/$WALLET" | jq
+curl -s -w '\n%{http_code}\n' "$STATS/comms/peers/$WALLET" | jq
+curl -s -w '\n%{http_code}\n' "$STATS/comms/peers/$UNKNOWN" | jq
 ```
 
-Expected: `200`, with a `realm` field on the peer. Both spellings are served directly rather than
-redirected, and they search across all realms, because the caller does not know the realm — that is
-the whole point of the query form. A `404` for a wallet you can see in-world means the presence feed
-is not populated, not that the route is wrong.
+Expected: `200` from the four `$WALLET` calls, with a `realm` on the peer (the query form wraps it in
+a `peers` array, the path form in a `peer` object), and `404 {"ok":false,"peer":null}` from the
+`$UNKNOWN` call. All five are served **directly** rather than redirected, and all of them search
+across every realm, because the caller does not know the realm — that is the whole point of both
+forms.
+
+**Probe `/comms/peers/{id}` on its own, and do not cut until it answers.** It is the alias most
+likely to be missing from a given Pulse build: the deleted stats served the whole `/comms` prefix by
+loop, so this path was a live `200` in prod, while Pulse's legacy-path handling grew from a whitelist
+of the *collection* paths and gained this one only once the contract pinned it
+(`docs/contracts/iteration-2/http/redirects.json`: `/comms/peers/…0003` → `200` from
+`peers-single.json`, `/comms/peers/…0009` → `404` from `peers-single-404.json`). A `404` for a wallet
+you *can* see in-world, or a `308`, means the route is absent from the Pulse build actually deployed
+— and its callers get no redirect to follow, so nothing about it degrades gracefully. That blocks the
+cut.
+
+**The two forms fail differently; read them differently.** The `?id=` query form **omits ids it does
+not know** and answers `200 {"ok":true,"peers":[]}` — it never `404`s. So an empty array there means
+"that wallet is not online" or an unpopulated presence feed, and a `404` from *it* is a **routing**
+problem, not an empty feed. The path form is the reverse: `404 {"ok":false,"peer":null}` for an id it
+does not know is the documented answer, not a fault; what is a fault there is a `404` for a wallet
+you can see in-world.
 
 ### 4. `/status` carries realms, and `/hot-scenes` is a bare array
 
@@ -116,8 +147,11 @@ curl -s $STATS/hot-scenes | jq 'type, length'
 
 Expected: a non-empty `realms` array from Pulse, and `"array"` from gatekeeper — a **bare**
 `HotSceneInfo[]`, not an object wrapping one. `503 {"ok":false,"error":"warming"}` from
-`/hot-scenes` means gatekeeper's presence map has not primed yet; retry, and do not cut until it
-has, because places reads this path through realm-provider.
+`/hot-scenes` means gatekeeper's presence map is not ready. Do not cut until it is, because
+places reads this path through realm-provider. Retrying is worth something only once you have read
+`PRESENCE_MAP_ENABLED=true` off that deployment: with the flag off the map schedules no refresh and
+never becomes ready, so `warming` is the answer for the whole life of the process
+(see [check 6](#6-the-consumers-are-off-the-old-sources)).
 
 `/core-status` is expected to be gone. Nothing should point at it once realm-provider runs
 `PRESENCE_SOURCE=pulse`; if something still calls it, find that caller before the cut.
@@ -148,6 +182,7 @@ in the console and is not is the failure mode this check exists for.
 | --- | --- | --- |
 | social-service-ea | `PRESENCE_SOURCE` | `pulse` |
 | worlds-content-server | `PRESENCE_SOURCE` | `pulse` |
+| comms-gatekeeper | `PRESENCE_MAP_ENABLED` | `true` — set at rollout step 3 |
 | comms-gatekeeper | `LIVEKIT_PRESENCE_FALLBACK` | `false` |
 | realm-provider | `PRESENCE_SOURCE` | `pulse` |
 | ws-connector | `HEARTBEAT_FORWARDING_ENABLED` | `false` |
@@ -155,6 +190,15 @@ in the console and is not is the failure mode this check exists for.
 Read them off the running deployments, not off a merged PR. `LIVEKIT_PRESENCE_FALLBACK=true`
 anywhere means gatekeeper can still answer from LiveKit, which hides a broken Pulse feed for as
 long as it takes someone to notice — that is step 6's gate, and it must have been off for 24 h.
+
+`PRESENCE_MAP_ENABLED` is the only row that must be **on**, and it is the one whose absence is
+silent. It defaults to `false`, and while it is anything other than `true` gatekeeper's presence map
+schedules no refresh and **never becomes ready**, so `/hot-scenes` answers
+`503 {"ok":false,"error":"warming"}` permanently — for the life of the process, not until it warms.
+Step 3 turned it on and step 5's CloudFlare rule already routes `/hot-scenes` to that origin, so it
+has to have been `true` since before the cut; but step 3's own rollback is
+`PRESENCE_MAP_ENABLED=false`, and a shadow-window revert that was never restored looks exactly like a
+map that is still priming. Read the value off the deployment — do not infer it from a retry.
 
 ## The cut
 
