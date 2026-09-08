@@ -180,6 +180,59 @@ describe('hot-scenes run', () => {
   })
 })
 
+describe('bearer tokens on the fetched endpoints', () => {
+  test('each URL gets its own token, with one shared token as the fallback', async () => {
+    await withTempDir(async (dir) => {
+      const calls = []
+      const capture = (routes) => async (url, options) => {
+        calls.push({ url, headers: options === undefined ? undefined : options.headers })
+        return routes[url]
+      }
+
+      await liveData.run({
+        env: {
+          OUT_DIR: dir,
+          WCS_URL: 'https://worlds.example.com',
+          PULSE_URL: 'https://pulse.example.com',
+          WCS_TOKEN: 'wcs-token-0000',
+          METRICS_BEARER_TOKEN: 'shared-token-0000'
+        },
+        fetchJson: capture({
+          'https://worlds.example.com/live-data': LIVE_DATA,
+          'https://pulse.example.com/realms': REALMS
+        }),
+        now: () => new Date('2026-09-05T10:00:00.000Z'),
+        out: () => {}
+      })
+
+      await hotScenes.run({
+        env: {
+          OUT_DIR: dir,
+          STATS_URL: 'https://stats.example.com',
+          GATEKEEPER_URL: 'https://gatekeeper.example.com',
+          GATEKEEPER_TOKEN: 'gk-token-0000'
+        },
+        fetchJson: capture({
+          'https://stats.example.com/hot-scenes': STATS_HOT_SCENES,
+          'https://gatekeeper.example.com/hot-scenes': GATEKEEPER_HOT_SCENES
+        }),
+        now: () => new Date('2026-09-05T10:00:00.000Z'),
+        out: () => {}
+      })
+
+      assert.deepEqual(
+        calls.map((call) => [call.url, call.headers.authorization]),
+        [
+          ['https://worlds.example.com/live-data', 'Bearer wcs-token-0000'],
+          ['https://pulse.example.com/realms', 'Bearer shared-token-0000'],
+          ['https://stats.example.com/hot-scenes', undefined],
+          ['https://gatekeeper.example.com/hot-scenes', 'Bearer gk-token-0000']
+        ]
+      )
+    })
+  })
+})
+
 describe('the output directory', () => {
   test('defaults to ./out under the harness when OUT_DIR is unset', () => {
     const { resolveOutDir } = require('../src/report')

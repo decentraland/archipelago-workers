@@ -3,7 +3,7 @@
 // Diff 2 -- worlds-content-server `/live-data` (LiveKit-fed) vs Pulse `/realms` filtered to
 // `.dcl.eth`. Per-world `users` delta plus the symmetric difference of world names.
 
-const { fetchJson: defaultFetchJson, joinUrl, requireEnv } = require('../http')
+const { authHeaders, fetchJson: defaultFetchJson, joinUrl, requireEnv } = require('../http')
 const { boundedList, joinNotes } = require('../notes')
 const { finishRun } = require('../finish-run')
 
@@ -128,8 +128,8 @@ const run = async ({ env = {}, fetchJson = defaultFetchJson, now, out } = {}) =>
   const wcsUrl = requireEnv(env, 'WCS_URL')
   const pulseUrl = requireEnv(env, 'PULSE_URL')
 
-  const liveDataBody = await fetchJson(joinUrl(wcsUrl, '/live-data'))
-  const realmsBody = await fetchJson(joinUrl(pulseUrl, '/realms'))
+  const liveDataBody = await fetchJson(joinUrl(wcsUrl, '/live-data'), { headers: authHeaders(env, 'WCS_URL') })
+  const realmsBody = await fetchJson(joinUrl(pulseUrl, '/realms'), { headers: authHeaders(env, 'PULSE_URL') })
 
   const result = compareLiveData(liveDataBody, realmsBody)
   return finishRun({ diff: DIFF, env, now, out, counts: result, explainedBy: EXPLAINED_BY, notes: result.notes })
