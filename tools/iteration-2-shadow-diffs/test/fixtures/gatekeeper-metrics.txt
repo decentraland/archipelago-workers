@@ -2,6 +2,10 @@
 # TYPE presence_shadow_diff counter
 presence_shadow_diff{kind="land"} 12
 presence_shadow_diff{kind="world"} 3
+# HELP presence_shadow_compare_total Total /scene-participants shadow comparisons that actually produced two answers to compare
+# TYPE presence_shadow_compare_total counter
+presence_shadow_compare_total{kind="land"} 900
+presence_shadow_compare_total{kind="world"} 44
 # HELP http_requests_total Total number of HTTP requests
 # TYPE http_requests_total counter
 http_requests_total{method="GET",handler="/scene-participants",code="200"} 940

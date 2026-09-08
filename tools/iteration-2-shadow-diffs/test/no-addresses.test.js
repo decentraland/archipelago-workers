@@ -42,6 +42,8 @@ describe('no addresses in any output (WP10-no-addresses-in-output)', () => {
           [
             'presence_shadow_diff{kind="land"} 3',
             'presence_shadow_diff{kind="world"} 1',
+            `presence_shadow_compare_total{kind="land",peer="${wallet(1)}"} 150`,
+            'presence_shadow_compare_total{kind="world"} 50',
             `http_requests_total{method="GET",handler="/scene-participants",code="200",peer="${wallet(1)}"} 200`,
             ''
           ].join('\n'),

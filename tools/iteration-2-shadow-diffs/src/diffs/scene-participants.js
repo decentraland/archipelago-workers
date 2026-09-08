@@ -1,12 +1,20 @@
 'use strict'
 
 // Diff 1 -- LiveKit vs the presence map, read off comms-gatekeeper's own counters. The service
-// already compares the two answers per request and increments `presence_shadow_diff{kind=land|world}`
-// by the size of the symmetric difference, so this diff scrapes `/metrics` and subtracts the
-// previous scrape (state file) to get "diff count / request count since the last run".
+// compares the two answers per request and increments, per `kind` (`land` / `world`):
 //
-// The counter cannot say which side an address was missing from, so `onlyLegacy` and `onlyPulse`
-// stay 0 here and the raw difference count goes in the notes.
+//   presence_shadow_diff{kind}          the size of the symmetric difference  (the numerator)
+//   presence_shadow_compare_total{kind} one per comparison that actually ran  (the denominator)
+//
+// The denominator is the number of comparisons, NOT the number of `/scene-participants` requests.
+// gatekeeper's compare is gated on `shadowCompare && mapIsUsable` and its body is inside a
+// catch-and-log, so a failing LiveKit side or a cold presence map leaves `presence_shadow_diff`
+// flat while HTTP traffic keeps climbing. Divided by requests, that reads as a perfect week over a
+// shadow that never executed; divided by comparisons, it reads as what it is -- no sample.
+//
+// This diff scrapes `/metrics` and subtracts the previous scrape (a per-env state file) to get
+// "difference count / comparisons since the last run". The counters cannot say which side an
+// address was missing from, so `onlyLegacy` and `onlyPulse` stay 0 and the raw counts go in `notes`.
 
 const { fetchText: defaultFetchText, requireEnv } = require('../http')
 const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../prometheus')
@@ -18,33 +26,41 @@ const { readState, writeState } = require('../state')
 const DIFF = 'scene-participants'
 
 const DEFAULT_DIFF_METRIC = 'presence_shadow_diff'
-const DEFAULT_REQUESTS_METRIC = 'http_requests_total'
-const DEFAULT_REQUESTS_LABELS = 'handler=/scene-participants'
+const DEFAULT_COMPARE_METRIC = 'presence_shadow_compare_total'
+// Empty on purpose: sum the compare counter over every `kind`. A label filter is only needed when
+// the compare counter is overridden with something else (a request counter on a gatekeeper that
+// predates `presence_shadow_compare_total`).
+const DEFAULT_COMPARE_LABELS = ''
 
 const EXPLAINED_BY = [
   'no-comms peers visible to Pulse',
   '<= 2 s batching',
+  '~5 s vs webhook latency',
   'the ban filter is applied to the presence-map answer only'
 ]
 
 const KINDS = ['land', 'world']
 
-const compareSceneParticipants = ({ text, previous, diffMetric, requestsMetric, requestsLabelFilter }) => {
+const NO_COMPARISONS = 'no comparisons in window'
+
+const compareSceneParticipants = ({ text, previous, diffMetric, compareMetric, compareLabelFilter = {} }) => {
   const samples = parsePrometheusText(text)
 
-  // A page with no request counter means the metric name or the label filter is wrong. Reading that
-  // as "no traffic" would report a clean empty sample every run, forever.
-  if (!hasSeries(samples, requestsMetric)) {
-    throw new Error(`${requestsMetric} is not exported by the scraped /metrics page`)
+  // A page with no compare counter under the configured name and labels means the metric name or
+  // the label filter is wrong. Reading that as "no traffic" would report a clean empty sample every
+  // run, forever.
+  if (!hasSeries(samples, compareMetric, compareLabelFilter)) {
+    throw new Error(`${compareMetric} is not exported by the scraped /metrics page`)
   }
 
   // The diff counter is absent until the first disagreement, which is a real zero, not an error.
   const counters = {
     diff: sumSeries(samples, diffMetric),
-    requests: sumSeries(samples, requestsMetric, requestsLabelFilter)
+    compare: sumSeries(samples, compareMetric, compareLabelFilter)
   }
   for (const kind of KINDS) {
     counters[`diff.${kind}`] = sumSeries(samples, diffMetric, { kind })
+    counters[`compare.${kind}`] = sumSeries(samples, compareMetric, { ...compareLabelFilter, kind })
   }
 
   const previousCounters = previous === undefined || previous === null ? undefined : previous.counters
@@ -66,23 +82,28 @@ const compareSceneParticipants = ({ text, previous, diffMetric, requestsMetric, 
     }
   }
 
-  const requestsDelta = delta('requests')
+  const compareDelta = delta('compare')
   const diffDelta = delta('diff')
   const sign = first ? '' : '+'
+  const perKind = (prefix) => KINDS.map((kind) => `${kind}=${sign}${delta(`${prefix}.${kind}`)}`).join(' ')
 
   const notes = joinNotes([
+    // The distinction WP2's compare counter exists to make: a flat compare count is a shadow that
+    // never ran, which is not the same fact as the two sources agreeing.
+    compareDelta === 0 ? NO_COMPARISONS : undefined,
     (first ? 'first run: ' : '') +
-      `diffAddresses=${sign}${diffDelta} ` +
-      KINDS.map((kind) => `${kind}=${sign}${delta(`diff.${kind}`)}`).join(' ') +
-      ` requests=${sign}${requestsDelta}`,
+      `diffAddresses=${sign}${diffDelta} (${perKind('diff')}); ` +
+      `compares=${sign}${compareDelta} (${perKind('compare')})`,
     'counter-based: the direction of each difference is not observable'
   ])
 
   return {
-    sampleSize: requestsDelta,
-    // One request can disagree about several addresses, so the difference count can exceed the
-    // request count; the ratio is then >= 1 and the run is out of tolerance, which is the point.
-    agree: Math.max(0, requestsDelta - diffDelta),
+    // No comparisons is an empty sample, and an empty sample is never within tolerance
+    // (src/report.js) -- so a week of them fails the gate instead of passing it silently.
+    sampleSize: compareDelta,
+    // One comparison can disagree about several addresses, so the difference count can exceed the
+    // comparison count; the ratio is then >= 1 and the run is out of tolerance, which is the point.
+    agree: Math.max(0, compareDelta - diffDelta),
     onlyLegacy: 0,
     onlyPulse: 0,
     counters,
@@ -100,8 +121,8 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     text,
     previous: readState(outDir, DIFF, envLabel),
     diffMetric: env.SHADOW_DIFF_METRIC ?? DEFAULT_DIFF_METRIC,
-    requestsMetric: env.SHADOW_REQUESTS_METRIC ?? DEFAULT_REQUESTS_METRIC,
-    requestsLabelFilter: parseLabelFilter(env.SHADOW_REQUESTS_LABELS ?? DEFAULT_REQUESTS_LABELS)
+    compareMetric: env.SHADOW_COMPARE_METRIC ?? DEFAULT_COMPARE_METRIC,
+    compareLabelFilter: parseLabelFilter(env.SHADOW_COMPARE_LABELS ?? DEFAULT_COMPARE_LABELS)
   })
 
   const at = now().toISOString()
@@ -129,11 +150,13 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
 }
 
 module.exports = {
+  DEFAULT_COMPARE_LABELS,
+  DEFAULT_COMPARE_METRIC,
   DEFAULT_DIFF_METRIC,
-  DEFAULT_REQUESTS_LABELS,
-  DEFAULT_REQUESTS_METRIC,
   DIFF,
   EXPLAINED_BY,
+  KINDS,
+  NO_COMPARISONS,
   compareSceneParticipants,
   run
 }

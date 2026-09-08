@@ -13,16 +13,29 @@ const METRICS = fs.readFileSync(path.join(__dirname, 'fixtures', 'gatekeeper-met
 
 const DEFAULTS = {
   diffMetric: 'presence_shadow_diff',
-  requestsMetric: 'http_requests_total',
-  requestsLabelFilter: { handler: '/scene-participants' }
+  compareMetric: 'presence_shadow_compare_total',
+  compareLabelFilter: {}
 }
+
+// The state a previous scrape of the fixture page would have left behind.
+const previousCounters = (overrides = {}) => ({
+  counters: {
+    diff: 15,
+    compare: 944,
+    'diff.land': 12,
+    'diff.world': 3,
+    'compare.land': 900,
+    'compare.world': 44,
+    ...overrides
+  }
+})
 
 // A minimal /metrics page with the two counters diff 1 reads, for the runs that need to move a
 // counter between scrapes.
-const metricsText = ({ diff, requests }) =>
+const metricsText = ({ diff, compares }) =>
   [
     `presence_shadow_diff{kind="land"} ${diff}`,
-    `http_requests_total{method="GET",handler="/scene-participants",code="200"} ${requests}`,
+    `presence_shadow_compare_total{kind="land"} ${compares}`,
     ''
   ].join('\n')
 
@@ -39,19 +52,37 @@ describe('scene-participants: gatekeeper shadow counters', () => {
   test('the first run takes the counters as they stand', () => {
     const result = compareSceneParticipants({ text: METRICS, previous: undefined, ...DEFAULTS })
 
-    assert.equal(result.sampleSize, 944)
+    assert.equal(result.sampleSize, 944, 'the 944 comparisons gatekeeper performed, not its 944 HTTP requests')
     assert.equal(result.agree, 929)
     assert.equal(result.onlyLegacy, 0)
     assert.equal(result.onlyPulse, 0)
     assert.match(result.notes, /first run/)
     assert.match(result.notes, /land=12/)
     assert.match(result.notes, /world=3/)
+    assert.match(result.notes, /compares=944/)
+    assert.match(result.notes, /land=900/)
+    assert.match(result.notes, /world=44/)
+  })
+
+  test('the sample counts comparisons, so requests that never reached the shadow do not dilute it', () => {
+    // A page where the two facts diverge: 940 requests were served, only 100 comparisons ran.
+    // Dividing by requests would report 940 samples of a shadow that compared 100 times.
+    const text = [
+      'presence_shadow_diff{kind="land"} 5',
+      'presence_shadow_compare_total{kind="land"} 100',
+      'http_requests_total{method="GET",handler="/scene-participants",code="200"} 900',
+      'http_requests_total{method="GET",handler="/scene-participants",code="500"} 40',
+      ''
+    ].join('\n')
+    const result = compareSceneParticipants({ text, previous: undefined, ...DEFAULTS })
+    assert.equal(result.sampleSize, 100)
+    assert.equal(result.agree, 95)
   })
 
   test('a later run reports only the delta since the previous run', () => {
     const previous = {
       at: '2026-09-05T09:00:00.000Z',
-      counters: { diff: 13, requests: 900, 'diff.land': 10, 'diff.world': 3 }
+      ...previousCounters({ diff: 13, compare: 900, 'diff.land': 10, 'compare.land': 860, 'compare.world': 40 })
     }
     const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
 
@@ -59,15 +90,25 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.equal(result.agree, 42)
     assert.match(result.notes, /land=\+2/)
     assert.match(result.notes, /world=\+0/)
+    assert.match(result.notes, /compares=\+44/)
+    assert.match(result.notes, /land=\+40/)
+    assert.match(result.notes, /world=\+4/)
   })
 
   test('the new counters are handed back for the next run', () => {
     const result = compareSceneParticipants({ text: METRICS, previous: undefined, ...DEFAULTS })
-    assert.deepEqual(result.counters, { diff: 15, requests: 944, 'diff.land': 12, 'diff.world': 3 })
+    assert.deepEqual(result.counters, {
+      diff: 15,
+      compare: 944,
+      'diff.land': 12,
+      'diff.world': 3,
+      'compare.land': 900,
+      'compare.world': 44
+    })
   })
 
   test('a counter that went backwards skips the run instead of reporting a lifetime counter', () => {
-    const previous = { at: '...', counters: { diff: 900, requests: 90000, 'diff.land': 800, 'diff.world': 100 } }
+    const previous = { at: '...', ...previousCounters({ diff: 900, compare: 90000, 'compare.land': 89000 }) }
     const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
 
     assert.equal(result.counterReset, true)
@@ -75,45 +116,62 @@ describe('scene-participants: gatekeeper shadow counters', () => {
     assert.match(result.reason, /backwards/i)
   })
 
-  test('no requests since the last run is an empty sample, not a division by zero', () => {
-    const previous = { at: '...', counters: { diff: 15, requests: 944, 'diff.land': 12, 'diff.world': 3 } }
+  test('a flat compare counter is a shadow that never ran, not two sources agreeing', () => {
+    const previous = { at: '...', ...previousCounters() }
     const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
-    assert.equal(result.sampleSize, 0)
+
+    assert.equal(result.sampleSize, 0, 'no comparisons happened, so there is no sample')
     assert.equal(result.agree, 0)
+    assert.match(result.notes, /no comparisons in window/)
   })
 
   test('more diffing addresses than requests clamps agree at 0 and keeps the raw delta in the notes', () => {
-    const previous = { at: '...', counters: { diff: 0, requests: 939, 'diff.land': 0, 'diff.world': 0 } }
+    const previous = {
+      at: '...',
+      ...previousCounters({ diff: 0, compare: 939, 'diff.land': 0, 'diff.world': 0, 'compare.land': 895 })
+    }
     const result = compareSceneParticipants({ text: METRICS, previous, ...DEFAULTS })
     assert.equal(result.sampleSize, 5)
     assert.equal(result.agree, 0)
     assert.match(result.notes, /diffAddresses=\+15/)
   })
 
-  test('the diff and request metric names are parameters', () => {
-    const text = 'my_diff{kind="land"} 4\nmy_requests{route="/scene-participants"} 100\n'
+  test('the diff and compare metric names are parameters', () => {
+    const text = 'my_diff{kind="land"} 4\nmy_compares{route="/scene-participants"} 100\n'
     const result = compareSceneParticipants({
       text,
       previous: undefined,
       diffMetric: 'my_diff',
-      requestsMetric: 'my_requests',
-      requestsLabelFilter: { route: '/scene-participants' }
+      compareMetric: 'my_compares',
+      compareLabelFilter: { route: '/scene-participants' }
     })
     assert.equal(result.sampleSize, 100)
     assert.equal(result.agree, 96)
   })
 
+  test('a request counter stays reachable as an override for a gatekeeper without the compare counter', () => {
+    const result = compareSceneParticipants({
+      text: METRICS,
+      previous: undefined,
+      diffMetric: 'presence_shadow_diff',
+      compareMetric: 'http_requests_total',
+      compareLabelFilter: { handler: '/scene-participants', code: '200' }
+    })
+    assert.equal(result.sampleSize, 940)
+    assert.equal(result.agree, 925)
+  })
+
   test('a metrics page without the diff counter reads as zero diffs, not as a failure', () => {
-    const text = 'http_requests_total{handler="/scene-participants",code="200"} 10\n'
+    const text = 'presence_shadow_compare_total{kind="land"} 10\n'
     const result = compareSceneParticipants({ text, previous: undefined, ...DEFAULTS })
     assert.equal(result.sampleSize, 10)
     assert.equal(result.agree, 10)
   })
 
-  test('a metrics page without the request counter is a hard error', () => {
+  test('a metrics page without the compare counter is a hard error', () => {
     assert.throws(
       () => compareSceneParticipants({ text: 'presence_shadow_diff{kind="land"} 3\n', previous: undefined, ...DEFAULTS }),
-      /http_requests_total/
+      /presence_shadow_compare_total/
     )
   })
 })
@@ -219,13 +277,13 @@ describe('scene-participants run', () => {
       const at = (minute) => () => new Date(`2026-09-05T10:0${minute}:00.000Z`)
       const jsonl = path.join(dir, 'scene-participants.jsonl')
 
-      await run({ env, fetchText: async () => metricsText({ diff: 50, requests: 9000 }), now: at(0), out: () => {} })
+      await run({ env, fetchText: async () => metricsText({ diff: 50, compares: 9000 }), now: at(0), out: () => {} })
       assert.equal(fs.readFileSync(jsonl, 'utf8').trim().split('\n').length, 1)
 
       // The exporter restarted (or a load balancer sent this scrape to another task).
       const skipped = await run({
         env,
-        fetchText: async () => metricsText({ diff: 1, requests: 20 }),
+        fetchText: async () => metricsText({ diff: 1, compares: 20 }),
         now: at(5),
         out: (text) => printed.push(text)
       })
@@ -237,12 +295,54 @@ describe('scene-participants run', () => {
       // The skipped run still left the new counters behind, so the next window is measurable.
       const next = await run({
         env,
-        fetchText: async () => metricsText({ diff: 1, requests: 25 }),
+        fetchText: async () => metricsText({ diff: 1, compares: 25 }),
         now: at(9),
         out: () => {}
       })
       assert.equal(next.sampleSize, 5)
       assert.equal(fs.readFileSync(jsonl, 'utf8').trim().split('\n').length, 2)
+    })
+  })
+
+  test('a window with no comparisons is reported as no sample and out of tolerance', async () => {
+    await withTempDir(async (dir) => {
+      const env = {
+        OUT_DIR: dir,
+        GATEKEEPER_METRICS_URL: 'https://gatekeeper.example.com/metrics'
+      }
+      const text = metricsText({ diff: 4, compares: 700 })
+
+      await run({ env, fetchText: async () => text, now: () => new Date('2026-09-05T10:00:00.000Z'), out: () => {} })
+      // The shadow compared nothing between the two scrapes: gatekeeper's LiveKit side is failing,
+      // or the presence map is cold. Traffic kept flowing, which is exactly the trap.
+      const line = await run({
+        env,
+        fetchText: async () => text,
+        now: () => new Date('2026-09-05T10:05:00.000Z'),
+        out: () => {}
+      })
+
+      assert.equal(line.sampleSize, 0)
+      assert.equal(line.agree, 0)
+      assert.equal(line.withinTolerance, false, 'a shadow that never ran is not a shadow that agreed')
+      assert.match(line.notes, /no comparisons in window/)
+    })
+  })
+
+  test('the compare metric and its label filter come from the environment', async () => {
+    await withTempDir(async (dir) => {
+      const line = await run({
+        env: {
+          OUT_DIR: dir,
+          GATEKEEPER_METRICS_URL: 'https://gatekeeper.example.com/metrics',
+          SHADOW_COMPARE_METRIC: 'http_requests_total',
+          SHADOW_COMPARE_LABELS: 'handler=/scene-participants,code=200'
+        },
+        fetchText: async () => METRICS,
+        now: () => new Date('2026-09-05T10:00:00.000Z'),
+        out: () => {}
+      })
+      assert.equal(line.sampleSize, 940)
     })
   })
 
