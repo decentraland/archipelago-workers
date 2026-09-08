@@ -47,6 +47,7 @@ Rollback: revert the rule; archipelago-stats keeps running until step 9.
 
 ## Known risks to clear before step 6
 
+- **WebSocket reconnects lose their island without heartbeats** (found in the WP8 review): gatekeeper only emits `island_changed` on a Pulse cluster change, so a reconnecting socket gets nothing until the crowd changes. Fix in flight: ws-connector publishes `peer.{address}.connect` on handshake (WP3d) and gatekeeper re-mints the current assignment on it (WP2 A9). Both must be deployed before step 7 (client heartbeats off).
 - **Silent clients** (refined after the WP1 review): a hard-killed client is detected by the transport keepalive in about 5 s in production and emits its exit entry (the minutes-long lingering seen in local acceptance came from the Development config's 5-minute `Transport:PeerTimeoutMs`). The residual gap is a client that keeps ACKing but stops sending input: `/peers` shows a frozen `lastPing` and the feed carries no staleness field. Pulse needs an input-idle timeout (no `MovementInput` for N s => treated as left) before LiveKit fallbacks are switched off.
 - **`/realms` on realm-provider lists only `main`** today because catalyst `/about` has no `comms` block; WP6 keeps
   that behaviour. Decide separately whether third-party catalysts should be listed.
