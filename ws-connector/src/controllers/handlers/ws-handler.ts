@@ -34,9 +34,10 @@ export async function registerWsHandler(
   // ignore an operator who asked for exactly that.
   const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
 
-  // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
-  // their only consumer (archipelago-stats). This switches the republishing off ahead of deleting
-  // the code, so the rollout can flip it once heartbeat-free clients dominate. Defaults to true —
+  // Iteration 2 retired the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` have lost
+  // their only consumer — archipelago-stats, now deleted from this repo. This switched the
+  // republishing off ahead of deleting the code, and it stays as the writer half of that service's
+  // rollback (docs/stats-decommission-runbook.md). Defaults to true —
   // today's behaviour, so a deploy that sets nothing is a no-op. Nothing else on the socket
   // depends on it.
   //
