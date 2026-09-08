@@ -139,7 +139,8 @@ out is a whole week of "the source answered nothing" reading as a whole week of 
 | `PEERS_CACHE_KEY_PULSE` | 3 | — | social-service's Pulse-fed online-set key |
 | `STATS_URL` | 4 | — | archipelago-stats base URL; `/hot-scenes` is appended |
 | `GATEKEEPER_URL` | 4 | — | comms-gatekeeper base URL; `/hot-scenes` is appended |
-| `METRICS_BEARER_TOKEN` | all | — | one `Authorization: Bearer` token for every endpoint that has no token of its own |
+| `METRICS_BEARER_TOKEN` | 1 | — | fallback `Authorization: Bearer` token for a `*_METRICS_URL` only; **not** sent to the public endpoints |
+| `SHADOW_SHARED_BEARER_TOKEN` | all | *(off)* | `1`/`true`/`yes`/`on` extends `METRICS_BEARER_TOKEN` to every `<NAME>_URL` that has no token of its own |
 | `GATEKEEPER_METRICS_TOKEN` | 1 | — | token for `GATEKEEPER_METRICS_URL`; **`/metrics` answers 401 without it** wherever the service has a metrics token configured |
 | `WCS_TOKEN` / `PULSE_TOKEN` | 2 | — | per-endpoint tokens for `WCS_URL` / `PULSE_URL` |
 | `STATS_TOKEN` / `GATEKEEPER_TOKEN` | 4 | — | per-endpoint tokens for `STATS_URL` / `GATEKEEPER_URL` |
@@ -219,12 +220,30 @@ never reached the compare are back in the denominator, so the ratio is diluted a
 never ran can read as agreement again. Prefer deploying the counter.
 
 **Authenticating a scrape.** Every fetched URL takes an optional `Authorization: Bearer` header.
-For a `<NAME>_URL` variable the harness reads `<NAME>_TOKEN`, then `<NAME>_BEARER_TOKEN`, then the
-shared `METRICS_BEARER_TOKEN`; the first non-empty one wins, and no header is sent when all three
-are unset. This is not optional in practice for diff 1: `@dcl/http-server`'s `/metrics` route
-answers `401` unless the request carries its bearer token, and the contract pack records `/metrics`
-as bearer-protected in deployment (`docs/contracts/iteration-2/http/redirects.json`), so without a
-token diff 1 collects nothing at all for the whole shadow period in that environment.
+For a `<NAME>_URL` variable the harness reads `<NAME>_TOKEN`, then `<NAME>_BEARER_TOKEN`; the first
+non-empty one wins, and no header is sent when both are unset. This is not optional in practice for
+diff 1: `@dcl/http-server`'s `/metrics` route answers `401` unless the request carries its bearer
+token, and the contract pack records `/metrics` as bearer-protected in deployment
+(`docs/contracts/iteration-2/http/redirects.json`), so without a token diff 1 collects nothing at
+all for the whole shadow period in that environment.
+
+**One credential per endpoint, on purpose.** `METRICS_BEARER_TOKEN` is a fallback for a
+`*_METRICS_URL` and for nothing else. Three of the five endpoints the harness reads — WCS
+`/live-data`, Pulse `/realms`, stats `/hot-scenes` — are unauthenticated and public, and sending
+gatekeeper's metrics token to them would hand the one credential the operator holds to three
+services that never asked for it, plus whatever CDN and access logs sit in front of them. So:
+
+```bash
+# diff 1 authenticated, the public endpoints left alone (the normal case)
+GATEKEEPER_METRICS_TOKEN=…        # or METRICS_BEARER_TOKEN=…, same effect for /metrics
+
+# a deployment where every endpoint really is behind the same token
+METRICS_BEARER_TOKEN=…
+SHADOW_SHARED_BEARER_TOKEN=1      # opt in explicitly; without this the token stays on /metrics
+
+# one endpoint that needs its own
+WCS_TOKEN=…                       # a per-endpoint token always wins over the shared one
+```
 
 The token is only ever a request header. It is not logged, not printed in a summary and not in any
 error message — `test/http.test.js` pins that a 401 failure names the URL and the status and does

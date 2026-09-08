@@ -11,7 +11,7 @@ const assert = require('node:assert/strict')
 const http = require('node:http')
 const { test, describe, after } = require('node:test')
 
-const { authHeaders, bearerToken, fetchJson, fetchText, joinUrl, requireEnv } = require('../src/http')
+const { authHeaders, bearerToken, fetchJson, fetchText, joinUrl, requireEnv, tokenVarsFor } = require('../src/http')
 
 const TOKEN = 'not-a-real-token-0000'
 
@@ -128,12 +128,54 @@ describe('http: the real GET path', () => {
 })
 
 describe('http: bearer token resolution', () => {
-  test('reads <BASE>_TOKEN, then <BASE>_BEARER_TOKEN, then the shared METRICS_BEARER_TOKEN', () => {
+  test('reads <BASE>_TOKEN, then <BASE>_BEARER_TOKEN, for the endpoint that variable names', () => {
     assert.equal(bearerToken({ GATEKEEPER_METRICS_TOKEN: 'a' }, 'GATEKEEPER_METRICS_URL'), 'a')
     assert.equal(bearerToken({ GATEKEEPER_METRICS_BEARER_TOKEN: 'b' }, 'GATEKEEPER_METRICS_URL'), 'b')
-    assert.equal(bearerToken({ METRICS_BEARER_TOKEN: 'shared' }, 'GATEKEEPER_METRICS_URL'), 'shared')
-    assert.equal(bearerToken({ METRICS_BEARER_TOKEN: 'shared' }, 'WCS_URL'), 'shared')
     assert.equal(bearerToken({ WCS_TOKEN: 'own', METRICS_BEARER_TOKEN: 'shared' }, 'WCS_URL'), 'own')
+  })
+
+  test('METRICS_BEARER_TOKEN reaches a /metrics page and nothing else', () => {
+    // The operator holds one credential -- gatekeeper's metrics token, without which diff 1
+    // collects nothing -- and sets the variable whose name says "metrics". Sending it on to
+    // worlds-content-server, Pulse and archipelago-stats spreads that credential to three
+    // unauthenticated public endpoints (and their access logs) that never asked for it.
+    const env = { METRICS_BEARER_TOKEN: 'gk-metrics-secret' }
+
+    assert.equal(bearerToken(env, 'GATEKEEPER_METRICS_URL'), 'gk-metrics-secret')
+    for (const urlVar of ['WCS_URL', 'PULSE_URL', 'STATS_URL', 'GATEKEEPER_URL']) {
+      assert.equal(bearerToken(env, urlVar), undefined, `${urlVar} must not receive the metrics token`)
+      assert.deepEqual(authHeaders(env, urlVar), {})
+    }
+  })
+
+  test('the shared fallback is opt-in, per truthy value, and a per-endpoint token still wins', () => {
+    const shared = { METRICS_BEARER_TOKEN: 'shared' }
+
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: '1' }, 'WCS_URL'), 'shared')
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: 'true' }, 'PULSE_URL'), 'shared')
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: 'yes' }, 'STATS_URL'), 'shared')
+    // Anything that is not an explicit yes keeps the token where it was configured.
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: '0' }, 'WCS_URL'), undefined)
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: 'false' }, 'WCS_URL'), undefined)
+    assert.equal(bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: '' }, 'WCS_URL'), undefined)
+    assert.equal(
+      bearerToken({ ...shared, SHADOW_SHARED_BEARER_TOKEN: '1', WCS_TOKEN: 'own' }, 'WCS_URL'),
+      'own'
+    )
+  })
+
+  test('tokenVarsFor names the variables it will read, in order', () => {
+    assert.deepEqual(tokenVarsFor('WCS_URL', {}), ['WCS_TOKEN', 'WCS_BEARER_TOKEN'])
+    assert.deepEqual(tokenVarsFor('WCS_URL', { SHADOW_SHARED_BEARER_TOKEN: '1' }), [
+      'WCS_TOKEN',
+      'WCS_BEARER_TOKEN',
+      'METRICS_BEARER_TOKEN'
+    ])
+    assert.deepEqual(tokenVarsFor('GATEKEEPER_METRICS_URL', {}), [
+      'GATEKEEPER_METRICS_TOKEN',
+      'GATEKEEPER_METRICS_BEARER_TOKEN',
+      'METRICS_BEARER_TOKEN'
+    ])
   })
 
   test('an unset or blank token means no header at all', () => {

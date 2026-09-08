@@ -14,9 +14,25 @@
 
 const DEFAULT_TIMEOUT_MS = 15000
 
-// One token for every endpoint, for the common case where the operator holds a single scrape
-// credential. A per-endpoint variable wins over it.
+// The fallback token for a `/metrics` page — and, by default, for nothing else. A credential is not
+// a configuration convenience: three of the five endpoints the harness reads (`/live-data`,
+// `/realms`, `/hot-scenes`) are unauthenticated and public, and attaching gatekeeper's metrics
+// bearer token to them would spread the one credential the operator holds to three services that
+// never asked for it, plus whatever CDN and access logs sit in front of them.
 const SHARED_TOKEN_VAR = 'METRICS_BEARER_TOKEN'
+// ... unless the operator says so explicitly, for a deployment where one token really does open
+// every endpoint. Opt-in, so the spread is a decision that is written down in the env file.
+const SHARED_TOKEN_OPT_IN_VAR = 'SHADOW_SHARED_BEARER_TOKEN'
+// `GATEKEEPER_METRICS_URL` — a variable that names a metrics page is what `METRICS_BEARER_TOKEN`
+// is for, so the shared variable reaches those without the opt-in.
+const METRICS_URL_VAR = /(^|_)METRICS_URL$/
+
+const optedIn = (env) =>
+  ['1', 'true', 'yes', 'on'].includes(
+    String(env[SHARED_TOKEN_OPT_IN_VAR] ?? '')
+      .trim()
+      .toLowerCase()
+  )
 
 const requireEnv = (env, name) => {
   const value = env[name]
@@ -50,16 +66,21 @@ const redactUrl = (url) => {
   }
 }
 
-// `GATEKEEPER_METRICS_URL` -> `GATEKEEPER_METRICS_TOKEN`, `GATEKEEPER_METRICS_BEARER_TOKEN`, then
-// the shared variable. The same pattern gives `WCS_TOKEN`, `PULSE_TOKEN`, `STATS_TOKEN`,
-// `GATEKEEPER_TOKEN`, so a new endpoint needs no code here.
-const tokenVarsFor = (urlVarName) => {
+// `GATEKEEPER_METRICS_URL` -> `GATEKEEPER_METRICS_TOKEN`, `GATEKEEPER_METRICS_BEARER_TOKEN`. The
+// same pattern gives `WCS_TOKEN`, `PULSE_TOKEN`, `STATS_TOKEN`, `GATEKEEPER_TOKEN`, so a new
+// endpoint needs no code here. The shared `METRICS_BEARER_TOKEN` is appended only for a metrics
+// page, or for every endpoint once `SHADOW_SHARED_BEARER_TOKEN` opts in.
+const tokenVarsFor = (urlVarName, env = {}) => {
   const base = String(urlVarName).replace(/_URL$/, '')
-  return [`${base}_TOKEN`, `${base}_BEARER_TOKEN`, SHARED_TOKEN_VAR]
+  const names = [`${base}_TOKEN`, `${base}_BEARER_TOKEN`]
+  if (METRICS_URL_VAR.test(String(urlVarName)) || optedIn(env)) {
+    names.push(SHARED_TOKEN_VAR)
+  }
+  return names
 }
 
 const bearerToken = (env = {}, urlVarName) => {
-  for (const name of tokenVarsFor(urlVarName)) {
+  for (const name of tokenVarsFor(urlVarName, env)) {
     const raw = env[name]
     if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
       return String(raw).trim()
@@ -106,6 +127,7 @@ const fetchText = async (url, options = {}) =>
 
 module.exports = {
   DEFAULT_TIMEOUT_MS,
+  SHARED_TOKEN_OPT_IN_VAR,
   SHARED_TOKEN_VAR,
   authHeaders,
   bearerToken,
