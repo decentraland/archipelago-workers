@@ -126,8 +126,8 @@ const counterDelta = (current, previous) => {
 // One scrape URL per gatekeeper task, comma-separated. Scraping a service through its load
 // balancer is not supported and cannot be made to work with counter deltas: successive scrapes land
 // on different tasks, whose lifetime counters are unrelated numbers, so half the runs read as a
-// restart and the rest as an inflated jump. Point the harness at the task addresses (or at a
-// Prometheus that has already summed them) instead.
+// restart and the rest as an inflated jump. Point the harness at the task addresses (or at one
+// Prometheus page that federates their raw per-instance series -- see the README) instead.
 const parseScrapeUrls = (raw) => {
   const urls = []
   for (const part of String(raw ?? '').split(',')) {

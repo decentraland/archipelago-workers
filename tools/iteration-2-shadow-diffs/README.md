@@ -85,7 +85,8 @@ Each run appends one line to `${OUT_DIR}/<diff>.jsonl` and prints a human summar
 ```
 
 A single run exits non-zero **only** on a configuration or transport failure (a missing variable, an
-unreachable endpoint, a compare counter no scrape target declares *or* exports). An
+endpoint that does not answer — for diff 1, only when *none* of the scrape targets answers — a
+rejected token, a compare counter no scrape target declares *or* exports). An
 out-of-tolerance verdict is data, not a failure — one 03:00 sample of four peers is noise, and
 paging on it trains people to ignore the cron. The verdict that matters is the window verdict, below.
 
@@ -172,13 +173,39 @@ them is guessed at:
 * a task whose counter **went backwards** (a restart, or a rescheduled task reusing an address)
   makes the whole run log `SKIPPED` and write no line: reporting the remaining tasks would publish
   part of the traffic as all of it;
-* a task that **disappeared** simply stops contributing; the traffic it served since the last scrape
-  is lost, which is a small under-count rather than an invented one.
+* a task that **disappeared** — dropped from the list, or an address that no longer answers — is
+  logged (`INFO — 1 target did not answer …`), contributes nothing and adds `unreachable targets=1`
+  to `notes`; the traffic it served since the last scrape is lost, which is a small under-count
+  rather than an invented one. Its last known counters are kept, so if that address answers again
+  the next delta is measured from them instead of reading as a new task. The run only fails when
+  **no** target answers at all, and a `401`/`403` is still fatal — a rejected token is wrong for
+  every target, not a moved task.
 
-If per-task addresses are not reachable from the cron host, do not point this at the service URL:
-query a Prometheus that has already summed the tasks (`sum(presence_shadow_diff)` /
-`sum(presence_shadow_compare_total)`) and set `SHADOW_COMPARE_METRIC` / `SHADOW_DIFF_METRIC` against
-its `/federate` output, or run the cron on the same network as the tasks.
+**Task addresses are ephemeral.** On a container scheduler every deploy replaces the tasks, and
+their addresses change with them. Nothing rewrites the env file for you, so after a gatekeeper
+deploy `GATEKEEPER_METRICS_URL` names addresses that no longer exist: each run then measures only
+whatever old addresses still answer (and, once none of them do, fails). Either refresh the variable
+as part of the deploy, or point it at addresses that outlive a task — a service-discovery name per
+task, or a sidecar/agent address that is stable. `summarize`'s run-gap note and a weekly total far
+below the expected traffic are the two signals that the list has gone stale.
+
+If per-task addresses are not reachable from the cron host at all, one Prometheus URL can stand in,
+but only as a **metric name** — `SHADOW_COMPARE_METRIC` / `SHADOW_DIFF_METRIC` are matched as names,
+never evaluated as PromQL, so no `sum(...)` expression can go there and `/federate` evaluates no
+PromQL either:
+
+* federate the **raw per-instance series** (`match[]={__name__="presence_shadow_compare_total"}`)
+  into one page and leave the names at their defaults. Every task's series arrives with its own
+  `instance` label, the harness sums them (`sumSeries` ignores labels it is not filtering on), and
+  a task restart shows up as the sum going backwards — a `SKIPPED` run, not a wrong number;
+* or, if only pre-aggregated data is available, create a **recording rule** whose materialised
+  metric name the harness can read, e.g.
+  `record: presence_shadow_compare_total:sum / expr: sum(presence_shadow_compare_total)`, and set
+  `SHADOW_COMPARE_METRIC=presence_shadow_compare_total:sum` (and the matching rule for the diff
+  counter). A rule that sums across tasks cannot tell one task's restart from a drop in traffic, so
+  every restart costs a run.
+
+Running the cron on the same network as the tasks remains the simplest option.
 
 **Diff 1, checking the two counters once per environment.** Both are exported by comms-gatekeeper
 itself (`src/metrics.ts`), so the defaults need no configuration — but check the live page once,
