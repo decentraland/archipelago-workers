@@ -4,7 +4,7 @@ info:
   description: |
     ## Overview
     
-    API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system. This unified specification provides access to both the observability layer (Stats API) and the real-time communication layer (WebSocket Connector API).
+    API documentation for the WebSocket Connector — the only service left in this repository and the only entry point Decentraland clients talk to. It implements the real-time communication layer of the Archipelago protocol.
     
     The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. Since iteration 1 of the Archipelago ⇒ Pulse migration the clustering is performed by **Pulse** and the islands it publishes are uncapped — comms-gatekeeper maps each island to a single LiveKit room verbatim, with no downstream sharding by design.
 
@@ -14,23 +14,15 @@ info:
     - **Parcels**: Geographic coordinates in Decentraland where users are located
     - **Real-time updates**: Islands and peer positions are continuously recalculated
     
-    ### Services
+    ### The retired Stats API
     
-    ### Stats Service
+    Iteration 2 removed the Archipelago Stats service from this repository, and its observability endpoints are served by other systems now:
     
-    The **Archipelago Stats API** provides real-time visibility into the Decentraland communication system by aggregating peer heartbeats and the cluster topology published by Pulse. This service acts as an observability layer, transforming internal system state into queryable metrics and snapshots.
+    - `/realms*`, `/peers*`, `/comms/*`, `/parcels`, `/islands*`, `/status`, `/about`, `/health` — **Pulse** (`Pulse/docs/openapi.yaml`), which serves them realm-scoped and answers `308` from the legacy paths to `/realms/main/…`
+    - `/hot-scenes`, `/scene-participants` — **comms-gatekeeper**; `realm-provider` proxies `/hot-scenes`
+    - `/core-status` — retired outright
     
-    **Purpose**: Enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
-    
-    **Key Endpoints**: `/parcels`, `/peers`, `/islands`, `/hot-scenes`, `/core-status`
-    
-    **Use Cases**:
-    - Live dashboards displaying real-time user distribution
-    - System monitoring and health tracking
-    - Analytics tools for crowd patterns and trending scenes
-    - Developer tools for debugging communication issues
-    
-    All data is provided in real-time and reflects the current state of the Archipelago system at the time of the API call.
+    `https://archipelago-ea-stats.decentraland.{org,zone}` still resolves: CloudFlare routes it to those origins. It is no longer a service in this repository, so it is not listed as a server below. See [stats-decommission-runbook.md](./stats-decommission-runbook.md).
     
     ### WebSocket Connector Service
     
@@ -62,39 +54,11 @@ info:
     url: https://www.apache.org/licenses/LICENSE-2.0.html
   x-api-id: archipelago-workers-api
 servers:
-  - url: https://archipelago-ea-stats.decentraland.org
-    description: Stats service - Production
-  - url: https://archipelago-ea-stats.zone
-    description: Stats service - Development
   - url: https://archipelago-ea-ws-connector.decentraland.org
     description: WebSocket Connector service - Production
   - url: https://archipelago-ea-ws-connector.zone
     description: WebSocket Connector service - Development
 paths:
-  /parcels:
-    $ref: './stats/openapi.yaml#/paths/~1parcels'
-  /peers:
-    $ref: './stats/openapi.yaml#/paths/~1peers'
-  /peers/{id}:
-    $ref: './stats/openapi.yaml#/paths/~1peers~1{id}'
-  /islands:
-    $ref: './stats/openapi.yaml#/paths/~1islands'
-  /islands/{id}:
-    $ref: './stats/openapi.yaml#/paths/~1islands~1{id}'
-  /hot-scenes:
-    $ref: './stats/openapi.yaml#/paths/~1hot-scenes'
-  /core-status:
-    $ref: './stats/openapi.yaml#/paths/~1core-status'
-  /comms/parcels:
-    $ref: './stats/openapi.yaml#/paths/~1comms~1parcels'
-  /comms/peers:
-    $ref: './stats/openapi.yaml#/paths/~1comms~1peers'
-  /comms/peers/{id}:
-    $ref: './stats/openapi.yaml#/paths/~1comms~1peers~1{id}'
-  /comms/islands:
-    $ref: './stats/openapi.yaml#/paths/~1comms~1islands'
-  /comms/islands/{id}:
-    $ref: './stats/openapi.yaml#/paths/~1comms~1islands~1{id}'
   /status:
     $ref: './ws-connector/openapi.yaml#/paths/~1status'
   /metrics:
