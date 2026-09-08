@@ -8,8 +8,8 @@ import {
  * `engine.discovery` in core's place. Cluster IDs read `C{n}` and `max_peers` is 0 because
  * clusters are uncapped. These pin that wire contract through real protobuf bytes.
  *
- * They lived in `stats/test/unit/pulse-topology.spec.ts` and moved here because iteration 2
- * deletes the `stats` workspace: the feeds outlive their first consumer, and what Pulse puts on
+ * They lived in `stats/test/unit/pulse-topology.spec.ts` and moved here ahead of iteration 2
+ * deleting the `stats` workspace: the feeds outlive their first consumer, and what Pulse puts on
  * the wire has to stay pinned somewhere that survives. Only the assertions that need nothing but
  * the generated codec came across; the ones that go through stats' `decodeIslandsReport`, its
  * `/islands` handler and its `/core-status` handler stayed behind, to be deleted with it.
