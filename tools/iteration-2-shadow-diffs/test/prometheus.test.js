@@ -9,6 +9,7 @@ const {
   counterDelta,
   hasSeries,
   parseLabelFilter,
+  parseMetricPage,
   parseScrapeUrls,
   parsePrometheusText,
   sumCounterDeltas,
@@ -177,5 +178,48 @@ describe('summing counter deltas across targets', () => {
 
     assert.deepEqual(result.wentBackwards, [B])
     assert.equal(result.deltas.compare, 10, 'the sound target is still measured; the caller decides what to do')
+  })
+})
+
+describe('declared metric names (# TYPE / # HELP)', () => {
+  test('a page declares every registered metric, samples or not', () => {
+    // prom-client emits `# HELP` / `# TYPE` for every registered metric but no sample line for a
+    // labelled counter until its first inc(), so the TYPE line is the only evidence that a freshly
+    // started task knows the metric at all. Discarding it makes "registered, zero comparisons so
+    // far" indistinguishable from "wrong metric name".
+    const { samples, declared } = parseMetricPage(SAMPLE)
+
+    assert.equal(samples.length, 8, 'the samples are exactly what parsePrometheusText returns')
+    assert.deepEqual(
+      [...declared].sort(),
+      [
+        'dcl_gatekeeper_presence_map_size',
+        'http_requests_total',
+        'presence_shadow_compare_total',
+        'presence_shadow_diff'
+      ]
+    )
+  })
+
+  test('a counter declared with no sample lines yet is declared and unsampled', () => {
+    const page = [
+      '# HELP presence_shadow_compare_total Total /scene-participants shadow comparisons',
+      '# TYPE presence_shadow_compare_total counter',
+      ''
+    ].join('\n')
+    const { samples, declared } = parseMetricPage(page)
+
+    assert.deepEqual(samples, [], 'no inc() has happened, so there is no series')
+    assert.equal(declared.has('presence_shadow_compare_total'), true)
+  })
+
+  test('parsePrometheusText still returns the samples alone', () => {
+    assert.deepEqual(parsePrometheusText(SAMPLE), parseMetricPage(SAMPLE).samples)
+    assert.equal(parsePrometheusText('# TYPE a_total counter\n').length, 0)
+  })
+
+  test('a malformed or unnamed comment line declares nothing', () => {
+    const { declared } = parseMetricPage('# a free-form comment\n# TYPE\n#HELP b_total help text\n')
+    assert.deepEqual([...declared], ['b_total'], 'no space after # is still a valid comment line')
   })
 })

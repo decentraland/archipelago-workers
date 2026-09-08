@@ -508,3 +508,133 @@ describe('scene-participants run', () => {
     })
   })
 })
+
+// prom-client publishes no sample line for a labelled counter until its first `inc()`, and
+// @dcl/metrics does not zero-fill, while `registry.metrics()` still emits `# HELP` / `# TYPE` for
+// every registered metric. So a gatekeeper task that has not yet run a shadow comparison serves a
+// page that declares the counter and carries no series for it. That is a fresh task, not a wrong
+// metric name, and it must cost neither the run nor the traffic its siblings did measure.
+const DECLARED_NOT_SAMPLED = [
+  '# HELP presence_shadow_diff Addresses differing between the LiveKit and presence-map answers',
+  '# TYPE presence_shadow_diff counter',
+  '# HELP presence_shadow_compare_total Total /scene-participants shadow comparisons',
+  '# TYPE presence_shadow_compare_total counter',
+  '# HELP dcl_gatekeeper_presence_map_size Number of wallets currently held in the presence map',
+  '# TYPE dcl_gatekeeper_presence_map_size gauge',
+  'dcl_gatekeeper_presence_map_size 0',
+  ''
+].join('\n')
+
+describe('scene-participants: a target that has not compared yet', () => {
+  test('a task that declares the counter with no series counts as zero, and its sibling is reported', () => {
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: metricsText({ diff: 12, compares: 520 }) },
+        { url: TASK_B, text: DECLARED_NOT_SAMPLED }
+      ],
+      previous: {
+        at: '...',
+        targets: {
+          [TASK_A]: { diff: 10, compare: 500, 'diff.land': 10, 'diff.world': 0, 'compare.land': 500, 'compare.world': 0 }
+        }
+      },
+      ...DEFAULTS
+    })
+
+    assert.equal(result.sampleSize, 20, "task 1's measured window, undamaged by the young task")
+    assert.equal(result.agree, 18)
+    assert.deepEqual(result.freshTargets, [TASK_B])
+    assert.match(result.notes, /no comparisons yet on 1 target/)
+    assert.equal(result.counters[TASK_B].compare, 0, 'a declared-but-unsampled counter is a zero')
+  })
+
+  test('every target still fresh is an empty sample, not a configuration error', () => {
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: DECLARED_NOT_SAMPLED },
+        { url: TASK_B, text: DECLARED_NOT_SAMPLED }
+      ],
+      previous: undefined,
+      ...DEFAULTS
+    })
+
+    assert.equal(result.sampleSize, 0)
+    assert.match(result.notes, /no comparisons in window/, 'an empty sample is never within tolerance')
+    assert.match(result.notes, /no comparisons yet on 2 targets/)
+  })
+
+  test('a counter neither declared nor sampled on any target is a hard error', () => {
+    // The real configuration error: the name drifted, or gatekeeper predates WP2. Nothing on any
+    // page knows the metric, so reading it as "no traffic" would report a clean empty sample for
+    // the whole shadow period.
+    assert.throws(
+      () =>
+        compareSceneParticipants({
+          targets: [
+            { url: TASK_A, text: 'presence_shadow_diff{kind="land"} 3\n' },
+            { url: TASK_B, text: 'presence_shadow_diff{kind="land"} 1\n' }
+          ],
+          previous: undefined,
+          ...DEFAULTS
+        }),
+      /presence_shadow_compare_total is neither declared nor exported/
+    )
+  })
+
+  test('one target declaring the counter is enough to keep the run alive', () => {
+    const result = compareSceneParticipants({
+      targets: [
+        { url: TASK_A, text: DECLARED_NOT_SAMPLED },
+        { url: TASK_B, text: 'presence_shadow_diff{kind="land"} 1\n' }
+      ],
+      previous: undefined,
+      ...DEFAULTS
+    })
+    assert.equal(result.sampleSize, 0)
+    assert.match(result.notes, /no comparisons yet/)
+  })
+
+  test('a label filter matching nothing while the name is sampled is still a hard error', () => {
+    // The distinction that makes the fresh-task rule safe: a drifted label filter leaves the name
+    // SAMPLED (just never under the configured labels), which no fresh task ever looks like.
+    assert.throws(
+      () =>
+        compareSceneParticipants({
+          targets: [
+            { url: TASK_A, text: METRICS },
+            { url: TASK_B, text: DECLARED_NOT_SAMPLED }
+          ],
+          previous: undefined,
+          ...DEFAULTS,
+          compareLabelFilter: { kind: 'genesis' }
+        }),
+      /presence_shadow_compare_total.*label filter/s
+    )
+  })
+})
+
+describe('scene-participants run: a fresh target', () => {
+  test('is logged at info, and the run writes the line for the traffic that was measured', async () => {
+    await withTempDir(async (dir) => {
+      const printed = []
+      const env = { OUT_DIR: dir, GATEKEEPER_METRICS_URL: `${TASK_A}, ${TASK_B}` }
+      const texts = {
+        [TASK_A]: metricsText({ diff: 2, compares: 100 }),
+        [TASK_B]: DECLARED_NOT_SAMPLED
+      }
+      const fetchText = async (url) => texts[url]
+      const at = (minute) => () => new Date(`2026-09-05T10:0${minute}:00.000Z`)
+
+      await run({ env, fetchText, now: at(0), out: () => {} })
+      texts[TASK_A] = metricsText({ diff: 3, compares: 140 })
+      const line = await run({ env, fetchText, now: at(5), out: (text) => printed.push(text) })
+
+      assert.equal(line.sampleSize, 40, 'the 40 comparisons task 1 ran, not a failed run')
+      assert.equal(line.withinTolerance, true)
+      assert.match(printed.join('\n'), /no comparisons yet on 1 target/)
+      assert.match(printed.join('\n'), /gk-task-2\.example\.com/, 'the log names the young task')
+      const written = fs.readFileSync(path.join(dir, 'scene-participants.jsonl'), 'utf8').trim().split('\n')
+      assert.equal(written.length, 2, 'a fresh sibling must not delete a run from the evidence')
+    })
+  })
+})

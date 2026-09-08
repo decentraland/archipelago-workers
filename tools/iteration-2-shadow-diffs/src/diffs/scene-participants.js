@@ -20,7 +20,7 @@ const { authHeaders, fetchText: defaultFetchText, redactUrl, requireEnv } = requ
 const {
   hasSeries,
   parseLabelFilter,
-  parsePrometheusText,
+  parseMetricPage,
   parseScrapeUrls,
   sumCounterDeltas,
   sumSeries
@@ -50,6 +50,17 @@ const EXPLAINED_BY = [
 const KINDS = ['land', 'world']
 
 const NO_COMPARISONS = 'no comparisons in window'
+const NOT_COMPARED_YET = 'no comparisons yet on'
+
+const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`
+
+// `{kind="genesis"}` — for the message that says which filter matched nothing.
+const describeFilter = (filter) =>
+  Object.keys(filter).length === 0
+    ? '(no label filter)'
+    : `{${Object.entries(filter)
+        .map(([key, value]) => `${key}="${value}"`)
+        .join(',')}}`
 
 // The counters one scraped page carries, per kind and in total.
 const readCounters = (samples, { diffMetric, compareMetric, compareLabelFilter }) => {
@@ -73,15 +84,49 @@ const compareSceneParticipants = ({ targets, previous, diffMetric, compareMetric
   }
 
   const counters = {}
+  // A task that has not performed its first shadow comparison declares the compare counter (every
+  // registered metric gets a `# TYPE` line) and publishes no series for it, because prom-client
+  // emits nothing for a labelled counter until its first `inc()`. That is a zero for this window,
+  // and it must not cost the run: right after a gatekeeper deploy every diff-1 run would otherwise
+  // fail and the traffic its siblings did measure would be dropped from the evidence.
+  const freshTargets = []
+  let matchedSomewhere = false
+  let sampledSomewhere = false
+  let declaredSomewhere = false
+
   for (const { url, text } of targets) {
-    const samples = parsePrometheusText(text)
-    // A page with no compare counter under the configured name and labels means the metric name or
-    // the label filter is wrong. Reading that as "no traffic" would report a clean empty sample
-    // every run, forever.
-    if (!hasSeries(samples, compareMetric, compareLabelFilter)) {
-      throw new Error(`${compareMetric} is not exported by the /metrics page at ${redactUrl(url)}`)
+    const { samples, declared } = parseMetricPage(text)
+    const matched = hasSeries(samples, compareMetric, compareLabelFilter)
+    const sampled = matched || hasSeries(samples, compareMetric)
+    matchedSomewhere = matchedSomewhere || matched
+    sampledSomewhere = sampledSomewhere || sampled
+    declaredSomewhere = declaredSomewhere || declared.has(compareMetric)
+    if (!sampled && declared.has(compareMetric)) {
+      freshTargets.push(url)
     }
     counters[url] = readCounters(samples, { diffMetric, compareMetric, compareLabelFilter })
+  }
+
+  // The two configuration errors are still hard errors, and only they: reading either as "no
+  // traffic" would report a clean empty sample every run, forever. Both are judged across the whole
+  // target set, so one young task cannot mask what its siblings prove.
+  if (!matchedSomewhere) {
+    const where = targets.map(({ url }) => redactUrl(url)).join(', ')
+    if (sampledSomewhere) {
+      // The name is on the page with series of its own, so the label filter drifted (a remounted
+      // route, a middleware emitting `route=` instead of `handler=`). No fresh task looks like this.
+      throw new Error(
+        `${compareMetric} is exported but no series matches the label filter ` +
+          `${describeFilter(compareLabelFilter)} on any /metrics page (${where}); check SHADOW_COMPARE_LABELS`
+      )
+    }
+    if (!declaredSomewhere) {
+      throw new Error(
+        `${compareMetric} is neither declared nor exported by any /metrics page (${where}); ` +
+          'check SHADOW_COMPARE_METRIC and that the shadow compare counter is deployed'
+      )
+    }
+    // Every target declares it and none has compared yet: an empty sample, reported as one.
   }
 
   const previousTargets = previous === undefined || previous === null ? undefined : previous.targets
@@ -116,6 +161,10 @@ const compareSceneParticipants = ({ targets, previous, diffMetric, compareMetric
       `diffAddresses=${sign}${diffDelta} (${perKind('diff')}); ` +
       `compares=${sign}${compareDelta} (${perKind('compare')})`,
     targets.length > 1 ? `targets=${targets.length}` : undefined,
+    // Not a warning: a task that has just started is expected after every deploy. It is written
+    // down because it is the difference between "the shadow disagrees" and "part of the fleet has
+    // not answered a /scene-participants request yet".
+    freshTargets.length === 0 ? undefined : `${NOT_COMPARED_YET} ${plural(freshTargets.length, 'target')}`,
     // A task that just scaled up has no previous scrape, so its whole (short) lifetime counter is
     // in this window. Worth saying: it is the one case where the sample is not exactly the window.
     first || newTargets.length === 0 ? undefined : `new targets=${newTargets.length}`,
@@ -132,6 +181,7 @@ const compareSceneParticipants = ({ targets, previous, diffMetric, compareMetric
     onlyLegacy: 0,
     onlyPulse: 0,
     counters,
+    freshTargets,
     notes
   }
 }
@@ -166,6 +216,17 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
     return { diff: DIFF, at, env: envLabel, skipped: true, reason: result.reason }
   }
 
+  // Info, not a failure and not a skip: the line is still written for the traffic that was
+  // measured. Named in the cron log so a low sample right after a deploy is explainable without
+  // going back to the /metrics pages.
+  if (result.freshTargets.length > 0) {
+    out(
+      `[${DIFF}] env=${envLabel} at=${at} INFO — ${NOT_COMPARED_YET} ` +
+        `${plural(result.freshTargets.length, 'target')} (${result.freshTargets.map(redactUrl).join(', ')}): ` +
+        'declared the compare counter, no comparison yet; counted as zero for this window'
+    )
+  }
+
   const line = finishRun({
     diff: DIFF,
     env,
@@ -187,6 +248,7 @@ module.exports = {
   DIFF,
   EXPLAINED_BY,
   KINDS,
+  NOT_COMPARED_YET,
   NO_COMPARISONS,
   compareSceneParticipants,
   run

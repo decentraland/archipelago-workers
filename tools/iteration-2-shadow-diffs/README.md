@@ -85,7 +85,7 @@ Each run appends one line to `${OUT_DIR}/<diff>.jsonl` and prints a human summar
 ```
 
 A single run exits non-zero **only** on a configuration or transport failure (a missing variable, an
-unreachable endpoint, a `/metrics` page that does not export the configured counter). An
+unreachable endpoint, a compare counter no scrape target declares *or* exports). An
 out-of-tolerance verdict is data, not a failure — one 03:00 sample of four peers is noise, and
 paging on it trains people to ignore the cron. The verdict that matters is the window verdict, below.
 
@@ -189,12 +189,27 @@ curl -s -H "Authorization: Bearer $GATEKEEPER_METRICS_TOKEN" "$GATEKEEPER_METRIC
   | grep -E '^presence_shadow_(diff|compare_total)'
 ```
 
-Expect one line per `kind`. A page with **no** series matching the configured name *and* label
-filter is a hard error, on purpose: reading it as "no traffic" would report a clean empty sample
-every run, forever, and the gate would pass on nothing at all. A page that carries the counter but
-whose compare count has not moved since the previous scrape is not an error — that is the
-`no comparisons in window` line above, `withinTolerance: false`, and it is a real finding about the
-shadow rather than about the harness.
+Expect one line per `kind`. Three page states are told apart on purpose, because only the first two
+are the harness's problem:
+
+* the name matches **no** series on any target *and* no target even declares it (no `# TYPE` line):
+  a hard error. The metric name is wrong, or the compare counter is not deployed — reading that as
+  "no traffic" would report a clean empty sample every run, forever, and the gate would pass on
+  nothing at all;
+* the name **is** sampled somewhere but no series matches the configured label filter: also a hard
+  error, and the message names the filter. The label drifted (a remounted route, a middleware
+  emitting `route=` instead of `handler=`);
+* a target that **declares** the counter (`# TYPE` present) and carries no series for it yet: not an
+  error. `prom-client` publishes nothing for a labelled counter until its first `inc()`, so this is
+  a task that has not run a shadow comparison yet — a freshly deployed one, or one whose presence
+  map is still cold. It counts as **zero** for that run, the cron log gets an `INFO — no comparisons
+  yet on N targets` line naming it, `notes` carries the same phrase, and the line is still written
+  for whatever its siblings did measure. One target declaring or sampling the counter is enough to
+  keep the run alive.
+
+A page that carries the counter but whose compare count has not moved since the previous scrape is
+not an error either — that is the `no comparisons in window` line above, `withinTolerance: false`,
+and it is a real finding about the shadow rather than about the harness.
 
 `SHADOW_COMPARE_METRIC` / `SHADOW_COMPARE_LABELS` exist for a gatekeeper deployed before
 `presence_shadow_compare_total` existed; the closest substitute is
