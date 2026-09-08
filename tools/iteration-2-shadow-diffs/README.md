@@ -67,6 +67,12 @@ OUT_DIR=/var/log/shadow-diffs SHADOW_DIFF_ENV=zone \
   WCS_URL=https://worlds-content-server.decentraland.zone \
   PULSE_URL=https://archipelago-ea-stats.decentraland.zone \
   node bin/shadow-diff.js live-data
+
+# diff 1 additionally needs the metrics scrape target(s) and, where /metrics is protected, a token
+OUT_DIR=/var/log/shadow-diffs SHADOW_DIFF_ENV=zone \
+  GATEKEEPER_METRICS_URL=https://gk-task-1.internal:5000/metrics,https://gk-task-2.internal:5000/metrics \
+  GATEKEEPER_METRICS_TOKEN="$(cat /etc/shadow-diffs/gatekeeper-metrics.token)" \
+  node bin/shadow-diff.js scene-participants
 ```
 
 Each run appends one line to `${OUT_DIR}/<diff>.jsonl` and prints a human summary:
@@ -131,6 +137,10 @@ out is a whole week of "the source answered nothing" reading as a whole week of 
 | `PEERS_CACHE_KEY_PULSE` | 3 | — | social-service's Pulse-fed online-set key |
 | `STATS_URL` | 4 | — | archipelago-stats base URL; `/hot-scenes` is appended |
 | `GATEKEEPER_URL` | 4 | — | comms-gatekeeper base URL; `/hot-scenes` is appended |
+| `METRICS_BEARER_TOKEN` | all | — | one `Authorization: Bearer` token for every endpoint that has no token of its own |
+| `GATEKEEPER_METRICS_TOKEN` | 1 | — | token for `GATEKEEPER_METRICS_URL`; **`/metrics` answers 401 without it** wherever the service has a metrics token configured |
+| `WCS_TOKEN` / `PULSE_TOKEN` | 2 | — | per-endpoint tokens for `WCS_URL` / `PULSE_URL` |
+| `STATS_TOKEN` / `GATEKEEPER_TOKEN` | 4 | — | per-endpoint tokens for `STATS_URL` / `GATEKEEPER_URL` |
 
 A trailing slash on any base URL is fine. Base URLs must not carry a query string — the path is
 appended verbatim.
@@ -158,6 +168,19 @@ shadow rather than about the harness.
 `SHADOW_COMPARE_LABELS=handler=/scene-participants,code=200`. Note what that costs: requests that
 never reached the compare are back in the denominator, so the ratio is diluted and a shadow that
 never ran can read as agreement again. Prefer deploying the counter.
+
+**Authenticating a scrape.** Every fetched URL takes an optional `Authorization: Bearer` header.
+For a `<NAME>_URL` variable the harness reads `<NAME>_TOKEN`, then `<NAME>_BEARER_TOKEN`, then the
+shared `METRICS_BEARER_TOKEN`; the first non-empty one wins, and no header is sent when all three
+are unset. This is not optional in practice for diff 1: `@dcl/http-server`'s `/metrics` route
+answers `401` unless the request carries its bearer token, and the contract pack records `/metrics`
+as bearer-protected in deployment (`docs/contracts/iteration-2/http/redirects.json`), so without a
+token diff 1 collects nothing at all for the whole shadow period in that environment.
+
+The token is only ever a request header. It is not logged, not printed in a summary and not in any
+error message — `test/http.test.js` pins that a 401 failure names the URL and the status and does
+not carry the token, and that credentials embedded in a URL (`https://user:pass@host/…`) are
+stripped out of every message. Keep the tokens in the same root-owned `600` env file as `REDIS_URL`.
 
 **Diff 3, credentials.** The password is read out of `REDIS_URL` and handed to `redis-cli` in
 `REDISCLI_AUTH`, never in argv (argv is world-readable in `/proc`). Error messages redact the
