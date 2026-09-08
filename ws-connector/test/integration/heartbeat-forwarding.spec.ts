@@ -61,6 +61,11 @@ heartbeatForwardingProgram({
  * the environment does not already carry — so this program also pins that the value
  * `ws-connector/.env.default` ships is one that keeps forwarding on. A truly empty config (no
  * env, no file) is the unit spec's `is left unset` case; it is not reachable from here.
+ *
+ * `test/components.ts` loads that file by absolute path, so this program says the same thing
+ * whether jest was started from `ws-connector/` or from the repo root (the root `yarn test`
+ * aggregate and the Dockerfile's `RUN yarn test` both run from the root, where the service's own
+ * cwd-relative lookup finds the root `.env.default` instead).
  */
 heartbeatForwardingProgram({
   suiteName: 'heartbeat forwarding left to the shipped default',
