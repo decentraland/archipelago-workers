@@ -11,8 +11,7 @@ Apply in `zone` first, then `org`, at rollout step 5 (after WP6 realm-provider i
 | `/hot-scenes` | comms-gatekeeper | bare `HotSceneInfo[]`; `503 {"ok":false,"error":"warming"}` while the presence map primes |
 | everything else (`/realms*`, `/peers*`, `/comms/*`, `/parcels`, `/islands*`, `/status`, `/about`, `/health`) | Pulse HTTP | plain `HttpListener` on the container; front it with the existing ALB/NLB listener on a separate port; health check `GET /health` (200) |
 
-Legacy paths answer `308` to `/realms/main/…` from Pulse itself (no CloudFlare rewrite needed); `/peers?id=` and
-`/comms/peers?id=` are served directly (all realms). `/core-status` retires — nothing points at it once realm-provider
+Legacy paths answer `308` to `/realms/main/…` from Pulse itself (no CloudFlare rewrite needed). Served directly (all realms, no redirect): `/peers?id=`, `/comms/peers?id=`, `/peers?all=true`, `/comms/peers?all=true`, `/peers/:id`, `/comms/peers/:id`; `/status`, `/about`, `/health` and every `/realms/…` route are direct as well. `/core-status` retires — nothing points at it once realm-provider
 runs `PRESENCE_SOURCE=pulse`.
 
 Rollback: revert the rule; archipelago-stats keeps running until step 9.
