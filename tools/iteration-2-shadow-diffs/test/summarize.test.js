@@ -139,6 +139,20 @@ describe('summarize', () => {
     assert.match(aggregate.notes, /no runs/i)
   })
 
+  test('a window of empty samples is never within tolerance, whatever the runs claimed', () => {
+    // The window-level half of the same failure: 2016 runs that each sampled nothing must not
+    // aggregate into a green week. `withinTolerance: true` on the runs is what a line written
+    // before this rule looks like, and the window verdict is recomputed, so it does not survive.
+    const empty = { sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0, withinTolerance: true }
+    const aggregate = summarize([runLine(empty), runLine(empty)], { diff: 'live-data', now: NOW })
+
+    assert.equal(aggregate.runs, 2)
+    assert.equal(aggregate.sampleSize, 0)
+    assert.equal(aggregate.runsWithinTolerance, 2, 'the per-run flags are reported as they were written')
+    assert.equal(aggregate.withinTolerance, false, 'but the window verdict is not agreement')
+    assert.match(aggregate.notes, /no samples in the window/i)
+  })
+
   test('the union of the explanations is kept, in first-seen order and without repeats', () => {
     const lines = [
       runLine({ explainedBy: ['a', 'b'] }),
@@ -193,6 +207,17 @@ describe('the Markdown table', () => {
     assert.match(lines[3], /\| org \|/)
     assert.match(table, /live-data/)
     assert.match(table, /2\.50%/)
+  })
+
+  test('a row with no sample reads "no data" instead of a verdict', () => {
+    const rows = summarizeByEnv([runLine({ sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0 })], {
+      diff: 'live-data',
+      now: NOW
+    })
+    const table = toMarkdownTable(rows, { diff: 'live-data', now: NOW, windowDays: 7 })
+    const row = table.split('\n').filter((line) => line.startsWith('| zone'))[0]
+
+    assert.match(row, /\| no data \|$/)
   })
 
   test('says so when there is nothing in the window', () => {

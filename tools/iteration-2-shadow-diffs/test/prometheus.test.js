@@ -5,7 +5,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const { test, describe } = require('node:test')
 
-const { counterDelta, parseLabelFilter, parsePrometheusText, sumSeries } = require('../src/prometheus')
+const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../src/prometheus')
 
 const SAMPLE = fs.readFileSync(path.join(__dirname, 'fixtures', 'gatekeeper-metrics.txt'), 'utf8')
 
@@ -62,6 +62,20 @@ describe('summing series', () => {
 
   test('a metric that is not exported at all sums to 0', () => {
     assert.equal(sumSeries(parsePrometheusText(SAMPLE), 'presence_shadow_requests_total'), 0)
+  })
+
+  test('hasSeries matches the name AND the label filter, so a filter that hits nothing is visible', () => {
+    // A sum of 0 cannot tell "no traffic" from "the filter matches no series at all". Only the
+    // second is a configuration error, and only hasSeries can see the difference.
+    const samples = parsePrometheusText(SAMPLE)
+
+    assert.equal(hasSeries(samples, 'presence_shadow_compare_total'), true)
+    assert.equal(hasSeries(samples, 'presence_shadow_compare_total', { kind: 'land' }), true)
+    assert.equal(hasSeries(samples, 'presence_shadow_compare_total', { kind: 'genesis' }), false)
+    // The name is exported for other routes, but nothing carries `route=`.
+    assert.equal(hasSeries(samples, 'http_requests_total', { handler: '/scene-participants' }), true)
+    assert.equal(hasSeries(samples, 'http_requests_total', { route: '/scene-participants' }), false)
+    assert.equal(hasSeries(samples, 'not_exported_at_all'), false)
   })
 
   test('parses a label filter written as a comma-separated string', () => {
