@@ -8,6 +8,7 @@ const { test, describe } = require('node:test')
 
 const hotScenes = require('../src/diffs/hot-scenes')
 const liveData = require('../src/diffs/live-data')
+const sceneParticipants = require('../src/diffs/scene-participants')
 
 const fixture = (...parts) => JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', ...parts), 'utf8'))
 
@@ -15,6 +16,7 @@ const REALMS = fixture('iteration-2', 'http', 'realms.json').body
 const LIVE_DATA = fixture('live-data.json').body
 const STATS_HOT_SCENES = fixture('iteration-2', 'http', 'today', 'hot-scenes.json').body
 const GATEKEEPER_HOT_SCENES = fixture('hot-scenes-gatekeeper.json').body
+const METRICS = fs.readFileSync(path.join(__dirname, 'fixtures', 'gatekeeper-metrics.txt'), 'utf8')
 
 const withTempDir = (body) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'shadow-diff-'))
@@ -240,7 +242,7 @@ describe('hot-scenes against a warming gatekeeper', () => {
 })
 
 describe('bearer tokens on the fetched endpoints', () => {
-  test('each URL gets its own token, with one shared token as the fallback', async () => {
+  test('each URL gets its own token, and no endpoint inherits another credential', async () => {
     await withTempDir(async (dir) => {
       const calls = []
       const capture = (routes) => async (url, options) => {
@@ -279,14 +281,99 @@ describe('bearer tokens on the fetched endpoints', () => {
         out: () => {}
       })
 
+      // METRICS_BEARER_TOKEN is gatekeeper's /metrics credential. Pulse's /realms, WCS's
+      // /live-data and the stats /hot-scenes are unauthenticated public endpoints, and handing
+      // them a credential they never asked for spreads it to three more services and their
+      // access logs.
       assert.deepEqual(
         calls.map((call) => [call.url, call.headers.authorization]),
         [
           ['https://worlds.example.com/live-data', 'Bearer wcs-token-0000'],
-          ['https://pulse.example.com/realms', 'Bearer shared-token-0000'],
+          ['https://pulse.example.com/realms', undefined],
           ['https://stats.example.com/hot-scenes', undefined],
           ['https://gatekeeper.example.com/hot-scenes', 'Bearer gk-token-0000']
         ]
+      )
+    })
+  })
+
+  test("gatekeeper's metrics token is not sent to the WCS, Pulse or stats URLs", async () => {
+    await withTempDir(async (dir) => {
+      const calls = []
+      const capture = (routes) => async (url, options) => {
+        calls.push({ url, headers: options === undefined ? {} : (options.headers ?? {}) })
+        return routes[url]
+      }
+      const now = () => new Date('2026-09-05T10:00:00.000Z')
+      // Both spellings of the one credential an operator actually holds.
+      const secrets = { GATEKEEPER_METRICS_TOKEN: 'gk-metrics-0000', METRICS_BEARER_TOKEN: 'gk-metrics-0000' }
+
+      await sceneParticipants.run({
+        env: { OUT_DIR: dir, GATEKEEPER_METRICS_URL: 'https://gatekeeper.example.com/metrics', ...secrets },
+        fetchText: async (url, options) => {
+          calls.push({ url, headers: options.headers ?? {} })
+          return METRICS
+        },
+        now,
+        out: () => {}
+      })
+
+      await liveData.run({
+        env: { OUT_DIR: dir, WCS_URL: 'https://worlds.example.com', PULSE_URL: 'https://pulse.example.com', ...secrets },
+        fetchJson: capture({
+          'https://worlds.example.com/live-data': LIVE_DATA,
+          'https://pulse.example.com/realms': REALMS
+        }),
+        now,
+        out: () => {}
+      })
+
+      await hotScenes.run({
+        env: {
+          OUT_DIR: dir,
+          STATS_URL: 'https://stats.example.com',
+          GATEKEEPER_URL: 'https://gatekeeper.example.com',
+          ...secrets
+        },
+        fetchJson: capture({
+          'https://stats.example.com/hot-scenes': STATS_HOT_SCENES,
+          'https://gatekeeper.example.com/hot-scenes': GATEKEEPER_HOT_SCENES
+        }),
+        now,
+        out: () => {}
+      })
+
+      const sent = new Map(calls.map((call) => [call.url, call.headers.authorization]))
+      assert.equal(sent.get('https://gatekeeper.example.com/metrics'), 'Bearer gk-metrics-0000')
+      for (const url of [
+        'https://worlds.example.com/live-data',
+        'https://pulse.example.com/realms',
+        'https://stats.example.com/hot-scenes',
+        'https://gatekeeper.example.com/hot-scenes'
+      ]) {
+        assert.equal(sent.get(url), undefined, `${url} received a credential it never asked for`)
+      }
+
+      // ... unless the operator says so explicitly, which is the documented single-credential case.
+      calls.length = 0
+      await liveData.run({
+        env: {
+          OUT_DIR: dir,
+          WCS_URL: 'https://worlds.example.com',
+          PULSE_URL: 'https://pulse.example.com',
+          SHADOW_SHARED_BEARER_TOKEN: '1',
+          ...secrets
+        },
+        fetchJson: capture({
+          'https://worlds.example.com/live-data': LIVE_DATA,
+          'https://pulse.example.com/realms': REALMS
+        }),
+        now,
+        out: () => {}
+      })
+      assert.deepEqual(
+        calls.map((call) => call.headers.authorization),
+        ['Bearer gk-metrics-0000', 'Bearer gk-metrics-0000']
       )
     })
   })
