@@ -3,7 +3,7 @@
 // Diff 4 -- archipelago-stats `/hot-scenes` vs comms-gatekeeper `/hot-scenes`. Top-100 Jaccard over
 // scene ids plus the per-scene `usersTotalCount` delta, sampled every run.
 
-const { fetchJson: defaultFetchJson, joinUrl, requireEnv } = require('../http')
+const { authHeaders, fetchJson: defaultFetchJson, joinUrl, requireEnv } = require('../http')
 const { boundedList, joinNotes } = require('../notes')
 const { finishRun } = require('../finish-run')
 
@@ -123,8 +123,10 @@ const run = async ({ env = {}, fetchJson = defaultFetchJson, now, out } = {}) =>
   const statsUrl = requireEnv(env, 'STATS_URL')
   const gatekeeperUrl = requireEnv(env, 'GATEKEEPER_URL')
 
-  const statsBody = await fetchJson(joinUrl(statsUrl, '/hot-scenes'))
-  const gatekeeperBody = await fetchJson(joinUrl(gatekeeperUrl, '/hot-scenes'))
+  const statsBody = await fetchJson(joinUrl(statsUrl, '/hot-scenes'), { headers: authHeaders(env, 'STATS_URL') })
+  const gatekeeperBody = await fetchJson(joinUrl(gatekeeperUrl, '/hot-scenes'), {
+    headers: authHeaders(env, 'GATEKEEPER_URL')
+  })
 
   const result = compareHotScenes(statsBody, gatekeeperBody)
   return finishRun({ diff: DIFF, env, now, out, counts: result, explainedBy: EXPLAINED_BY, notes: result.notes })

@@ -363,6 +363,28 @@ describe('scene-participants run', () => {
     })
   })
 
+  test('the scrape carries a bearer token when one is configured', async () => {
+    await withTempDir(async (dir) => {
+      const calls = []
+      await run({
+        env: {
+          OUT_DIR: dir,
+          GATEKEEPER_METRICS_URL: 'https://gatekeeper.example.com/metrics',
+          GATEKEEPER_METRICS_TOKEN: 'not-a-real-token-0000'
+        },
+        fetchText: async (url, options) => {
+          calls.push({ url, options })
+          return METRICS
+        },
+        now: () => new Date('2026-09-05T10:00:00.000Z'),
+        out: () => {}
+      })
+
+      // /metrics answers 401 without it whenever the service has a metrics token configured.
+      assert.deepEqual(calls[0].options.headers, { authorization: 'Bearer not-a-real-token-0000' })
+    })
+  })
+
   test('a missing GATEKEEPER_METRICS_URL stops the run', async () => {
     await withTempDir(async (dir) => {
       await assert.rejects(() => run({ env: { OUT_DIR: dir }, fetchText: async () => METRICS }), /GATEKEEPER_METRICS_URL/)

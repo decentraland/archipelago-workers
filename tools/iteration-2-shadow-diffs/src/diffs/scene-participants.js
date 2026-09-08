@@ -16,7 +16,7 @@
 // "difference count / comparisons since the last run". The counters cannot say which side an
 // address was missing from, so `onlyLegacy` and `onlyPulse` stay 0 and the raw counts go in `notes`.
 
-const { fetchText: defaultFetchText, requireEnv } = require('../http')
+const { authHeaders, fetchText: defaultFetchText, requireEnv } = require('../http')
 const { counterDelta, hasSeries, parseLabelFilter, parsePrometheusText, sumSeries } = require('../prometheus')
 const { joinNotes } = require('../notes')
 const { finishRun } = require('../finish-run')
@@ -116,7 +116,7 @@ const run = async ({ env = {}, fetchText = defaultFetchText, now = () => new Dat
   const outDir = resolveOutDir(env)
   const envLabel = resolveEnvLabel(env)
 
-  const text = await fetchText(metricsUrl)
+  const text = await fetchText(metricsUrl, { headers: authHeaders(env, 'GATEKEEPER_METRICS_URL') })
   const result = compareSceneParticipants({
     text,
     previous: readState(outDir, DIFF, envLabel),
