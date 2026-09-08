@@ -9,6 +9,13 @@ Upstream design: `Pulse/docs/clustering-on-aoi.md` §3.6–3.7 and §5.
 `archipelago-core` has been **removed from this repository**. Island clustering is Pulse's
 responsibility.
 
+> **Iteration 2 has since removed `archipelago-stats` too.** This runbook is kept as the iteration-1
+> record, and its "After" column describes the state at that time — stats was deliberately left
+> untouched then. Two of the verification sections below can no longer be run as written, because
+> they `curl` a service that no longer exists: read `/islands` and `/core-status` from Pulse's
+> realm-scoped routes instead, and `/hot-scenes` from comms-gatekeeper. See
+> [stats-decommission-runbook.md](./stats-decommission-runbook.md).
+
 ## What changed
 
 | | Before | After |
@@ -99,7 +106,9 @@ If `healthy` is false while Pulse is publishing, check `current_time`: the healt
 *forward* reads unhealthy too, not just a stale one — and a `uint32`-truncated timestamp reads
 permanently unhealthy. `ServiceStatus.current_time` must be `uint64`
 ([protocol#453](https://github.com/decentraland/protocol/pull/453)); this repo pins the release
-that contains it and `stats/test/unit/pulse-topology.spec.ts` guards the round trip.
+that contains it and `ws-connector/test/contract/pulse-wire.spec.ts` guards the round trip
+(the pins moved there out of `stats/test/unit/pulse-topology.spec.ts` before the workspace was
+deleted).
 
 ### 3. The heartbeat-fed endpoints are unaffected
 
@@ -109,8 +118,10 @@ curl -s $STATS/parcels | jq '.parcels | length'
 curl -s $STATS/hot-scenes | jq 'length'
 ```
 
-These are built from `peer.*.heartbeat`, which WS Connector still publishes, so the cutover
-should not move them. They retire in iteration 2.
+These were built from `peer.*.heartbeat`, which WS Connector still publishes, so the iteration-1
+cutover did not move them. **Iteration 2 retired all three:** `/peers` and `/parcels` are Pulse's
+realm-scoped routes now and `/hot-scenes` is comms-gatekeeper's, so run these against those origins
+instead — see [stats-decommission-runbook.md](./stats-decommission-runbook.md).
 
 ### 4. Clients are actually getting rooms
 
