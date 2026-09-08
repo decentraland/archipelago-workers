@@ -9,13 +9,22 @@ const { finishRun } = require('../finish-run')
 
 const DIFF = 'hot-scenes'
 
+// comms-gatekeeper answers `503 {"ok":false,"error":"warming"}` until the presence map and the
+// ranking are both ready, i.e. during every deploy. Throwing there wrote no line and left a hole
+// the gate's first step reads as "the cron was down", so a warm-up is recorded as what it is: a run
+// with no sample. An empty sample is never within tolerance, so it cannot pad the window either.
+const WARMING_NOTE = 'gatekeeper warming (503)'
+const WARMING_STATUS = 503
+
 // `/hot-scenes` answers at most 100 entries, so anything below the cut-off is not in either answer
 // and cannot be diffed.
 const TOP_N = 100
 
+// The three the brief pins, verbatim, then this diff's own shifts (test/explained-by.test.js).
 const EXPLAINED_BY = [
   'no-comms peers visible to Pulse',
   '<= 2 s batching',
+  '~5 s vs webhook latency',
   'up to 10 s HOT_SCENES_REFRESH_MS window',
   '300 s HOT_SCENES_SCENE_TTL_MS keeps a draining scene listed'
 ]
@@ -124,12 +133,29 @@ const run = async ({ env = {}, fetchJson = defaultFetchJson, now, out } = {}) =>
   const gatekeeperUrl = requireEnv(env, 'GATEKEEPER_URL')
 
   const statsBody = await fetchJson(joinUrl(statsUrl, '/hot-scenes'), { headers: authHeaders(env, 'STATS_URL') })
-  const gatekeeperBody = await fetchJson(joinUrl(gatekeeperUrl, '/hot-scenes'), {
-    headers: authHeaders(env, 'GATEKEEPER_URL')
-  })
+
+  let gatekeeperBody
+  try {
+    gatekeeperBody = await fetchJson(joinUrl(gatekeeperUrl, '/hot-scenes'), {
+      headers: authHeaders(env, 'GATEKEEPER_URL')
+    })
+  } catch (error) {
+    if (error === null || error === undefined || error.status !== WARMING_STATUS) {
+      throw error
+    }
+    return finishRun({
+      diff: DIFF,
+      env,
+      now,
+      out,
+      counts: { sampleSize: 0, agree: 0, onlyLegacy: 0, onlyPulse: 0 },
+      explainedBy: EXPLAINED_BY,
+      notes: WARMING_NOTE
+    })
+  }
 
   const result = compareHotScenes(statsBody, gatekeeperBody)
   return finishRun({ diff: DIFF, env, now, out, counts: result, explainedBy: EXPLAINED_BY, notes: result.notes })
 }
 
-module.exports = { DIFF, EXPLAINED_BY, TOP_N, compareHotScenes, run }
+module.exports = { DIFF, EXPLAINED_BY, TOP_N, WARMING_NOTE, WARMING_STATUS, compareHotScenes, run }

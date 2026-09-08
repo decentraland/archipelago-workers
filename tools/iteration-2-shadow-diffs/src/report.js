@@ -27,8 +27,11 @@ const REPORT_KEYS = [
   'notes'
 ]
 
-// Slack for the float64 error in `maxDisagreeRatio * sampleSize`: 0.05 * 200 is 10.000000000000002
-// and 3 / 60 is 0.049999999999999996, so an exact boundary must not read as a breach either way.
+// Slack for the float64 error in `maxDisagreeRatio * sampleSize`. The hazard is the product, not
+// the ratio: IEEE-754 division is correctly rounded, so an exact rational boundary compares equal
+// (3 / 60 === 0.05 exactly, and 0.05 * 200 === 10 exactly), but 0.29 * 100 is 28.999999999999996,
+// so `disagree <= ratio * sampleSize` read literally calls an exact 29-in-100 a breach of a 29 %
+// tolerance. test/report.test.js pins that case.
 const RATIO_EPSILON = 1e-9
 
 const assertCount = (name, value) => {

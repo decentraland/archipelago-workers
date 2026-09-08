@@ -168,6 +168,24 @@ describe('summarize', () => {
     assert.match(aggregate.notes, /mixed tolerance/i)
   })
 
+  test('a window with far fewer runs than the cron would produce says so', () => {
+    // Gate step 1 is "runs consistent with the cron interval". windowDays plus the interval are
+    // enough to compute the expected count, so the reader is not left counting by eye.
+    const lines = [runLine({ at: daysAgo(1) }), runLine({ at: daysAgo(2) })]
+    const aggregate = summarize(lines, { diff: 'live-data', now: NOW, intervalMinutes: 5 })
+
+    assert.match(aggregate.notes, /run gap/i)
+    assert.match(aggregate.notes, /2016/, 'the expected count for a 7 d window at 5 min')
+  })
+
+  test('a window whose runs match the interval says nothing about a gap', () => {
+    const lines = [runLine({ at: daysAgo(1) }), runLine({ at: daysAgo(2) })]
+    // Two runs are exactly what a 3.5-day interval produces over 7 days.
+    const aggregate = summarize(lines, { diff: 'live-data', now: NOW, intervalMinutes: 7 * 24 * 30 })
+
+    assert.doesNotMatch(aggregate.notes, /run gap/i)
+  })
+
   test('the notes name the window and the run count', () => {
     const aggregate = summarize([runLine({ at: daysAgo(1) })], { diff: 'live-data', now: NOW })
     assert.match(aggregate.notes, /1 run/)
@@ -273,6 +291,25 @@ describe('the summarize command', () => {
       const output = printed.join('\n')
       assert.ok(output.includes(JSON.stringify(aggregate)))
       assert.ok(output.includes('| zone |'))
+    })
+  })
+
+  test('CRON_INTERVAL_MINUTES reaches the continuity check', () => {
+    withTempDir((dir) => {
+      const printed = []
+      fs.writeFileSync(
+        path.join(dir, 'live-data.jsonl'),
+        `${JSON.stringify(runLine({ at: daysAgo(1) }))}\n`
+      )
+
+      runSummarize({
+        argv: ['live-data'],
+        env: { OUT_DIR: dir, CRON_INTERVAL_MINUTES: '5' },
+        now: () => NOW,
+        out: (text) => printed.push(text)
+      })
+
+      assert.match(printed.join('\n'), /run gap/i)
     })
   })
 

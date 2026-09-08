@@ -12,9 +12,11 @@ const { finishRun } = require('../finish-run')
 
 const DIFF = 'online-set'
 
+// The three the brief pins, verbatim, then this diff's own shifts (test/explained-by.test.js).
 const EXPLAINED_BY = [
   'no-comms peers visible to Pulse',
   '<= 2 s batching',
+  '~5 s vs webhook latency',
   'heartbeat TTL expiry vs a feed exit entry',
   'an input-idle client still ACKing the transport'
 ]

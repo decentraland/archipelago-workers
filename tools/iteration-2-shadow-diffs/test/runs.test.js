@@ -180,6 +180,65 @@ describe('hot-scenes run', () => {
   })
 })
 
+describe('hot-scenes against a warming gatekeeper', () => {
+  const warming = () => {
+    const error = new Error('GET https://gatekeeper.example.com/hot-scenes answered 503')
+    error.status = 503
+    return error
+  }
+
+  test('a 503 warming writes an empty-sample line instead of leaving a hole in the window', async () => {
+    await withTempDir(async (dir) => {
+      // gatekeeper answers 503 {"ok":false,"error":"warming"} until the presence map and the
+      // ranking are both ready, i.e. during every deploy. Throwing wrote nothing, and the gate's
+      // first step reads a gap in `runs` as "the cron was down".
+      const line = await hotScenes.run({
+        env: { OUT_DIR: dir, STATS_URL: 'https://stats.example.com', GATEKEEPER_URL: 'https://gatekeeper.example.com' },
+        fetchJson: async (url) => {
+          if (url.startsWith('https://gatekeeper')) {
+            throw warming()
+          }
+          return STATS_HOT_SCENES
+        },
+        now: () => new Date('2026-09-05T10:00:00.000Z'),
+        out: () => {}
+      })
+
+      assert.equal(line.sampleSize, 0)
+      assert.equal(line.agree, 0)
+      assert.equal(line.withinTolerance, false, 'no sample is not agreement')
+      assert.match(line.notes, /gatekeeper warming \(503\)/)
+      assert.equal(fs.readFileSync(path.join(dir, 'hot-scenes.jsonl'), 'utf8').trim().split('\n').length, 1)
+    })
+  })
+
+  test('any other failure is still a failure', async () => {
+    await withTempDir(async (dir) => {
+      const boom = new Error('GET https://gatekeeper.example.com/hot-scenes answered 500')
+      boom.status = 500
+      await assert.rejects(
+        () =>
+          hotScenes.run({
+            env: {
+              OUT_DIR: dir,
+              STATS_URL: 'https://stats.example.com',
+              GATEKEEPER_URL: 'https://gatekeeper.example.com'
+            },
+            fetchJson: async (url) => {
+              if (url.startsWith('https://gatekeeper')) {
+                throw boom
+              }
+              return STATS_HOT_SCENES
+            },
+            now: () => new Date('2026-09-05T10:00:00.000Z'),
+            out: () => {}
+          }),
+        /answered 500/
+      )
+    })
+  })
+})
+
 describe('bearer tokens on the fetched endpoints', () => {
   test('each URL gets its own token, with one shared token as the fallback', async () => {
     await withTempDir(async (dir) => {

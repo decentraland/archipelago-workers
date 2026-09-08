@@ -93,9 +93,10 @@ Two situations write **no line at all** and still exit 0, because there is genui
 sample and a fabricated sample would be worse than a gap: diff 1 when the gatekeeper counters went
 *backwards* since the previous scrape (an exporter restart, or a scrape that landed on another
 task — the run logs `SKIPPED — counters went backwards …` and keeps the new counters as the next
-baseline), and diff 4 while gatekeeper answers `503 warming` (that one does write a line, with
-`sampleSize: 0`; see below). Grep the cron log for `SKIPPED` when `runs` is short of the expected
-count.
+baseline), and diff 4 while gatekeeper answers `503 warming` — that one *does* write a line, with
+`sampleSize: 0` and `notes: "gatekeeper warming (503)"`, so a deploy is visible in the window
+instead of looking like a dead cron. Grep the cron log for `SKIPPED` when `runs` is short of the
+expected count.
 
 The report line, identical for all four diffs:
 
@@ -126,6 +127,7 @@ out is a whole week of "the source answered nothing" reading as a whole week of 
 | `SHADOW_DIFF_ENV` | all | `zone` | the `env` label written into every line |
 | `MAX_DISAGREE_RATIO` | all | `0.05` | global tolerance override, in `[0, 1]` |
 | `MAX_DISAGREE_RATIO_<DIFF>` | all | — | per-diff override, wins over the global one; the diff name upper-snake-cased (`MAX_DISAGREE_RATIO_LIVE_DATA`) |
+| `CRON_INTERVAL_MINUTES` | `summarize` | `5` | the cron interval the window is checked against, for the run-gap note; `--interval-minutes` overrides it |
 | `GATEKEEPER_METRICS_URL` | 1 | — | comms-gatekeeper's Prometheus page: **one URL per task**, comma-separated (see the load-balancer caveat) |
 | `SHADOW_DIFF_METRIC` | 1 | `presence_shadow_diff` | the numerator; pinned by the contract |
 | `SHADOW_COMPARE_METRIC` | 1 | `presence_shadow_compare_total` | the denominator: comparisons performed, not requests served |
@@ -274,10 +276,11 @@ Diffs 2, 3 and 4 need their sources to be running in shadow mode first, per the 
 ## Summarizing a window
 
 ```bash
-node bin/shadow-diff.js summarize live-data                       # 7 days, every env
-node bin/shadow-diff.js summarize hot-scenes --window-days 14     # a longer window
-node bin/shadow-diff.js summarize online-set --env org            # one env
-node bin/shadow-diff.js summarize live-data --gate                # exit 1 if out of tolerance
+node bin/shadow-diff.js summarize live-data                        # 7 days, every env
+node bin/shadow-diff.js summarize hot-scenes --window-days 14      # a longer window
+node bin/shadow-diff.js summarize online-set --env org             # one env
+node bin/shadow-diff.js summarize live-data --gate                 # exit 1 if out of tolerance
+node bin/shadow-diff.js summarize live-data --interval-minutes 15  # a cron that is not every 5 min
 ```
 
 It prints the aggregate as **the same JSON shape** plus `runs` and `runsWithinTolerance`, then a
@@ -310,12 +313,19 @@ verdicts `withinTolerance: false`, says `no samples in the window` / `no runs` i
 table row reads `no data` instead of `within` or `OUT`. `--gate` therefore exits 1 on it: an absence
 of evidence must not open a cut-over. Both halves are pinned by tests, per run and per window.
 
+`notes` also carries a **run-gap** line when the window holds fewer runs than the cron interval
+would have produced (`run gap: 1400 of ~2016 expected at 5 min`), so gate step 1 is computed rather
+than counted by eye. Being short is not automatically a fault — a cron that started mid-window, a
+diff-1 run skipped after a counter reset, and a two-day outage all land here — but it is never
+invisible. The cron log's `SKIPPED` lines tell a counter reset from a dead cron.
+
 ## The cut-over gate
 
 A consumer may be switched off its LiveKit or heartbeat path when, for the diffs that cover it:
 
 1. **≥ 7 days** of continuous runs in the environment being cut over, `runs` consistent with the
-   cron interval (a gap means the cron was down, not that the answers agreed);
+   cron interval — `notes` says so itself (the run-gap line above); a gap means the cron was down,
+   a diff-1 counter reset, or a warming upstream, not that the answers agreed;
 2. the window `withinTolerance` is `true` in `zone`, then in `org`;
 3. **the symmetric difference is explained only by the documented semantic shifts** — the
    `explainedBy` entries, which are the same three-to-four causes each diff was built around:
@@ -351,9 +361,12 @@ cd tools/iteration-2-shadow-diffs
 node --test          # or: npm test / npm run shadow-diffs:test
 ```
 
-152 tests, no network and no Redis: the `compare*` functions are pure, and the `run` functions take
-`fetchJson` / `fetchText` / `readSet` / `now` / `out` as injectable parameters, so a run is tested
-end to end against fixture bodies and a temporary `OUT_DIR`.
+196 tests, no Redis and no outbound network: the `compare*` functions are pure, and the `run`
+functions take `fetchJson` / `fetchText` / `readSet` / `now` / `out` as injectable parameters, so a
+run is tested end to end against fixture bodies and a temporary `OUT_DIR`. The exception is
+`test/http.test.js`, which drives the real `fetch` against a `node:http` server on an ephemeral
+port — the 401, the 503, the timeout, the `accept` handling and the bearer header, none of which any
+injected fake would cover.
 
 Fixtures under `test/fixtures/iteration-2/` are **copies** of the contract pack's goldens
 (`http/realms.json`, `http/today/hot-scenes.json`); `test/fixture-integrity.test.js` checks their

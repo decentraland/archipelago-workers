@@ -19,6 +19,7 @@ const USAGE = `shadow-diff — iteration-2 shadow diffs (Pulse vs LiveKit/heartb
   shadow-diff <diff>                 run one diff once and append a line to $OUT_DIR/<diff>.jsonl
   shadow-diff summarize <diff> [..]  aggregate a window and print the Markdown table
                                      [--window-days N] [--env zone|org] [--gate]
+                                     [--interval-minutes N]
 
   diffs: ${DIFF_NAMES.join(', ')}
 
