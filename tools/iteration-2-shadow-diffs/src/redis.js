@@ -142,7 +142,10 @@ const parseRedisCliLines = (text) => {
 }
 
 const cliArgs = (parsed, key) => {
-  const args = ['-h', parsed.host, '-p', String(parsed.port), '--no-auth-warning']
+  // `--raw` explicitly: `parseRedisCliLines` expects bare members, one per line, which is raw
+  // output. redis-cli switches to it on its own when stdout is not a tty (it never is here), but
+  // that is an assumption about the binary's behaviour and asking costs one argument.
+  const args = ['-h', parsed.host, '-p', String(parsed.port), '--no-auth-warning', '--raw']
   if (parsed.tls) {
     args.push('--tls')
   }
