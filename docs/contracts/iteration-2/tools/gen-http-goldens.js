@@ -160,11 +160,13 @@ G['health.json'] = { request: 'GET /health', status: 200, body: null }
 
 const legacy = ['/peers', '/parcels', '/islands', '/islands/C1', '/comms/peers', '/comms/parcels', '/comms/islands', '/comms/islands/C1']
 G['redirects.json'] = {
-  rule: 'Legacy unscoped paths (and their /comms/ copies) answer 308 with Location under /realms/main/…, preserving the query string. Exception: /peers and /comms/peers with an `id` or `all` query parameter are handled directly (all realms, see peers-by-id.json / peers-all.json).',
+  rule: 'Legacy unscoped paths (and their /comms/ copies) answer 308 with Location under /realms/main/…, preserving the query string. Exceptions handled directly (all realms): /peers and /comms/peers with an `id` or `all` query parameter (peers-by-id.json / peers-all.json), and /peers/:id and /comms/peers/:id (peers-single.json).',
   cases: [
     ...legacy.map((p) => ({ path: p, status: 308, location: '/realms/main' + p.replace(/^\/comms/, '') })),
     { path: '/peers?foo=bar', status: 308, location: '/realms/main/peers?foo=bar' },
     { path: `/comms/peers?id=${P.W1.address}`, status: 200, golden: 'peers-by-id.json (same handler as /peers?id=)' },
+    { path: `/comms/peers/${P.W3.address}`, status: 200, golden: 'peers-single.json (same handler as /peers/:id — stats served this alias; keep it live)' },
+    { path: `/comms/peers/${EXTRA.W9}`, status: 404, golden: 'peers-single-404.json' },
     { path: '/peers?all=true', status: 200, golden: 'peers-all.json' },
     { path: '/metrics', status: 401, note: 'unchanged: bearer-token protected; every other route above is unauthenticated like /about' }
   ]

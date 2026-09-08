@@ -84,7 +84,7 @@ Everything else (ids, addresses, realms, parcels, counts, timestamps, ordering) 
 
 `/peers`, `/parcels`, `/islands`, `/islands/:id` and the `/comms/`-prefixed copies answer
 `308 Location: /realms/main/…` preserving the query string. Exception: `/peers` and `/comms/peers`
-with an `id` or `all` query parameter are handled directly (all realms) — see `http/redirects.json`.
+with an `id` or `all` query parameter, and `/peers/:id` / `/comms/peers/:id`, are handled directly (all realms) — see `http/redirects.json`.
 Realm path segments match case-insensitively; responses carry the canonical lowercase realm.
 An unknown realm is an empty realm (200, empty list), never 404.
 
