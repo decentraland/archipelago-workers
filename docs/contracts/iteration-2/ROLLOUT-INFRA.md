@@ -40,7 +40,7 @@ Rollback: revert the rule; archipelago-stats keeps running until step 9.
 | 4 | WP4 social-service `both`; WP5 wcs `both` | WP10 diffs 2 and 3 within tolerance 7 days | `PRESENCE_SOURCE=archipelago` / `livekit` |
 | 5 | WP6 realm-provider `pulse`; CloudFlare cut | consumers' error rates flat (places, sites, unity `/status`, referral) | revert CF rule |
 | 6 | gatekeeper fallback off; social-service + wcs `pulse` | 24 h clean | flags back |
-| 7 | WP8 unity release, heartbeat flag ramps to 100 % | ≥ 95 % sessions on new build; ws-connector heartbeat rate → 0 | ramp down |
+| 7 | WP8 unity release, heartbeat flag ramps to 100 % | ≥ 95 % sessions on new build; retired subjects silent on the broker (the client reads the flag once at launch, so allow ≥ 24 h for live sessions to cycle after the ramp) | ramp down (takes effect on next launch) |
 | 8 | ws-connector `HEARTBEAT_FORWARDING_ENABLED=false`; wcs `PUBLISH_PEER_WORLD_EVENTS=false`; delete social-service worlds-stats | no subscriber logs for retired subjects 48 h | redeploy previous images |
 | 9 | WP3c delete `stats`; remove fallback flags; wcs remove `connected-world` | runbook verification green | redeploy last stats image + CF revert |
 
