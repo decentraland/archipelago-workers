@@ -18,7 +18,7 @@ left. Online-player information is Pulse's responsibility.
 | | Before | After |
 | --- | --- | --- |
 | `/peers`, `/parcels`, `/islands`, `/islands/{id}` (and their `/comms`-prefixed aliases) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`; these legacy paths answer `308` to `/realms/main/…`, query string preserved |
-| `/peers/{id}`, `/peers?id=`, `/peers?all=true`, `/status` (and the `/comms/peers/{id}` and `/comms/peers?id=` aliases) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, answered **directly** with `200` — not `308` — and across every realm, because the caller does not know the realm |
+| `/peers/{id}`, `/peers?id=`, `/peers?all=true`, `/status` (and the `/comms/peers/{id}`, `/comms/peers?id=` and `/comms/peers?all=true` aliases) | archipelago-stats, heartbeat-fed | **Pulse HTTP**, answered **directly** with `200` — not `308` — and across every realm, because the caller does not know the realm |
 | `/about`, `/health` | — | **Pulse HTTP** (`/health` is the CloudFlare origin health check) |
 | `/hot-scenes` | archipelago-stats, joined against Catalyst | **comms-gatekeeper**, from its `engine.parcel_changes` presence map; `realm-provider` proxies it |
 | `/scene-participants` | — | **comms-gatekeeper** |
@@ -46,14 +46,18 @@ Rollout steps 1–8 must be done and their gates green. Verbatim from the plan's
 one substitution: the plan words step 7's gate "ws-connector heartbeat rate → 0", and **there is no
 such metric** — `ws-connector/src/metrics.ts` declares only the default HTTP metrics and the
 logger's, so looking for a heartbeat rate on `/metrics` finds an absent series, not a zero one. The
-row below carries the observable form of the same gate;
-[§5](#5-nothing-is-publishing-the-retired-subjects) is the procedure.
+row below carries the observable form of the same gate: the release's own rollout telemetry, plus the
+retired subjects going quiet on the broker — observed **at step 7, while heartbeat intake is still
+on**, which is what makes broker silence evidence about *clients*. Once step 8 has run,
+`HEARTBEAT_FORWARDING_ENABLED=false` silences those subjects on its own, so working the step-7 row
+after that leaves only its telemetry half falsifiable. The flag is step 8's action, and
+[§5](#5-nothing-is-publishing-the-retired-subjects) is where it is verified.
 
 | Step | Change | Gate | Rollback |
 |---|---|---|---|
 | 5 | realm-provider proxy + Pulse `/about`; CloudFlare cut for all paths | consumers' error rates flat | revert CF rule (stats still running) |
 | 6 | gatekeeper `LIVEKIT_PRESENCE_FALLBACK=false`; social-service + wcs `PRESENCE_SOURCE=pulse` | 24 h clean | flags back |
-| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % sessions on new build; `peer.*.heartbeat` silent on the broker **and** `HEARTBEAT_FORWARDING_ENABLED=false` read off the ws-connector deployment ([§5](#5-nothing-is-publishing-the-retired-subjects)) — the plan words this "heartbeat rate → 0"; no such metric exists | flag ramps down |
+| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % of sessions on the heartbeat-free build (release telemetry) **and** the retired subjects going quiet on the broker as sessions cycle — the client reads the flag at launch, so allow ≥ 24 h after the ramp, and read the broker here *while intake is still on* (`nats sub`, [§5](#5-nothing-is-publishing-the-retired-subjects)). The plan words this "heartbeat rate → 0"; no such metric exists | flag ramps down (takes effect on next launch) |
 | 8 | heartbeat intake off; wcs stops `peer.*.world.*` publish; delete social-service worlds-stats | no subscriber logs for retired subjects for 48 h | redeploy previous images |
 | 9 | delete `stats`; remove fallback flags everywhere; wcs removes `/wallet/:wallet/connected-world` | runbook verification list green | redeploy last stats image + CF revert |
 
@@ -176,6 +180,13 @@ the flag is read leniently **by design**, so that a typo cannot take `/ws` down 
 `HEARTBEAT_FORWARDING_ENABLED=fasle` leaves forwarding **on** and only warns. A flip that looks done
 in the console and is not is the failure mode this check exists for.
 
+Note what each half proves at *this* step. With the flag off, ws-connector publishes neither retired
+subject whatever clients do, so here broker silence evidences the **intake**, not the client ramp —
+which is why the two commands above and the flag are one check, not two independent ones. The client
+half is step 7's gate (release telemetry for the heartbeat-free build, plus the broker read while
+intake was still on) and has to be worked on its own: after step 8 a silent broker cannot stand in
+for it.
+
 ### 6. The consumers are off the old sources
 
 | Service | Key | Required value |
@@ -218,10 +229,20 @@ service down.
 **Before you start, know the cost: a rollback restores the endpoints, not the data.**
 
 The peer map is heartbeat-fed and has no time-based expiry, so a freshly redeployed stats starts
-empty and fills only from sessions that begin *after* heartbeat intake is back on. Worse, clients on
-heartbeat-free builds — ≥ 95 % of sessions by step 7 — never send a heartbeat at all, so they will
-**not** repopulate it however long you wait. `/peers`, `/parcels` and `/hot-scenes` would come back
-thin and stay thin: a wrong answer where the CloudFlare revert alone would have given a right one.
+empty and fills only from sessions that begin *after* heartbeat intake is back on. How thin it then
+stays depends on where step 7's client ramp actually is, so establish that first:
+
+- **Ramp still up** (≥ 95 % of sessions on the heartbeat-free build): those clients never send a
+  heartbeat at all, so they will **not** repopulate the map however long you wait. `/peers`,
+  `/parcels` and `/hot-scenes` come back thin and stay thin — a wrong answer where the CloudFlare
+  revert alone would have given a right one.
+- **Ramp rolled back** (step 7's own rollback, with step 8 executed anyway): most sessions are still
+  sending, so a redeploy **plus** intake back on will refill the map, and skipping that is skipping
+  the fix.
+
+Read the ramp off the release telemetry that gates step 7. A quiet broker will not tell you which
+case you are in: step 8's `HEARTBEAT_FORWARDING_ENABLED=false` silences the retired subjects either
+way.
 
 So **revert the CloudFlare rule first and check whether that alone fixes the incident.** Redeploying
 stats is the second half, and it is worth doing only if the problem is that the *endpoints* are gone
@@ -246,9 +267,10 @@ rather than that Pulse's numbers are wrong.
    deployment (or clear the key — unset means on). Without this, stats has no writer at all and its
    peer map stays permanently empty; the endpoints answer `200` with nothing in them, which reads as
    "everyone left" to every consumer listed below.
-5. Optionally re-ramp the unity-explorer `archipelago-heartbeats` flag, which is the only way
-   already-running client builds start feeding the map again. That is a client release ramp, not a
-   config flip, so plan in days.
+5. Re-ramp the unity-explorer `archipelago-heartbeats` flag — needed only in the first case above,
+   and the only way clients already on the heartbeat-free build start feeding the map again. The
+   client reads the flag at launch, so it takes effect as sessions cycle, not on the flip: that is a
+   client release ramp, not a config flip, so plan in days.
 
 Verify a rollback in dev before promoting it.
 
