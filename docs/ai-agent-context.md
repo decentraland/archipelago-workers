@@ -55,9 +55,13 @@ cluster is unchanged — a network blip, or the explorer's own `ForceFreshIsland
 repeated LiveKit failures — would sit there with no island until the crowd moved; the next client
 heartbeat used to cover that. Both halves had to be deployed before rollout step 7 turned client
 heartbeats off ([stats-decommission-runbook.md](./stats-decommission-runbook.md#7-the-handshake-announcement-is-on-the-broker)).
-A publish that the broker refuses is contained, logged and counted on
-`ws_connector_peer_connect_publish_failures_total`: the handshake completes either way, because a
-client with no island re-handshakes and a client with no socket is broken.
+A publish the NATS client refuses outright — never started, or connection closed — is contained,
+logged and counted on `ws_connector_peer_connect_publish_failures_total`: the handshake completes
+either way, because a client with no island re-handshakes and a client with no socket is broken.
+That counter is not a health signal for the announcement, though: a publish made while the client is
+reconnecting is buffered and dropped silently if the reconnect fails, so a flat zero proves nothing
+and observing `peer.*.connect` on the broker stays the real check
+([§7](./stats-decommission-runbook.md#7-the-handshake-announcement-is-on-the-broker)).
 
 **Both retired subjects now have no subscriber at all**, so `false` is the value production wants:
 the flag was flipped at rollout step 8 and the stats workspace was deleted at step 9. The switch stays in the
@@ -157,7 +161,7 @@ here at all). Payload types come from `@dcl/protocol`.
 | `engine.islands` | Pulse | **nobody** | `IslandStatusMessage` — full island topology, `C{n}` ids, `maxPeers: 0`. Fed stats' `GET /islands`, which Pulse serves itself now; still published, and still pinned in `ws-connector/test/contract/pulse-wire.spec.ts` |
 | `engine.discovery` | Pulse | **nobody** | `ServiceDiscoveryMessage` — clustering-service heartbeat every 10 s, `current_time` as `uint64`. Fed stats' `/core-status`, which retired; pinned in the same spec |
 | `engine.peer.<addr>.island_changed` | comms-gatekeeper | **ws-connector** | `IslandChangedMessage` — island id plus the LiveKit connection string with an embedded token; forwarded to that peer's socket unchanged. `peers` arrives empty by design |
-| `peer.<addr>.connect` | **ws-connector** | comms-gatekeeper | empty payload — published on handshake so comms-gatekeeper re-emits the current island assignment. Lower-cased address. Not gated by `HEARTBEAT_FORWARDING_ENABLED`: gatekeeper's `island_changed` otherwise follows only a Pulse cluster change, so this is what a reconnecting socket has instead of the retired client heartbeat. Failures are counted on `ws_connector_peer_connect_publish_failures_total` |
+| `peer.<addr>.connect` | **ws-connector** | comms-gatekeeper | empty payload — published on handshake so comms-gatekeeper re-emits the current island assignment. Lower-cased address. Not gated by `HEARTBEAT_FORWARDING_ENABLED`: gatekeeper's `island_changed` otherwise follows only a Pulse cluster change, so this is what a reconnecting socket has instead of the retired client heartbeat. Publishes the NATS client refuses are counted on `ws_connector_peer_connect_publish_failures_total`; one made while it is reconnecting is buffered and can be lost with that counter still at zero, so the broker-side subscription is the check |
 | `peer.<addr>.heartbeat` | **ws-connector** | **nobody** | `Heartbeat` — the client's position, republished. archipelago-stats was its only consumer; gated by `HEARTBEAT_FORWARDING_ENABLED`, turned off at rollout step 8 |
 | `peer.<addr>.disconnect` | **ws-connector** | **nobody** | empty payload — the session closed; was stats' only way of dropping a peer. comms-gatekeeper deliberately never subscribed (it expires assignments on a TTL instead). Gated by the same flag and retired with it |
 

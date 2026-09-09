@@ -247,8 +247,18 @@ Unlike the retired pair this subject is **not** gated by `HEARTBEAT_FORWARDING_E
 that key ([§6](#6-the-consumers-are-off-the-old-sources)) says nothing about it — do not treat
 `false` there as evidence either way. What ws-connector does expose is the failure counter
 `ws_connector_peer_connect_publish_failures_total` on its `/metrics`: one increment per completed
-handshake whose announcement the broker refused. It should be flat at zero; a rising series is a
-broker problem presenting as clients with live sockets and no island.
+handshake whose announcement the NATS client **refused outright** — the component was never
+started, or the connection is closed. A rising series is a broker problem presenting as clients
+with live sockets and no island.
+
+**A flat zero is not evidence that the announcements are landing**, so do not sign this check off on
+the counter alone. It cannot see the loss mode this section exists to catch: while the client is
+*reconnecting* — a broker rolling restart, a network partition — `publish` neither throws nor
+delivers, it buffers, and the buffer is discarded if the reconnect never succeeds. Every handshake
+in that window is announced to nothing, silently, with the counter still at zero. The
+`nats sub 'peer.*.connect'` observation above is the real check; read the counter only as "publishes
+are being refused", never as "publishes are arriving", and pair it with the broker's own
+connection/reconnect metrics over the window you are signing off.
 
 ## The cut
 

@@ -115,6 +115,12 @@ export async function registerWsHandler(
    * Never throws. `nats.publish` throws synchronously when the component was never started or the
    * connection is gone, and by the time this runs the peer is registered and the welcome is next: a
    * client with no island is degraded and re-handshakes, a client with no socket is broken.
+   *
+   * The counter is not a health signal for the announcement, and the runbook says so: those two are
+   * the *only* cases the client refuses a publish. While it is merely reconnecting the message is
+   * buffered — neither refused nor delivered — and dropped silently if the reconnect never
+   * succeeds, so an announcement can be lost with the counter flat at zero. Observing
+   * `peer.*.connect` on the broker is the check (docs/stats-decommission-runbook.md §7).
    */
   function announcePeerConnected(address: string) {
     try {
