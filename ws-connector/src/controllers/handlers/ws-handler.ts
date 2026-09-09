@@ -99,6 +99,38 @@ export async function registerWsHandler(
     }
   }
 
+  /**
+   * Announces a completed handshake so comms-gatekeeper re-emits this peer's current island.
+   *
+   * comms-gatekeeper publishes `engine.peer.<addr>.island_changed` only when Pulse reports a
+   * cluster change, so a socket that reconnects without the crowd moving — a network blip, or the
+   * explorer's own forced re-handshake after repeated LiveKit failures — receives nothing until it
+   * does. archipelago-core covered that with the next client heartbeat; iteration 2 took heartbeats
+   * away, so the handshake has to announce itself.
+   *
+   * Deliberately **not** gated by `HEARTBEAT_FORWARDING_ENABLED`. That switch retires subjects
+   * nothing consumes any more; this one is what keeps reconnects working once it is off, so gating
+   * them together would make the flip cost an island assignment on every reconnect.
+   *
+   * Never throws. `nats.publish` throws synchronously when the component was never started or the
+   * connection is gone, and by the time this runs the peer is registered and the welcome is next: a
+   * client with no island is degraded and re-handshakes, a client with no socket is broken.
+   *
+   * The counter is not a health signal for the announcement, and the runbook says so: those two are
+   * the *only* cases the client refuses a publish. While it is merely reconnecting the message is
+   * buffered — neither refused nor delivered — and dropped silently if the reconnect never
+   * succeeds, so an announcement can be lost with the counter flat at zero. Observing
+   * `peer.*.connect` on the broker is the check (docs/stats-decommission-runbook.md §7).
+   */
+  function announcePeerConnected(address: string) {
+    try {
+      nats.publish(`peer.${address}.connect`)
+    } catch (error) {
+      logger.error(`Cannot announce the handshake on peer.${address}.connect: ${getErrorMessage(error)}`)
+      metrics.increment('ws_connector_peer_connect_publish_failures_total')
+    }
+  }
+
   server.app.ws<WsUserData>('/ws', {
     idleTimeout,
     // Iteration 2 takes away the client heartbeats, which were the only client→server traffic on
@@ -240,6 +272,21 @@ export async function registerWsHandler(
                 return
               }
 
+              // The awaits above — signature validation, the deny list and the out-of-process ban
+              // check — can hold the handshake for hundreds of milliseconds, and the connection
+              // can drop inside that window. uWS delivers `close` first, and it can only mark the
+              // user data (there is no address on it yet to evict by), so the handshake then
+              // resumes against a socket that is gone. Stop here rather than finish it:
+              // registering it would leave an entry the close already walked past, announcing it
+              // would have comms-gatekeeper mint a LiveKit token and re-emit an island for a
+              // session that no longer exists — which `src/service.ts` would then try to deliver
+              // on a closed socket — and the kick below would cost this wallet a live session for
+              // the sake of a dead one.
+              if (ws.getUserData().isClosed) {
+                logger.debug('Aborting handshake: the socket closed while it was being authenticated', { address })
+                return
+              }
+
               const previousWs = peersRegistry.getPeerWs(address)
               if (previousWs) {
                 const previousData = previousWs.getUserData()
@@ -258,14 +305,21 @@ export async function registerWsHandler(
                 safeEndWebSocket(previousWs)
               }
 
-              peersRegistry.onPeerConnected(address, ws)
-
-              // Set address and stage BEFORE sending welcome so the close handler
-              // can clean up the registry if the send fails
+              // Address and stage before the registration, not just before the welcome: the close
+              // handler evicts only a peer it can find an address for, so from this line on every
+              // close — the one a failed welcome triggers below included — cleans the registry up.
               changeStage(ws.getUserData(), {
                 stage: Stage.HANDSHAKE_COMPLETED,
                 address
               })
+
+              peersRegistry.onPeerConnected(address, ws)
+
+              // Registered before it is announced, so gatekeeper's re-emit cannot arrive before
+              // the socket the forwarder looks up to deliver it. If the welcome below then fails,
+              // the socket closes, the close handler evicts the peer, and the re-emit is dropped
+              // by the forwarder for want of a socket — harmless, and the client re-handshakes.
+              announcePeerConnected(address)
 
               const welcomeMessage = craftMessage({
                 message: {

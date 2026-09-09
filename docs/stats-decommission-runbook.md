@@ -44,20 +44,21 @@ Two visible consequences that are not this repo's to fix:
 
 Rollout steps 1–8 must be done and their gates green. Verbatim from the plan's rollout table, with
 one substitution: the plan words step 7's gate "ws-connector heartbeat rate → 0", and **there is no
-such metric** — `ws-connector/src/metrics.ts` declares only the default HTTP metrics and the
-logger's, so looking for a heartbeat rate on `/metrics` finds an absent series, not a zero one. The
-row below carries the observable form of the same gate: the release's own rollout telemetry, plus the
-retired subjects going quiet on the broker — observed **at step 7, while heartbeat intake is still
-on**, which is what makes broker silence evidence about *clients*. Once step 8 has run,
-`HEARTBEAT_FORWARDING_ENABLED=false` silences those subjects on its own, so working the step-7 row
-after that leaves only its telemetry half falsifiable. The flag is step 8's action, and
-[§5](#5-nothing-is-publishing-the-retired-subjects) is where it is verified.
+such metric** — `ws-connector/src/metrics.ts` declares the default HTTP metrics, the logger's and
+one counter for a failed `peer.<addr>.connect` publish ([§7](#7-the-handshake-announcement-is-on-the-broker)),
+and nothing about heartbeats, so looking for a heartbeat rate on `/metrics` finds an absent series,
+not a zero one. The row below carries the observable form of the same gate: the release's own rollout
+telemetry, plus the retired subjects going quiet on the broker — observed **at step 7, while
+heartbeat intake is still on**, which is what makes broker silence evidence about *clients*. Once
+step 8 has run, `HEARTBEAT_FORWARDING_ENABLED=false` silences those subjects on its own, so working
+the step-7 row after that leaves only its telemetry half falsifiable. The flag is step 8's action,
+and [§5](#5-nothing-is-publishing-the-retired-subjects) is where it is verified.
 
 | Step | Change | Gate | Rollback |
 |---|---|---|---|
 | 5 | realm-provider proxy + Pulse `/about`; CloudFlare cut for all paths | consumers' error rates flat | revert CF rule (stats still running) |
 | 6 | gatekeeper `LIVEKIT_PRESENCE_FALLBACK=false`; social-service + wcs `PRESENCE_SOURCE=pulse` | 24 h clean | flags back |
-| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % of sessions on the heartbeat-free build (release telemetry) **and** the retired subjects going quiet on the broker as sessions cycle — the client reads the flag at launch, so allow ≥ 24 h after the ramp, and read the broker here *while intake is still on* (`nats sub`, [§5](#5-nothing-is-publishing-the-retired-subjects)). The plan words this "heartbeat rate → 0"; no such metric exists | flag ramps down (takes effect on next launch) |
+| 7 | unity-explorer release: heartbeats off behind flag; flag ramps to 100 % | ≥ 95 % of sessions on the heartbeat-free build (release telemetry) **and** the retired subjects going quiet on the broker as sessions cycle — the client reads the flag at launch, so allow ≥ 24 h after the ramp, and read the broker here *while intake is still on* (`nats sub`, [§5](#5-nothing-is-publishing-the-retired-subjects)). The plan words this "heartbeat rate → 0"; no such metric exists. **Before the ramp starts:** `peer.*.connect` observed on the broker with gatekeeper re-emitting from it ([§7](#7-the-handshake-announcement-is-on-the-broker)) | flag ramps down (takes effect on next launch) |
 | 8 | heartbeat intake off; wcs stops `peer.*.world.*` publish; delete social-service worlds-stats | no subscriber logs for retired subjects for 48 h | redeploy previous images |
 | 9 | delete `stats`; remove fallback flags everywhere; wcs removes `/wallet/:wallet/connected-world` | runbook verification list green | redeploy last stats image + CF revert |
 
@@ -164,9 +165,11 @@ never becomes ready, so `warming` is the answer for the whole life of the proces
 
 `peer.<addr>.heartbeat` and `peer.<addr>.disconnect` must have been silent for 48 h (step 8's gate).
 
-**There is no ws-connector metric for this.** `ws-connector/src/metrics.ts` declares only the
-default HTTP metrics and the logger's, so a heartbeat rate is not on `/metrics` and cannot be
-graphed. Verify it the two ways that do work:
+**There is no ws-connector metric for this.** `ws-connector/src/metrics.ts` declares no heartbeat
+series at all — the default HTTP metrics, the logger's and
+`ws_connector_peer_connect_publish_failures_total` ([§7](#7-the-handshake-announcement-is-on-the-broker))
+are the whole of it — so a heartbeat rate is not on `/metrics` and cannot be graphed. Verify it the
+two ways that do work:
 
 ```bash
 # on the broker, over a window long enough to cover an arrival and a departure
@@ -210,6 +213,52 @@ Step 3 turned it on and step 5's CloudFlare rule already routes `/hot-scenes` to
 has to have been `true` since before the cut; but step 3's own rollback is
 `PRESENCE_MAP_ENABLED=false`, and a shadow-window revert that was never restored looks exactly like a
 map that is still priming. Read the value off the deployment — do not infer it from a retry.
+
+### 7. The handshake announcement is on the broker
+
+**This item gates step 7, not the cut, and it had to be green before the explorer's heartbeat flag
+started ramping.** `peer.<addr>.connect` is what a reconnecting client gets instead of a heartbeat:
+comms-gatekeeper publishes `engine.peer.<addr>.island_changed` only when Pulse reports a cluster
+change, so a socket that reconnects while its cluster is unchanged receives no island at all.
+archipelago-core used the next client heartbeat to re-send the assignment. Take heartbeats away
+before both halves of the replacement are live and a network blip — or the explorer's own
+`ForceFreshIslandAssignmentAsync` after repeated LiveKit failures — leaves a client holding a
+working socket that never tells it which room to join.
+
+The two halves ship from different repos and both must be deployed:
+
+| Half | Repo | What it does |
+| --- | --- | --- |
+| publisher | archipelago-workers | ws-connector publishes `peer.<addr>.connect` after every successful handshake — empty payload, lower-cased address, ungated |
+| consumer | comms-gatekeeper | re-emits that peer's current `engine.peer.<addr>.island_changed` on receipt |
+
+```bash
+# on the broker, while a client reconnects (drop its socket, or restart the explorer)
+nats sub 'peer.*.connect'
+nats sub 'engine.peer.*.island_changed'
+```
+
+Expect one `peer.<addr>.connect` per handshake and an `engine.peer.<addr>.island_changed` for the
+same wallet right behind it, with no cluster change in between. The first without the second means
+the publisher shipped and the consumer did not — the state that must not survive into step 7, and
+the one that is silent: every session still works, and only reconnects lose their island.
+
+Unlike the retired pair this subject is **not** gated by `HEARTBEAT_FORWARDING_ENABLED`, so reading
+that key ([§6](#6-the-consumers-are-off-the-old-sources)) says nothing about it — do not treat
+`false` there as evidence either way. What ws-connector does expose is the failure counter
+`ws_connector_peer_connect_publish_failures_total` on its `/metrics`: one increment per completed
+handshake whose announcement the NATS client **refused outright** — the component was never
+started, or the connection is closed. A rising series is a broker problem presenting as clients
+with live sockets and no island.
+
+**A flat zero is not evidence that the announcements are landing**, so do not sign this check off on
+the counter alone. It cannot see the loss mode this section exists to catch: while the client is
+*reconnecting* — a broker rolling restart, a network partition — `publish` neither throws nor
+delivers, it buffers, and the buffer is discarded if the reconnect never succeeds. Every handshake
+in that window is announced to nothing, silently, with the counter still at zero. The
+`nats sub 'peer.*.connect'` observation above is the real check; read the counter only as "publishes
+are being refused", never as "publishes are arriving", and pair it with the broker's own
+connection/reconnect metrics over the window you are signing off.
 
 ## The cut
 
