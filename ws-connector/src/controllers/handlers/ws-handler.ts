@@ -266,6 +266,21 @@ export async function registerWsHandler(
                 return
               }
 
+              // The awaits above — signature validation, the deny list and the out-of-process ban
+              // check — can hold the handshake for hundreds of milliseconds, and the connection
+              // can drop inside that window. uWS delivers `close` first, and it can only mark the
+              // user data (there is no address on it yet to evict by), so the handshake then
+              // resumes against a socket that is gone. Stop here rather than finish it:
+              // registering it would leave an entry the close already walked past, announcing it
+              // would have comms-gatekeeper mint a LiveKit token and re-emit an island for a
+              // session that no longer exists — which `src/service.ts` would then try to deliver
+              // on a closed socket — and the kick below would cost this wallet a live session for
+              // the sake of a dead one.
+              if (ws.getUserData().isClosed) {
+                logger.debug('Aborting handshake: the socket closed while it was being authenticated', { address })
+                return
+              }
+
               const previousWs = peersRegistry.getPeerWs(address)
               if (previousWs) {
                 const previousData = previousWs.getUserData()
@@ -284,20 +299,21 @@ export async function registerWsHandler(
                 safeEndWebSocket(previousWs)
               }
 
-              peersRegistry.onPeerConnected(address, ws)
-
-              // Registered first, so gatekeeper's re-emit cannot arrive before the socket the
-              // forwarder looks up to deliver it. If the welcome below then fails, the socket
-              // closes, the close handler evicts the peer, and the re-emit is dropped by the
-              // forwarder for want of a socket — harmless, and the client re-handshakes.
-              announcePeerConnected(address)
-
-              // Set address and stage BEFORE sending welcome so the close handler
-              // can clean up the registry if the send fails
+              // Address and stage before the registration, not just before the welcome: the close
+              // handler evicts only a peer it can find an address for, so from this line on every
+              // close — the one a failed welcome triggers below included — cleans the registry up.
               changeStage(ws.getUserData(), {
                 stage: Stage.HANDSHAKE_COMPLETED,
                 address
               })
+
+              peersRegistry.onPeerConnected(address, ws)
+
+              // Registered before it is announced, so gatekeeper's re-emit cannot arrive before
+              // the socket the forwarder looks up to deliver it. If the welcome below then fails,
+              // the socket closes, the close handler evicts the peer, and the re-emit is dropped
+              // by the forwarder for want of a socket — harmless, and the client re-handshakes.
+              announcePeerConnected(address)
 
               const welcomeMessage = craftMessage({
                 message: {
