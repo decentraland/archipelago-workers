@@ -8,6 +8,7 @@ import { createPeersRegistry } from './adapters/peers-registry'
 import { createBanChecker } from './adapters/ban-checker'
 import { createBanSweep } from './adapters/ban-sweep'
 import { createDenyListComponent } from './adapters/deny-list'
+import { createSupersedeCooldown } from './adapters/supersede-cooldown'
 import { createFetchComponent } from '@dcl/fetch-component'
 import { createUWsComponent } from '@dcl/uws-http-server'
 import { createMetricsComponent } from '@dcl/metrics'
@@ -29,6 +30,7 @@ export async function initComponents(): Promise<AppComponents> {
   const banChecker = await createBanChecker({ config, logs, fetch })
   const denyList = await createDenyListComponent({ config, logs, fetch })
   const banSweep = await createBanSweep({ config, logs, peersRegistry, banChecker })
+  const supersedeCooldown = await createSupersedeCooldown({ config, logs })
 
   const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'sepolia'
   const ethereumProvider = new HTTPProvider(
@@ -47,6 +49,7 @@ export async function initComponents(): Promise<AppComponents> {
     banChecker,
     banSweep,
     denyList,
+    supersedeCooldown,
     ethereumProvider
   }
 }

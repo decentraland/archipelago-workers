@@ -22,6 +22,9 @@ function expectPacket<T>(packet: ServerPacket, packetType: string): T {
 test('end to end test', ({ components, stubComponents }) => {
   const aliceIdentity = createEphemeralIdentity('alice')
   const bobIdentity = createEphemeralIdentity('bob')
+  // Superseding an address leaves it cooling down for the rest of the window, so a test that
+  // supersedes must not share an identity with any test that runs after it.
+  const carolIdentity = createEphemeralIdentity('carol')
 
   async function createWs(relativeUrl: string): Promise<WebSocket> {
     const protocolHostAndProtocol = `ws://${await components.config.requireString(
@@ -156,6 +159,18 @@ test('end to end test', ({ components, stubComponents }) => {
     await ws1DisconnectPromise
 
     // cleanup
+    ws2.close()
+  })
+
+  it('should refuse a reconnect while the superseded address is cooling down', async () => {
+    const ws1 = await connectSocket(carolIdentity)
+    const ws2 = await connectSocket(carolIdentity)
+
+    // ws1 was just superseded, which is the whole point of the window: without it ws1 comes
+    // straight back, retakes the address and is handed the island meant for ws2.
+    await expect(connectSocket(carolIdentity)).rejects.toThrow()
+
+    ws1.close()
     ws2.close()
   })
 

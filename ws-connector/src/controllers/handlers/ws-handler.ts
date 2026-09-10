@@ -15,10 +15,30 @@ import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'denyList' | 'nats' | 'server' | 'metrics'
+    | 'config'
+    | 'logs'
+    | 'ethereumProvider'
+    | 'peersRegistry'
+    | 'banChecker'
+    | 'denyList'
+    | 'supersedeCooldown'
+    | 'nats'
+    | 'server'
+    | 'metrics'
   >
 ) {
-  const { logs, peersRegistry, banChecker, denyList, nats, server, config, ethereumProvider, metrics } = components
+  const {
+    logs,
+    peersRegistry,
+    banChecker,
+    denyList,
+    supersedeCooldown,
+    nats,
+    server,
+    config,
+    ethereumProvider,
+    metrics
+  } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
@@ -189,6 +209,21 @@ export async function registerWsHandler(
                 return
               }
 
+              // Almost certainly the session kicked a moment ago, coming straight back to
+              // retake the slot. Refuse it so the session that superseded it still holds the
+              // address when the island assignment for it arrives; the client retries on its
+              // own recovery interval.
+              //
+              // Keep this below the last await. Read earlier, a concurrent handshake could
+              // arm a cooldown in the gap before the register below and this one would miss
+              // it — the ban check alone is an uncached HTTP call.
+              if (supersedeCooldown.isCoolingDown(address)) {
+                metrics.increment('dcl_ws_connector_supersede_cooldown_refusals_total')
+                logger.warn(`Rejected reconnect during supersede cooldown: ${address}`)
+                safeEndWebSocket(ws, { code: 1013, message: Buffer.from('Try again later') })
+                return
+              }
+
               const previousWs = peersRegistry.getPeerWs(address)
               if (previousWs) {
                 const previousData = previousWs.getUserData()
@@ -203,6 +238,15 @@ export async function registerWsHandler(
                   if (previousWs.send(kickedMessage, true) !== 1) {
                     logger.error('Closing connection: cannot send kicked message')
                   }
+                  // Only a socket that has not been reaped yet. That is weaker than liveness:
+                  // `isClosed` is set from the close callback, so a client that vanished
+                  // without a FIN still reads as open until uWS's idleTimeout, and its own
+                  // reconnect arms a window against itself. Bounded — it costs that client one
+                  // refusal only if it drops again inside the window — and the alternative,
+                  // inferring liveness from heartbeat age, cannot separate the two cases: a
+                  // client reconnects fast enough that the dead socket's last heartbeat is no
+                  // older than a live one's.
+                  supersedeCooldown.onSuperseded(address)
                 }
                 safeEndWebSocket(previousWs)
               }

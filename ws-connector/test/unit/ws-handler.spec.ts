@@ -2,6 +2,7 @@ import { Authenticator } from '@dcl/crypto'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createLogComponent } from '@well-known-components/logger'
 import { createTestMetricsComponent } from '@dcl/metrics'
+import { IMetricsComponent } from '@well-known-components/interfaces'
 import { ClientPacket } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
 import { registerWsHandler } from '../../src/controllers/handlers/ws-handler'
 import { metricDeclarations } from '../../src/metrics'
@@ -10,6 +11,7 @@ import { createEphemeralIdentity } from '../helpers/identity'
 import { createBanCheckerMockedComponent } from '../mocks/ban-checker-mock'
 import { createDenyListMockedComponent } from '../mocks/deny-list-mock'
 import { createPeersRegistryMockedComponent } from '../mocks/peers-registry-mock'
+import { createSupersedeCooldownMockedComponent } from '../mocks/supersede-cooldown-mock'
 
 /**
  * These drive the handlers `registerWsHandler` actually registers on `server.app.ws`, by
@@ -33,7 +35,9 @@ describe('ws-handler', () => {
   let peersRegistry: ReturnType<typeof createPeersRegistryMockedComponent>
   let banChecker: ReturnType<typeof createBanCheckerMockedComponent>
   let denyList: ReturnType<typeof createDenyListMockedComponent>
+  let supersedeCooldown: ReturnType<typeof createSupersedeCooldownMockedComponent>
   let nats: { publish: jest.Mock; subscribe: jest.Mock }
+  let metrics: IMetricsComponent<keyof typeof metricDeclarations>
   let validateSignature: jest.SpyInstance
 
   const identity = createEphemeralIdentity('handler-spec')
@@ -57,7 +61,10 @@ describe('ws-handler', () => {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
     denyList = createDenyListMockedComponent()
+    supersedeCooldown = createSupersedeCooldownMockedComponent()
     nats = { publish: jest.fn(), subscribe: jest.fn() }
+    metrics = createTestMetricsComponent(metricDeclarations)
+    jest.spyOn(metrics, 'increment')
 
     const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS) })
     const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
@@ -76,9 +83,10 @@ describe('ws-handler', () => {
       peersRegistry,
       banChecker,
       denyList,
+      supersedeCooldown,
       nats: nats as never,
       server: server as never,
-      metrics: createTestMetricsComponent(metricDeclarations)
+      metrics
     })
   }
 
@@ -407,6 +415,10 @@ describe('ws-handler', () => {
     it('should register the new socket in its place', () => {
       expect(peersRegistry.getPeerWs(address)).toBe(ws)
     })
+
+    it('should start the cooldown, so the kicked session cannot immediately retake the slot', () => {
+      expect(supersedeCooldown.onSuperseded).toHaveBeenCalledWith(address)
+    })
   })
 
   describe('when the kick to the previous socket cannot be sent', () => {
@@ -429,6 +441,95 @@ describe('ws-handler', () => {
 
     it('should still close it, so the old session cannot linger', () => {
       expect(previousWs.end).toHaveBeenCalled()
+    })
+  })
+
+  describe('when the registry still holds a socket that already closed', () => {
+    let previousWs: StubWebSocket
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, isClosed: true } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, previousWs)
+
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not start the cooldown, since no live session was superseded', () => {
+      expect(supersedeCooldown.onSuperseded).not.toHaveBeenCalled()
+    })
+
+    it('should register the new socket, so an ordinary reconnect is never penalised', () => {
+      expect(peersRegistry.getPeerWs(address)).toBe(ws)
+    })
+  })
+
+  describe('when a handshake arrives while the address is cooling down', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      supersedeCooldown.isCoolingDown.mockReturnValue(true)
+
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should close the socket without welcoming it', () => {
+      expect(ws.send).not.toHaveBeenCalled()
+      expect(ws.end).toHaveBeenCalled()
+    })
+
+    it('should not register it, so the live session keeps the slot', () => {
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a session that was refused', () => {
+      expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.connect`)
+    })
+
+    it('should count the refusal', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_supersede_cooldown_refusals_total')
+    })
+
+    describe('and the refused socket then closes', () => {
+      beforeEach(() => {
+        handlers.close(ws, 1000, new ArrayBuffer(0))
+      })
+
+      it('should not announce a disconnect for an address it never registered', () => {
+        expect(peersRegistry.onPeerDisconnected).not.toHaveBeenCalled()
+        expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.disconnect`)
+      })
+    })
+
+    describe('and a live socket already holds the address', () => {
+      let previousWs: StubWebSocket
+
+      beforeEach(async () => {
+        previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
+        peersRegistry.onPeerConnected(address, previousWs)
+
+        const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+        const late = makeWs({
+          stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+          challengeToSign: 'dcl-challenge'
+        } as Partial<WsUserData>)
+
+        await handlers.message(late, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+      })
+
+      it('should leave the incumbent alone rather than kicking it as well', () => {
+        expect(previousWs.send).not.toHaveBeenCalled()
+        expect(previousWs.end).not.toHaveBeenCalled()
+        expect(peersRegistry.getPeerWs(address)).toBe(previousWs)
+      })
     })
   })
 

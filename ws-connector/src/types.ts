@@ -6,6 +6,7 @@ import { INatsComponent } from '@well-known-components/nats-component/dist/types
 import { IPeersRegistryComponent } from './adapters/peers-registry'
 import { IBanCheckerComponent } from './adapters/ban-checker'
 import { IBanSweepComponent } from './adapters/ban-sweep'
+import { ISupersedeCooldownComponent } from './adapters/supersede-cooldown'
 import { IDenyListComponent } from './adapters/deny-list'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@dcl/uws-http-server'
 
@@ -21,6 +22,7 @@ export type BaseComponents = {
   banChecker: IBanCheckerComponent
   banSweep: IBanSweepComponent
   denyList: IDenyListComponent
+  supersedeCooldown: ISupersedeCooldownComponent
   ethereumProvider: HTTPProvider
 }
 
