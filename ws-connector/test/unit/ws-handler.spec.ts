@@ -26,10 +26,14 @@ type WsHandlers = {
 
 type StubWebSocket = InternalWebSocket & { send: jest.Mock; end: jest.Mock }
 
+// The object handed to `server.app.ws` carries the route's uWS options as well as its handlers.
+type RouteOptions = { idleTimeout?: number; sendPingsAutomatically?: boolean }
+
 const HANDSHAKE_TIMEOUT_MS = 500
 
 describe('ws-handler', () => {
   let handlers: WsHandlers
+  let routeOptions: RouteOptions
   let peersRegistry: ReturnType<typeof createPeersRegistryMockedComponent>
   let banChecker: ReturnType<typeof createBanCheckerMockedComponent>
   let denyList: ReturnType<typeof createDenyListMockedComponent>
@@ -53,18 +57,19 @@ describe('ws-handler', () => {
     return ClientPacket.encode({ message }).finish() as unknown as ArrayBuffer
   }
 
-  async function build(): Promise<void> {
+  async function build(configOverrides: Record<string, string> = {}): Promise<void> {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
     denyList = createDenyListMockedComponent()
     nats = { publish: jest.fn(), subscribe: jest.fn() }
 
-    const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS) })
+    const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS), ...configOverrides })
     const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
     const server = {
       app: {
-        ws: jest.fn((_path: string, registered: WsHandlers) => {
+        ws: jest.fn((_path: string, registered: WsHandlers & RouteOptions) => {
           handlers = registered
+          routeOptions = registered
         })
       }
     }
@@ -90,6 +95,27 @@ describe('ws-handler', () => {
   afterEach(() => {
     jest.restoreAllMocks()
     jest.useRealTimers()
+  })
+
+  // uWS accepts only 0 or values >= 8 for `idleTimeout` and aborts route registration otherwise,
+  // with 'idleTimeout must be either 0 or greater than 8!' — a message naming neither the config
+  // key nor this file. These pin that the handler screens the value itself.
+  describe('when the configured idle timeout is one uWS accepts', () => {
+    it.each([
+      [0, "uWS's never-time-out"],
+      [8, 'the smallest positive value uWS takes'],
+      [90, 'the historical production default']
+    ])('should hand %d, %s, to the route unchanged', async (seconds) => {
+      await build({ WS_IDLE_TIMEOUT_SECONDS: String(seconds) })
+
+      expect(routeOptions.idleTimeout).toBe(seconds)
+    })
+  })
+
+  describe('when the configured idle timeout is one uWS rejects', () => {
+    it('should fail at startup naming the key, rather than crash-loop inside uWS', async () => {
+      await expect(build({ WS_IDLE_TIMEOUT_SECONDS: '5' })).rejects.toThrow(/WS_IDLE_TIMEOUT_SECONDS.+0.+8/)
+    })
   })
 
   describe('when an undecodable packet arrives', () => {

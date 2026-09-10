@@ -23,6 +23,21 @@ export async function registerWsHandler(
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
 
+  // `??` rather than `||`: 0 is uWS's "never time out", and coercing it back to 90 would silently
+  // ignore an operator who asked for exactly that.
+  const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
+
+  // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
+  // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the
+  // key at fault nor the service, and ws-connector then crash-loops on deploy. Screen it here so
+  // the operator is told what to change.
+  if (idleTimeout !== 0 && idleTimeout < 8) {
+    throw new Error(
+      `WS_IDLE_TIMEOUT_SECONDS must be 0 (never time out, local debugging only) or at least 8: ` +
+        `uWebSockets accepts nothing in between. Got ${idleTimeout}.`
+    )
+  }
+
   function startTimeoutHandler(ws: InternalWebSocket) {
     const data = ws.getUserData()
     data.timeout = setTimeout(() => {
@@ -55,7 +70,13 @@ export async function registerWsHandler(
   }
 
   server.app.ws<WsUserData>('/ws', {
-    idleTimeout: 90,
+    idleTimeout,
+    // Iteration 2 takes away the client heartbeats, which were the only client→server traffic on
+    // this socket. uWS pings an otherwise idle client and the pong resets its idle timer, so a
+    // connected-but-silent client stays connected and keeps receiving its island assignments.
+    // This is uWS's own default; stated explicitly because the socket's survival now depends on
+    // it and nothing else.
+    sendPingsAutomatically: true,
     upgrade: (res, req, context) => {
       logger.debug('upgrade requested')
       const { labels, end } = onRequestStart(metrics, req.getMethod(), '/ws')
