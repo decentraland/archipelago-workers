@@ -244,6 +244,10 @@ describe('ws-handler', () => {
       expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
       expect(ws.end).not.toHaveBeenCalled()
     })
+
+    it('should announce the new session under the lower-cased address', () => {
+      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.connect`)
+    })
   })
 
   describe('when the welcome message cannot be sent', () => {
@@ -266,6 +270,10 @@ describe('ws-handler', () => {
       // The production code sets stage and address *before* the send precisely so a failed
       // welcome is still recoverable. Without it the registry keeps a ghost entry forever.
       expect(ws.getUserData().address).toBe(address)
+    })
+
+    it('should not announce a session the client was never told about', () => {
+      expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.connect`)
     })
 
     describe('and the close handler then runs', () => {

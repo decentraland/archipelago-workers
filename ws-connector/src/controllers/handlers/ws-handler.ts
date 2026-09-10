@@ -229,6 +229,13 @@ export async function registerWsHandler(
                 return
               }
 
+              // Announces that this address now has a live session. Island assignments come
+              // from Pulse's cluster feed, which is silent while a peer's cluster is unchanged,
+              // so without this a client that reconnects standing still is never told which
+              // island to join and waits forever. Archipelago Core covered the same case by
+              // forgetting the peer on disconnect and re-creating it on the next heartbeat.
+              nats.publish(`peer.${address}.connect`)
+
               logger.debug(`Welcome sent`, { address })
             } else {
               logger.warn(`Authentication failed`, { message: result.message } as any)

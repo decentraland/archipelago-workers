@@ -2,7 +2,7 @@
 
 **Service Purpose:** Monorepo with two services supporting Decentraland's real-time layer: the WS Connector (the only entry point clients talk to) and Stats (read-only monitoring). Players are grouped into clusters by proximity and each cluster maps to a LiveKit room.
 
-> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed`. WS Connector is unchanged; Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
+> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed`. WS Connector gained one publish — `peer.{addr}.connect` on a completed handshake, which comms-gatekeeper answers by re-announcing the wallet's island; Pulse's feed is edge-triggered, so without it a client that reconnects standing still is never given a room. Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 **Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client, publishes its heartbeats, and forwards island assignments for the lifetime of the session. The LiveKit connection string it forwards is what the client uses to join the voice/CRDT room.
 
@@ -18,6 +18,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
 - Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed)
+- Publishes `peer.{addr}.connect` once a handshake completes, so comms-gatekeeper can re-announce that wallet's island
 - Subscribes to `engine.peer.{id}.island_changed` and forwards island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Kicks duplicate sessions (same address reconnects evicts previous)
