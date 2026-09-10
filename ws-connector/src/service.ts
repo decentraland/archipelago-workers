@@ -4,6 +4,7 @@ import { setupRoutes } from './controllers/routes'
 import { craftMessage } from './logic/craft-message'
 import { normalizeAddress } from './logic/address'
 import { guarded } from './logic/nats'
+import { registerSupersedeSubscriptions } from './logic/supersede'
 import { AppComponents, TestComponents } from './types'
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
@@ -17,6 +18,9 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   const { nats, logs, peersRegistry } = components
 
   const logger = logs.getLogger('ws-connector')
+
+  // Its own module rather than inline below: unlike the forward, it mutates local state.
+  registerSupersedeSubscriptions(components)
 
   // Subscribed unprefixed and without a queue group, both deliberately: comms-gatekeeper
   // publishes to this literal subject, and every replica must receive every event so the one

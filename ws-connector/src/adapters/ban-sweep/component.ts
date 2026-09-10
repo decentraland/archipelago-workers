@@ -1,6 +1,5 @@
 import { START_COMPONENT, STOP_COMPONENT } from '@well-known-components/interfaces'
-import { KickedReason } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { craftMessage } from '../../logic/craft-message'
+import { craftKickedMessage } from '../../logic/craft-message'
 import { getErrorMessage } from '../../logic/errors'
 import { AppComponents } from '../../types'
 import { IBanSweepComponent } from './types'
@@ -78,14 +77,7 @@ export async function createBanSweep(
         if (!ws) return
         logger.info(`Disconnecting banned user from comms`, { address: id })
         try {
-          // KR_NEW_SESSION reused because the protocol enum lacks a KR_BANNED reason.
-          // See ws-handler.ts handshake path for the same workaround.
-          ws.send(
-            craftMessage({
-              message: { $case: 'kicked', kicked: { reason: KickedReason.KR_NEW_SESSION } }
-            }),
-            true
-          )
+          ws.send(craftKickedMessage(), true)
         } catch (sendError) {
           logger.warn(`Failed to send kicked message before close`, {
             address: id,

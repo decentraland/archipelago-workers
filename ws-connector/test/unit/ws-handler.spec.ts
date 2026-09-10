@@ -53,6 +53,10 @@ describe('ws-handler', () => {
     } as unknown as StubWebSocket
   }
 
+  function published(subject: string): unknown[][] {
+    return nats.publish.mock.calls.filter(([published]) => published === subject)
+  }
+
   function encode(message: ClientPacket['message']): ArrayBuffer {
     return ClientPacket.encode({ message }).finish() as unknown as ArrayBuffer
   }
@@ -254,7 +258,15 @@ describe('ws-handler', () => {
     })
 
     it('should announce the new session under the lower-cased address', () => {
-      expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.connect`)
+      expect(published(`peer.${address}.connect`)).toHaveLength(1)
+    })
+
+    it('should carry the session id, so another replica can tell this socket from an older one', () => {
+      const [[, payload]] = published(`peer.${address}.connect`)
+      const sessionId = ws.getUserData().sessionId
+
+      expect(sessionId).toMatch(/^[0-9a-f]{28}$/)
+      expect(Buffer.from(payload as Uint8Array).toString('utf8')).toBe(sessionId)
     })
   })
 
@@ -281,7 +293,7 @@ describe('ws-handler', () => {
     })
 
     it('should not announce a session the client was never told about', () => {
-      expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.connect`)
+      expect(published(`peer.${address}.connect`)).toHaveLength(0)
     })
 
     describe('and the close handler then runs', () => {
@@ -419,6 +431,10 @@ describe('ws-handler', () => {
     it('should start the cooldown, so the kicked session cannot immediately retake the slot', () => {
       expect(supersedeCooldown.onSuperseded).toHaveBeenCalledWith(address)
     })
+
+    it('should announce the supersede, so every other replica arms the same window', () => {
+      expect(published(`peer.${address}.superseded`)).toHaveLength(1)
+    })
   })
 
   describe('when the kick to the previous socket cannot be sent', () => {
@@ -491,7 +507,7 @@ describe('ws-handler', () => {
     })
 
     it('should not announce a session that was refused', () => {
-      expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.connect`)
+      expect(published(`peer.${address}.connect`)).toHaveLength(0)
     })
 
     it('should count the refusal', () => {

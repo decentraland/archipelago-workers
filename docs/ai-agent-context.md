@@ -21,8 +21,8 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - Publishes `peer.{addr}.connect` once a handshake completes, so comms-gatekeeper can re-announce that wallet's island
 - Subscribes to `engine.peer.{id}.island_changed` and forwards island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
-- Kicks duplicate sessions (same address reconnects evicts previous), then refuses that
-  address for `SUPERSEDE_COOLDOWN_MS` so the kicked session cannot immediately kick back
+- Kicks duplicate sessions (same address reconnects evicts previous) across every replica, then
+  refuses that address for `SUPERSEDE_COOLDOWN_MS` so the kicked session cannot immediately kick back
 
 **Endpoint:** `/ws` (WebSocket)
 
@@ -80,10 +80,20 @@ Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is ite
 
 ## NATS Message Reference
 
-Only the two `peer.*` subjects are published by this repo.
+Every `peer.*` subject is published by this repo; the `engine.*` ones are published elsewhere
+and consumed here. None of these carry a queue group, so each subscribing replica receives its
+own copy — except comms-gatekeeper's `connect` subscription, which is grouped so exactly one of
+its replicas answers.
 
 | Subject | Publisher | Subscriber | Content |
-| ---
+| --- | --- | --- | --- |
+| `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position) |
+| `peer.{addr}.disconnect` | WS Connector | Stats | empty |
+| `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped), WS Connector (every replica) | the new socket's session id, UTF-8 |
+| `peer.{addr}.superseded` | WS Connector | WS Connector (every replica) | empty |
+| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage` |
+| `engine.islands` | Pulse | Stats | cluster topology |
+| `engine.discovery` | Pulse | Stats | service discovery heartbeat |
 
 ## Technology Stack
 
@@ -121,5 +131,5 @@ docs/          OpenAPI specs, the removal runbook, the archived clustering algor
 - **Clusters are uncapped, and no consumer re-partitions them — by design.** Pulse is the single source of cluster composition: comms-gatekeeper maps one cluster to one LiveKit room, `island-{clusterId}`, verbatim, with no sharding anywhere downstream. Nothing bounds co-located crowd size server-side, so the client's GPU is the binding constraint (unity-explorer's crowd-ghost work), and at capacity density a percolated cluster becomes one oversized room. If room/crowd size ever needs bounding it will be implemented in Pulse at the tracker level, never in consumers; the open question is tracked in `Pulse/docs/clustering-on-aoi.md` §7.
 - **No in-repo rollback for the clustering path.** Reverting to core means reverting a commit and rebuilding the image; there is no configuration flip. Stats' peer map is unaffected either way, being heartbeat-fed.
 - **A superseded client and its replacement trade the socket indefinitely.** The explorer never reads `kicked` — its sign flow handles only `IslandChanged` — so a kicked session treats the close as a transport error and reconnects, kicking the other straight back. `SUPERSEDE_COOLDOWN_MS` refuses the first of those retries, which is what lets the new session win the handover, but the pair keeps swapping the address every recovery interval afterwards. While that runs, a genuine `cluster_change` is minted unconditionally by comms-gatekeeper — only its `peer.{addr}.connect` path checks LiveKit first — and forwarded to whichever socket holds the slot at that instant, so it can reach the wrong session and evict the right one. No server-side window closes this: shorter than the client's recovery interval and it expires first, longer and it becomes a lockout. The durable fix is in unity-explorer — handle `Kicked` and stop the recovery loop.
-- **The duplicate-session kick is per-replica.** `peersRegistry` is in-memory, so a second session that lands on a different replica never sees the first and never kicks it. Both sockets stay live, each is matched by `getPeerWs` on its own replica, and both receive every `engine.peer.{addr}.island_changed` — so both join the island under one identity and evict each other in turn. `SUPERSEDE_COOLDOWN_MS` only settles the same-replica race; making the kick itself global would need the supersede broadcast over NATS.
+- **Which session survives is decided by id order, not by arrival order.** `peersRegistry` is per-process, so the kick and the cooldown both travel over NATS: `peer.{addr}.connect` carries the new socket's session id and `peer.{addr}.superseded` arms every replica. A replica only kicks what it holds when the announced id sorts *above* it, which is what keeps two welcomes that cross on the wire from killing each other — comparing for mere inequality would leave the wallet with no session anywhere. The id is a millisecond prefix plus random bytes, so two sessions opened in the same millisecond are ordered arbitrarily but *consistently*: every replica reaches the same verdict, and exactly one socket survives even when the tie-break picks the older one. During a rolling deploy the mechanism is inert both ways — a replica on the previous build neither subscribes nor sends a payload, and its payload-free announcement sorts below every real id — so both sockets survive until the deploy finishes.
 - **The topology change went unmeasured.** No shadow comparison was run between core's 64/80 single-linkage islands and Pulse's 100 u cell clusters, so the first evidence of a difference will be `GET /islands` in a live environment.

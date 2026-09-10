@@ -9,6 +9,10 @@ export const metricDeclarations = {
   dcl_ws_connector_supersede_cooldown_refusals_total: {
     help: 'Total handshakes refused because the address was superseded moments earlier',
     type: IMetricsComponent.CounterType
+  },
+  dcl_ws_connector_supersede_kicks_total: {
+    help: 'Total sessions kicked because a newer session for the same address was announced',
+    type: IMetricsComponent.CounterType
   }
 }
 

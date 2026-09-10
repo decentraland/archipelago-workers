@@ -59,6 +59,16 @@ export type WsUserData = {
   timeout?: NodeJS.Timeout
   address?: string
   isClosed?: boolean
+  /**
+   * Identifies this socket among the sessions a wallet may have open, and orders it against
+   * them: a fixed-width millisecond prefix followed by random bytes, so comparing two ids as
+   * strings tells every replica the same thing about which session is newer.
+   *
+   * Equality is not enough. Two welcomes can cross on the wire, and a replica that only asks
+   * "is this announcement mine?" answers no to both and kicks the survivor along with the
+   * loser, leaving the wallet with no session anywhere.
+   */
+  sessionId?: string
 } & (
   | {
       stage: Stage.HANDSHAKE_START
@@ -70,6 +80,7 @@ export type WsUserData = {
   | {
       stage: Stage.HANDSHAKE_COMPLETED
       address: string
+      sessionId: string
     }
 )
 

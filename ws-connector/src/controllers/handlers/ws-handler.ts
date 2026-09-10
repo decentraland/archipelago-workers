@@ -1,10 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import {
-  ClientPacket,
-  Heartbeat,
-  KickedReason
-} from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
-import { craftMessage } from '../../logic/craft-message'
+import { ClientPacket, Heartbeat } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
+import { craftKickedMessage, craftMessage } from '../../logic/craft-message'
 import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types'
 import { EthAddress, AuthChain } from '@dcl/schemas'
 import { normalizeAddress } from '../../logic/address'
@@ -191,20 +187,12 @@ export async function registerWsHandler(
                 return
               }
 
-              // Reject platform-banned users so they can't establish a comms session.
-              // KR_NEW_SESSION is reused as the kick reason because the protocol enum
-              // currently has no KR_BANNED. The explorer treats both as "you were kicked"
-              // and shows the existing user-banned notification (the SNS event arrives
-              // separately). Replace with a dedicated reason if/when the protocol adds one.
+              // Reject platform-banned users so they can't establish a comms session. The
+              // explorer shows its user-banned notification off the SNS event, which arrives
+              // separately; the kick reason itself carries no ban semantics (craftKickedMessage).
               if (await banChecker.isBanned(address)) {
                 logger.warn(`Rejected connection from platform-banned wallet: ${address}`)
-                const kickedMessage = craftMessage({
-                  message: {
-                    $case: 'kicked',
-                    kicked: { reason: KickedReason.KR_NEW_SESSION }
-                  }
-                })
-                ws.send(kickedMessage, true)
+                ws.send(craftKickedMessage(), true)
                 safeEndWebSocket(ws)
                 return
               }
@@ -225,40 +213,36 @@ export async function registerWsHandler(
               }
 
               const previousWs = peersRegistry.getPeerWs(address)
+              // Only a socket that has not been reaped yet counts. That is weaker than
+              // liveness: `isClosed` is set from the close callback, so a client that vanished
+              // without a FIN still reads as open until uWS's idleTimeout, and its own reconnect
+              // supersedes itself. Bounded — it costs that client one refusal only if it drops
+              // again inside the window — and the alternative, inferring liveness from heartbeat
+              // age, cannot separate the two cases: a client reconnects fast enough that the
+              // dead socket's last heartbeat is no older than a live one's.
+              let superseded = false
               if (previousWs) {
                 const previousData = previousWs.getUserData()
                 if (!previousData.isClosed) {
                   logger.debug('Sending kick message')
-                  const kickedMessage = craftMessage({
-                    message: {
-                      $case: 'kicked',
-                      kicked: { reason: KickedReason.KR_NEW_SESSION }
-                    }
-                  })
-                  if (previousWs.send(kickedMessage, true) !== 1) {
+                  if (previousWs.send(craftKickedMessage(), true) !== 1) {
                     logger.error('Closing connection: cannot send kicked message')
                   }
-                  // Only a socket that has not been reaped yet. That is weaker than liveness:
-                  // `isClosed` is set from the close callback, so a client that vanished
-                  // without a FIN still reads as open until uWS's idleTimeout, and its own
-                  // reconnect arms a window against itself. Bounded — it costs that client one
-                  // refusal only if it drops again inside the window — and the alternative,
-                  // inferring liveness from heartbeat age, cannot separate the two cases: a
-                  // client reconnects fast enough that the dead socket's last heartbeat is no
-                  // older than a live one's.
-                  supersedeCooldown.onSuperseded(address)
+                  superseded = true
                 }
                 safeEndWebSocket(previousWs)
               }
 
-              peersRegistry.onPeerConnected(address, ws)
-
-              // Set address and stage BEFORE sending welcome so the close handler
-              // can clean up the registry if the send fails
+              // Stage, address and session id are set BEFORE the socket is reachable: the close
+              // handler needs the address to clean up if the welcome fails, and an announcement
+              // must never find a registered socket it cannot name or order.
+              const sessionId = `${Date.now().toString(16).padStart(12, '0')}${randomBytes(8).toString('hex')}`
               changeStage(ws.getUserData(), {
                 stage: Stage.HANDSHAKE_COMPLETED,
-                address
+                address,
+                sessionId
               })
+              peersRegistry.onPeerConnected(address, ws)
 
               const welcomeMessage = craftMessage({
                 message: {
@@ -273,12 +257,21 @@ export async function registerWsHandler(
                 return
               }
 
+              // Held back until the welcome landed. Announced any earlier, a failed welcome
+              // would leave the old session killed, the new one closed and every replica
+              // refusing the wallet — no session anywhere, and the client locked out of
+              // repairing it.
+              if (superseded) {
+                supersedeCooldown.onSuperseded(address)
+                nats.publish(`peer.${address}.superseded`)
+              }
+
               // Announces that this address now has a live session. Island assignments come
               // from Pulse's cluster feed, which is silent while a peer's cluster is unchanged,
               // so without this a client that reconnects standing still is never told which
               // island to join and waits forever. Archipelago Core covered the same case by
               // forgetting the peer on disconnect and re-creating it on the next heartbeat.
-              nats.publish(`peer.${address}.connect`)
+              nats.publish(`peer.${address}.connect`, Buffer.from(sessionId, 'utf8'))
 
               logger.debug(`Welcome sent`, { address })
             } else {
