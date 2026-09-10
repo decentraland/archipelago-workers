@@ -22,9 +22,6 @@ function expectPacket<T>(packet: ServerPacket, packetType: string): T {
 test('end to end test', ({ components, stubComponents }) => {
   const aliceIdentity = createEphemeralIdentity('alice')
   const bobIdentity = createEphemeralIdentity('bob')
-  // Superseding an address leaves it cooling down for the rest of the window, so a test that
-  // supersedes must not share an identity with any test that runs after it.
-  const carolIdentity = createEphemeralIdentity('carol')
 
   async function createWs(relativeUrl: string): Promise<WebSocket> {
     const protocolHostAndProtocol = `ws://${await components.config.requireString(
@@ -162,16 +159,18 @@ test('end to end test', ({ components, stubComponents }) => {
     ws2.close()
   })
 
-  it('should refuse a reconnect while the superseded address is cooling down', async () => {
-    const ws1 = await connectSocket(carolIdentity)
-    const ws2 = await connectSocket(carolIdentity)
+  it('should keep both sockets when the same wallet connects from a second device', async () => {
+    const laptopIdentity = createEphemeralIdentity('alice', 'laptop')
+    const desktop = await connectSocket(aliceIdentity)
+    const laptop = await connectSocket(laptopIdentity)
 
-    // ws1 was just superseded, which is the whole point of the window: without it ws1 comes
-    // straight back, retakes the address and is handed the island meant for ws2.
-    await expect(connectSocket(carolIdentity)).rejects.toThrow()
+    expect(laptop.challengeMessage.alreadyConnected).toEqual(true)
 
-    ws1.close()
-    ws2.close()
+    // The desktop must receive nothing: no kick, no close.
+    await expect(desktop.channel.yield(300, 'nothing expected')).rejects.toThrow()
+
+    desktop.close()
+    laptop.close()
   })
 
   it.skip(

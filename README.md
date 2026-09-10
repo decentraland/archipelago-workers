@@ -120,7 +120,8 @@ The services communicate via the following NATS message topics:
 | `peer.${address}.heartbeat` | WS Connector | Stats |
 | `peer.${address}.disconnect` | WS Connector | Stats |
 | `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
-| `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector |
+| `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
+| `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector (transition) |
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
 

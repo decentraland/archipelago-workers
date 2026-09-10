@@ -6,12 +6,12 @@ import { getDefaultHttpMetrics } from '@dcl/uws-http-server'
 export const metricDeclarations = {
   ...getDefaultHttpMetrics(),
   ...logMetricDeclarations,
-  dcl_ws_connector_supersede_cooldown_refusals_total: {
-    help: 'Total handshakes refused because the address was superseded moments earlier',
+  dcl_ws_connector_island_changed_no_session_socket_total: {
+    help: 'Total session-addressed island_changed messages for a wallet this replica holds, but not under that session',
     type: IMetricsComponent.CounterType
   },
-  dcl_ws_connector_supersede_kicks_total: {
-    help: 'Total sessions kicked because a newer session for the same address was announced',
+  dcl_ws_connector_island_changed_deduplicated_total: {
+    help: 'Total island_changed messages dropped because the same island was forwarded to the same socket within ISLAND_CHANGED_DEDUP_MS',
     type: IMetricsComponent.CounterType
   }
 }

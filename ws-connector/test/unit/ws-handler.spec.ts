@@ -7,11 +7,11 @@ import { ClientPacket } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/
 import { registerWsHandler } from '../../src/controllers/handlers/ws-handler'
 import { metricDeclarations } from '../../src/metrics'
 import { InternalWebSocket, Stage, WsUserData } from '../../src/types'
+import { sessionKeyOf } from '../../src/logic/session'
 import { createEphemeralIdentity } from '../helpers/identity'
 import { createBanCheckerMockedComponent } from '../mocks/ban-checker-mock'
 import { createDenyListMockedComponent } from '../mocks/deny-list-mock'
 import { createPeersRegistryMockedComponent } from '../mocks/peers-registry-mock'
-import { createSupersedeCooldownMockedComponent } from '../mocks/supersede-cooldown-mock'
 
 /**
  * These drive the handlers `registerWsHandler` actually registers on `server.app.ws`, by
@@ -35,7 +35,6 @@ describe('ws-handler', () => {
   let peersRegistry: ReturnType<typeof createPeersRegistryMockedComponent>
   let banChecker: ReturnType<typeof createBanCheckerMockedComponent>
   let denyList: ReturnType<typeof createDenyListMockedComponent>
-  let supersedeCooldown: ReturnType<typeof createSupersedeCooldownMockedComponent>
   let nats: { publish: jest.Mock; subscribe: jest.Mock }
   let metrics: IMetricsComponent<keyof typeof metricDeclarations>
   let validateSignature: jest.SpyInstance
@@ -65,7 +64,6 @@ describe('ws-handler', () => {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
     denyList = createDenyListMockedComponent()
-    supersedeCooldown = createSupersedeCooldownMockedComponent()
     nats = { publish: jest.fn(), subscribe: jest.fn() }
     metrics = createTestMetricsComponent(metricDeclarations)
     jest.spyOn(metrics, 'increment')
@@ -87,7 +85,6 @@ describe('ws-handler', () => {
       peersRegistry,
       banChecker,
       denyList,
-      supersedeCooldown,
       nats: nats as never,
       server: server as never,
       metrics
@@ -244,10 +241,6 @@ describe('ws-handler', () => {
       await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
     })
 
-    it('should register the peer under its lower-cased address', () => {
-      expect(peersRegistry.onPeerConnected).toHaveBeenCalledWith(address, ws)
-    })
-
     it('should send the welcome message', () => {
       expect(ws.send).toHaveBeenCalledTimes(1)
     })
@@ -261,12 +254,18 @@ describe('ws-handler', () => {
       expect(published(`peer.${address}.connect`)).toHaveLength(1)
     })
 
-    it('should carry the session id, so another replica can tell this socket from an older one', () => {
+    it('should carry the session key, so gatekeeper can address the re-announce to this device', async () => {
       const [[, payload]] = published(`peer.${address}.connect`)
-      const sessionId = ws.getUserData().sessionId
+      const session = sessionKeyOf(await identity.sign('dcl-challenge'))
 
-      expect(sessionId).toMatch(/^[0-9a-f]{28}$/)
-      expect(Buffer.from(payload as Uint8Array).toString('utf8')).toBe(sessionId)
+      expect(ws.getUserData().session).toBe(session)
+      expect(Buffer.from(payload as Uint8Array).toString('utf8')).toBe(session)
+    })
+
+    it('should register the peer under its address and session', async () => {
+      const session = sessionKeyOf(await identity.sign('dcl-challenge'))
+
+      expect(peersRegistry.onPeerConnected).toHaveBeenCalledWith(address, session, ws)
     })
   })
 
@@ -302,7 +301,7 @@ describe('ws-handler', () => {
       })
 
       it('should leave no ghost entry in the peers registry', () => {
-        expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
+        expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws.getUserData().session, ws)
         expect(peersRegistry.getPeerCount()).toBe(0)
       })
     })
@@ -404,49 +403,133 @@ describe('ws-handler', () => {
     })
   })
 
-  describe('when the same identity reconnects while an older socket is live', () => {
+  describe('when the same device reconnects while its older socket is still registered', () => {
     let previousWs: StubWebSocket
     let ws: StubWebSocket
 
     beforeEach(async () => {
       validateSignature.mockResolvedValue({ ok: true })
-      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-      peersRegistry.onPeerConnected(address, previousWs)
-
       const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      const session = sessionKeyOf(JSON.parse(authChainJson))
+      previousWs = makeWs({
+        stage: Stage.HANDSHAKE_COMPLETED,
+        address,
+        session,
+        isClosed: false
+      } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, session, previousWs)
       ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
 
       await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
     })
 
-    it('should kick and close the previous socket', () => {
-      expect(previousWs.send).toHaveBeenCalled()
-      expect(previousWs.end).toHaveBeenCalled()
+    it('should kick and close the previous socket, since it is this device\'s zombie', () => {
+      expect(previousWs.send).toHaveBeenCalledTimes(1)
+      expect(previousWs.end).toHaveBeenCalledTimes(1)
     })
 
     it('should register the new socket in its place', () => {
-      expect(peersRegistry.getPeerWs(address)).toBe(ws)
+      expect(peersRegistry.getPeerWs(address, ws.getUserData().session!)).toBe(ws)
     })
 
-    it('should start the cooldown, so the kicked session cannot immediately retake the slot', () => {
-      expect(supersedeCooldown.onSuperseded).toHaveBeenCalledWith(address)
-    })
-
-    it('should announce the supersede, so every other replica arms the same window', () => {
-      expect(published(`peer.${address}.superseded`)).toHaveLength(1)
+    it('should publish no supersede, since no other session was displaced', () => {
+      expect(published(`peer.${address}.superseded`)).toHaveLength(0)
     })
   })
 
-  describe('when the kick to the previous socket cannot be sent', () => {
+  describe('when the same device reconnects while its previous socket has already been reaped', () => {
+    let previousWs: StubWebSocket
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      const session = sessionKeyOf(JSON.parse(authChainJson))
+      previousWs = makeWs({
+        stage: Stage.HANDSHAKE_COMPLETED,
+        address,
+        session,
+        isClosed: true
+      } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, session, previousWs)
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not try to kick a socket that is already gone', () => {
+      expect(previousWs.send).not.toHaveBeenCalled()
+    })
+
+    it('should not end it again, since safeEndWebSocket returns early once isClosed is already true', () => {
+      expect(previousWs.end).not.toHaveBeenCalled()
+    })
+
+    it('should register the new socket in its place', () => {
+      expect(peersRegistry.getPeerWs(address, ws.getUserData().session!)).toBe(ws)
+    })
+  })
+
+  describe('when the same wallet connects from a second device while the first is live', () => {
+    let desktopWs: StubWebSocket
+    let laptopWs: StubWebSocket
+    const laptop = createEphemeralIdentity('handler-spec', 'laptop')
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      const desktopSession = sessionKeyOf(await identity.sign('dcl-challenge'))
+      desktopWs = makeWs({
+        stage: Stage.HANDSHAKE_COMPLETED,
+        address,
+        session: desktopSession,
+        isClosed: false
+      } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, desktopSession, desktopWs)
+
+      const authChainJson = JSON.stringify(await laptop.sign('dcl-challenge'))
+      laptopWs = makeWs({
+        stage: Stage.HANDSHAKE_CHALLENGE_SENT,
+        challengeToSign: 'dcl-challenge'
+      } as Partial<WsUserData>)
+      await handlers.message(laptopWs, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should be the same wallet', () => {
+      expect(laptop.address.toLowerCase()).toBe(address)
+    })
+
+    it('should leave the first device\'s socket untouched', () => {
+      expect(desktopWs.send).not.toHaveBeenCalled()
+      expect(desktopWs.end).not.toHaveBeenCalled()
+    })
+
+    it('should hold both sockets, each under its own session', () => {
+      expect(peersRegistry.getPeerCount()).toBe(2)
+      expect(peersRegistry.getPeerWs(address, laptopWs.getUserData().session!)).toBe(laptopWs)
+    })
+
+    it('should announce the second device\'s session', () => {
+      const [[, payload]] = published(`peer.${address}.connect`)
+
+      expect(Buffer.from(payload as Uint8Array).toString('utf8')).toBe(laptopWs.getUserData().session)
+    })
+  })
+
+  describe('when the kick to this device\'s previous socket cannot be sent', () => {
     let previousWs: StubWebSocket
 
     beforeEach(async () => {
       validateSignature.mockResolvedValue({ ok: true })
-      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-      previousWs.send.mockReturnValue(0)
-      peersRegistry.onPeerConnected(address, previousWs)
-
       const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      const session = sessionKeyOf(JSON.parse(authChainJson))
+      previousWs = makeWs({
+        stage: Stage.HANDSHAKE_COMPLETED,
+        address,
+        session,
+        isClosed: false
+      } as Partial<WsUserData>)
+      previousWs.send.mockReturnValue(0)
+      peersRegistry.onPeerConnected(address, session, previousWs)
       const ws = makeWs({
         stage: Stage.HANDSHAKE_CHALLENGE_SENT,
         challengeToSign: 'dcl-challenge'
@@ -455,97 +538,8 @@ describe('ws-handler', () => {
       await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
     })
 
-    it('should still close it, so the old session cannot linger', () => {
-      expect(previousWs.end).toHaveBeenCalled()
-    })
-  })
-
-  describe('when the registry still holds a socket that already closed', () => {
-    let previousWs: StubWebSocket
-    let ws: StubWebSocket
-
-    beforeEach(async () => {
-      validateSignature.mockResolvedValue({ ok: true })
-      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, isClosed: true } as Partial<WsUserData>)
-      peersRegistry.onPeerConnected(address, previousWs)
-
-      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
-      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
-
-      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
-    })
-
-    it('should not start the cooldown, since no live session was superseded', () => {
-      expect(supersedeCooldown.onSuperseded).not.toHaveBeenCalled()
-    })
-
-    it('should register the new socket, so an ordinary reconnect is never penalised', () => {
-      expect(peersRegistry.getPeerWs(address)).toBe(ws)
-    })
-  })
-
-  describe('when a handshake arrives while the address is cooling down', () => {
-    let ws: StubWebSocket
-
-    beforeEach(async () => {
-      validateSignature.mockResolvedValue({ ok: true })
-      supersedeCooldown.isCoolingDown.mockReturnValue(true)
-
-      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
-      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
-
-      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
-    })
-
-    it('should close the socket without welcoming it', () => {
-      expect(ws.send).not.toHaveBeenCalled()
-      expect(ws.end).toHaveBeenCalled()
-    })
-
-    it('should not register it, so the live session keeps the slot', () => {
-      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
-    })
-
-    it('should not announce a session that was refused', () => {
-      expect(published(`peer.${address}.connect`)).toHaveLength(0)
-    })
-
-    it('should count the refusal', () => {
-      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_supersede_cooldown_refusals_total')
-    })
-
-    describe('and the refused socket then closes', () => {
-      beforeEach(() => {
-        handlers.close(ws, 1000, new ArrayBuffer(0))
-      })
-
-      it('should not announce a disconnect for an address it never registered', () => {
-        expect(peersRegistry.onPeerDisconnected).not.toHaveBeenCalled()
-        expect(nats.publish).not.toHaveBeenCalledWith(`peer.${address}.disconnect`)
-      })
-    })
-
-    describe('and a live socket already holds the address', () => {
-      let previousWs: StubWebSocket
-
-      beforeEach(async () => {
-        previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-        peersRegistry.onPeerConnected(address, previousWs)
-
-        const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
-        const late = makeWs({
-          stage: Stage.HANDSHAKE_CHALLENGE_SENT,
-          challengeToSign: 'dcl-challenge'
-        } as Partial<WsUserData>)
-
-        await handlers.message(late, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
-      })
-
-      it('should leave the incumbent alone rather than kicking it as well', () => {
-        expect(previousWs.send).not.toHaveBeenCalled()
-        expect(previousWs.end).not.toHaveBeenCalled()
-        expect(peersRegistry.getPeerWs(address)).toBe(previousWs)
-      })
+    it('should still close it, so the zombie cannot linger', () => {
+      expect(previousWs.end).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -565,16 +559,17 @@ describe('ws-handler', () => {
 
   describe('when an authenticated socket closes', () => {
     let ws: StubWebSocket
+    const session = '0xd000000000000000000000000000000000000001'
 
     beforeEach(() => {
-      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address } as Partial<WsUserData>)
-      peersRegistry.onPeerConnected(address, ws)
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, session } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, session, ws)
 
       handlers.close(ws, 1000, new ArrayBuffer(0))
     })
 
     it('should remove the peer from the registry', () => {
-      expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, ws)
+      expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, session, ws)
       expect(peersRegistry.getPeerCount()).toBe(0)
     })
 

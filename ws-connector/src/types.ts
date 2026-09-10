@@ -6,7 +6,6 @@ import { INatsComponent } from '@well-known-components/nats-component/dist/types
 import { IPeersRegistryComponent } from './adapters/peers-registry'
 import { IBanCheckerComponent } from './adapters/ban-checker'
 import { IBanSweepComponent } from './adapters/ban-sweep'
-import { ISupersedeCooldownComponent } from './adapters/supersede-cooldown'
 import { IDenyListComponent } from './adapters/deny-list'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@dcl/uws-http-server'
 
@@ -22,7 +21,6 @@ export type BaseComponents = {
   banChecker: IBanCheckerComponent
   banSweep: IBanSweepComponent
   denyList: IDenyListComponent
-  supersedeCooldown: ISupersedeCooldownComponent
   ethereumProvider: HTTPProvider
 }
 
@@ -60,15 +58,13 @@ export type WsUserData = {
   address?: string
   isClosed?: boolean
   /**
-   * Identifies this socket among the sessions a wallet may have open, and orders it against
-   * them: a fixed-width millisecond prefix followed by random bytes, so comparing two ids as
-   * strings tells every replica the same thing about which session is newer.
-   *
-   * Equality is not enough. Two welcomes can cross on the wire, and a replica that only asks
-   * "is this announcement mine?" answers no to both and kicks the survivor along with the
-   * loser, leaving the wallet with no session anywhere.
+   * Session key of the auth chain this socket authenticated with (see `logic/session.ts`): the
+   * device's ephemeral address. Island assignments are addressed to it.
    */
-  sessionId?: string
+  session?: string
+  /** Island id of the last island_changed forwarded to this socket, and when. */
+  lastIslandId?: string
+  lastIslandAt?: number
 } & (
   | {
       stage: Stage.HANDSHAKE_START
@@ -80,7 +76,7 @@ export type WsUserData = {
   | {
       stage: Stage.HANDSHAKE_COMPLETED
       address: string
-      sessionId: string
+      session: string
     }
 )
 

@@ -3,6 +3,8 @@ import { InternalWebSocket } from '../../src/types'
 
 const ALICE = '0xaaaa000000000000000000000000000000000001'
 const BOB = '0xbbbb000000000000000000000000000000000002'
+const DESKTOP = '0xd000000000000000000000000000000000000001'
+const LAPTOP = '0xd000000000000000000000000000000000000002'
 
 describe('peers registry adapter', () => {
   let registry: IPeersRegistryComponent
@@ -19,12 +21,20 @@ describe('peers registry adapter', () => {
     let ws: InternalWebSocket
 
     beforeEach(() => {
-      ws = makeWs('alice')
-      registry.onPeerConnected(ALICE, ws)
+      ws = makeWs('alice-desktop')
+      registry.onPeerConnected(ALICE, DESKTOP, ws)
     })
 
-    it('should return its socket', () => {
-      expect(registry.getPeerWs(ALICE)).toBe(ws)
+    it('should return its socket for its session', () => {
+      expect(registry.getPeerWs(ALICE, DESKTOP)).toBe(ws)
+    })
+
+    it('should not return it for another session', () => {
+      expect(registry.getPeerWs(ALICE, LAPTOP)).toBeUndefined()
+    })
+
+    it('should report the wallet as connected', () => {
+      expect(registry.hasPeer(ALICE)).toBe(true)
     })
 
     it('should count it', () => {
@@ -32,19 +42,20 @@ describe('peers registry adapter', () => {
     })
 
     it('should include it in the snapshot the ban sweep iterates', () => {
-      expect(registry.snapshot()).toEqual([{ id: ALICE, ws }])
+      expect(registry.snapshot()).toEqual([{ id: ALICE, session: DESKTOP, ws }])
     })
 
     it('should not resolve a different casing, since lookups are exact', () => {
-      // The island feed looks peers up by the address parsed off the NATS subject. If the two
-      // sides ever disagree on casing the message is dropped with no error at all.
-      expect(registry.getPeerWs(ALICE.toUpperCase())).toBeUndefined()
+      expect(registry.getPeerWs(ALICE.toUpperCase(), DESKTOP)).toBeUndefined()
+      expect(registry.getPeerWs(ALICE, DESKTOP.toUpperCase())).toBeUndefined()
     })
   })
 
   describe('when a peer is not connected', () => {
     it('should return undefined', () => {
-      expect(registry.getPeerWs(ALICE)).toBeUndefined()
+      expect(registry.getPeerWs(ALICE, DESKTOP)).toBeUndefined()
+      expect(registry.getNewestPeerWs(ALICE)).toBeUndefined()
+      expect(registry.hasPeer(ALICE)).toBe(false)
     })
 
     it('should report an empty snapshot', () => {
@@ -52,48 +63,86 @@ describe('peers registry adapter', () => {
     })
   })
 
-  describe('when a peer disconnects', () => {
-    let ws: InternalWebSocket
+  describe('when the same wallet connects from a second device', () => {
+    let desktop: InternalWebSocket
+    let laptop: InternalWebSocket
 
     beforeEach(() => {
-      ws = makeWs('alice')
-      registry.onPeerConnected(ALICE, ws)
-      registry.onPeerDisconnected(ALICE, ws)
+      desktop = makeWs('desktop')
+      laptop = makeWs('laptop')
+      registry.onPeerConnected(ALICE, DESKTOP, desktop)
+      registry.onPeerConnected(ALICE, LAPTOP, laptop)
     })
 
-    it('should remove it', () => {
-      expect(registry.getPeerWs(ALICE)).toBeUndefined()
-      expect(registry.getPeerCount()).toBe(0)
+    it('should hold both sockets, each under its own session', () => {
+      expect(registry.getPeerWs(ALICE, DESKTOP)).toBe(desktop)
+      expect(registry.getPeerWs(ALICE, LAPTOP)).toBe(laptop)
+      expect(registry.getPeerCount()).toBe(2)
+    })
+
+    it('should name the most recently connected one as newest, for the legacy subject', () => {
+      expect(registry.getNewestPeerWs(ALICE)).toBe(laptop)
+    })
+
+    it('should keep the other session when one disconnects', () => {
+      registry.onPeerDisconnected(ALICE, LAPTOP, laptop)
+
+      expect(registry.getPeerWs(ALICE, DESKTOP)).toBe(desktop)
+      expect(registry.getNewestPeerWs(ALICE)).toBe(desktop)
+      expect(registry.hasPeer(ALICE)).toBe(true)
     })
   })
 
-  describe('when the same identity reconnects and the old socket closes afterwards', () => {
+  describe('when the same session reconnects and the old socket closes afterwards', () => {
     let oldWs: InternalWebSocket
     let newWs: InternalWebSocket
 
     beforeEach(() => {
       oldWs = makeWs('old')
       newWs = makeWs('new')
-      registry.onPeerConnected(ALICE, oldWs)
-      registry.onPeerConnected(ALICE, newWs)
+      registry.onPeerConnected(ALICE, DESKTOP, oldWs)
+      registry.onPeerConnected(ALICE, DESKTOP, newWs)
 
       // The previous socket's close lands after the reconnect — the ordering the guard exists for.
-      registry.onPeerDisconnected(ALICE, oldWs)
+      registry.onPeerDisconnected(ALICE, DESKTOP, oldWs)
     })
 
     it('should keep the live socket rather than letting the stale close evict it', () => {
-      expect(registry.getPeerWs(ALICE)).toBe(newWs)
+      expect(registry.getPeerWs(ALICE, DESKTOP)).toBe(newWs)
     })
 
-    it('should still list it in the snapshot, so the ban sweep can still see it', () => {
-      expect(registry.snapshot()).toEqual([{ id: ALICE, ws: newWs }])
+    it('should count one socket for the session', () => {
+      expect(registry.getPeerCount()).toBe(1)
+    })
+
+    it('should treat the replaced socket as newest again, even if an older session was connected later', () => {
+      const laptop = makeWs('laptop')
+      const newerDesktop = makeWs('newer-desktop')
+      registry.onPeerConnected(ALICE, LAPTOP, laptop)
+      registry.onPeerConnected(ALICE, DESKTOP, newerDesktop)
+
+      expect(registry.getNewestPeerWs(ALICE)).toBe(newerDesktop)
+    })
+  })
+
+  describe('when the last session of a wallet disconnects', () => {
+    beforeEach(() => {
+      const ws = makeWs('alice')
+      registry.onPeerConnected(ALICE, DESKTOP, ws)
+      registry.onPeerDisconnected(ALICE, DESKTOP, ws)
+    })
+
+    it('should forget the wallet entirely', () => {
+      expect(registry.hasPeer(ALICE)).toBe(false)
+      expect(registry.getPeerCount()).toBe(0)
+      expect(registry.snapshot()).toEqual([])
     })
   })
 
   describe('when several peers are connected', () => {
     beforeEach(() => {
-      registry.onPeerConnected(ALICE, makeWs('alice'))
-      registry.onPeerConnected(BOB, makeWs('bob'))
+      registry.onPeerConnected(ALICE, DESKTOP, makeWs('alice'))
+      registry.onPeerConnected(BOB, DESKTOP, makeWs('bob'))
     })
 
     it('should count them all', () => {
@@ -102,7 +151,7 @@ describe('peers registry adapter', () => {
 
     it('should snapshot a detached copy, safe to iterate while the registry mutates', () => {
       const snapshot = registry.snapshot()
-      registry.onPeerDisconnected(ALICE, registry.getPeerWs(ALICE)!)
+      registry.onPeerDisconnected(ALICE, DESKTOP, registry.getPeerWs(ALICE, DESKTOP)!)
 
       expect(snapshot).toHaveLength(2)
       expect(registry.getPeerCount()).toBe(1)

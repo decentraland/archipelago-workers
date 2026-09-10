@@ -6,6 +6,8 @@ import { IPeersRegistryComponent } from '../../src/adapters/peers-registry'
 import { IBanCheckerComponent } from '../../src/adapters/ban-checker'
 import { InternalWebSocket } from '../../src/types'
 
+const SESSION = '0xd000000000000000000000000000000000000001'
+
 describe('ban sweep', () => {
   let peersRegistry: jest.Mocked<IPeersRegistryComponent>
   let banChecker: jest.Mocked<IBanCheckerComponent>
@@ -42,9 +44,11 @@ describe('ban sweep', () => {
     peersRegistry = {
       onPeerConnected: jest.fn(),
       onPeerDisconnected: jest.fn(),
-      getPeerWs: jest.fn((id: string) => wsById.get(id)),
+      getPeerWs: jest.fn((id: string, _session: string) => wsById.get(id)),
+      getNewestPeerWs: jest.fn((id: string) => wsById.get(id)),
+      hasPeer: jest.fn((id: string) => wsById.has(id)),
       getPeerCount: jest.fn(() => wsById.size),
-      snapshot: jest.fn(() => Array.from(wsById, ([id, ws]) => ({ id, ws })))
+      snapshot: jest.fn(() => Array.from(wsById, ([id, ws]) => ({ id, session: SESSION, ws })))
     } as jest.Mocked<IPeersRegistryComponent>
 
     banChecker = {
@@ -105,6 +109,16 @@ describe('ban sweep', () => {
       expect(sentMessages.get('0xc')).toHaveLength(0)
       expect(wsById.get('0xa')!.end).not.toHaveBeenCalled()
       expect(wsById.get('0xc')!.end).not.toHaveBeenCalled()
+      await sweep[STOP_COMPONENT]!()
+    })
+
+    it('should look the banned socket up under its session', async () => {
+      const { sweep } = await buildSweep(['0xa', '0xbanned', '0xc'], new Set(['0xbanned']))
+      await sweep[START_COMPONENT]!({} as never)
+
+      await tickAndFlush()
+
+      expect(peersRegistry.getPeerWs).toHaveBeenCalledWith('0xbanned', SESSION)
       await sweep[STOP_COMPONENT]!()
     })
   })

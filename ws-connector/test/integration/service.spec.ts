@@ -3,6 +3,7 @@ import { createLocalNatsComponent } from '@well-known-components/nats-component'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { createConfigComponent } from '@well-known-components/env-config-provider'
 import { createTestMetricsComponent } from '@dcl/metrics'
+import { IMetricsComponent } from '@well-known-components/interfaces'
 import { main } from '../../src/service'
 import { metricDeclarations } from '../../src/metrics'
 import { InternalWebSocket } from '../../src/types'
@@ -18,24 +19,28 @@ import { createPeersRegistryMockedComponent } from '../mocks/peers-registry-mock
  * src/service.ts did.
  */
 const PEER = '0xaaaabbbbccccddddeeeeffff0000111122223333'
+const DESKTOP = '0xd000000000000000000000000000000000000001'
+const LAPTOP = '0xd000000000000000000000000000000000000002'
 
 describe('ws-connector island change forwarding', () => {
   let nats: INatsComponent
   let peersRegistry: ReturnType<typeof createPeersRegistryMockedComponent>
   let logs: ReturnType<typeof createLoggerMockedComponent>
+  let metrics: IMetricsComponent<keyof typeof metricDeclarations>
   let sent: Uint8Array[]
 
-  function connectPeer(id: string): InternalWebSocket {
+  function connectPeer(id: string, session: string): InternalWebSocket {
+    const userData = {}
     const ws = {
       send: jest.fn((data: Uint8Array) => {
         sent.push(data)
         return 1
       }),
       end: jest.fn(),
-      getUserData: jest.fn().mockReturnValue({})
+      getUserData: () => userData
     } as unknown as InternalWebSocket
 
-    peersRegistry.onPeerConnected(id, ws)
+    peersRegistry.onPeerConnected(id, session, ws)
 
     return ws
   }
@@ -43,6 +48,13 @@ describe('ws-connector island change forwarding', () => {
   function publishIslandChanged(peerId: string, message: Partial<IslandChangedMessage>): void {
     nats.publish(
       `engine.peer.${peerId}.island_changed`,
+      IslandChangedMessage.encode({ islandId: '', connStr: '', peers: {}, ...message }).finish()
+    )
+  }
+
+  function publishIslandChangedTo(peerId: string, session: string, message: Partial<IslandChangedMessage>): void {
+    nats.publish(
+      `engine.peer.${peerId}.island_changed.${session}`,
       IslandChangedMessage.encode({ islandId: '', connStr: '', peers: {}, ...message }).finish()
     )
   }
@@ -60,14 +72,16 @@ describe('ws-connector island change forwarding', () => {
     return ServerPacket.decode(sent[sent.length - 1])
   }
 
-  beforeEach(async () => {
-    sent = []
+  async function start(legacyForwarding: string, dedupMs?: string): Promise<void> {
+    // A fresh broker each call, so a nested describe rebuilding with a different flag gets a
+    // clean subscription set instead of layering a second one on top of the first.
     nats = await createLocalNatsComponent()
-    peersRegistry = createPeersRegistryMockedComponent()
-
-    const config = createConfigComponent({ LOG_LEVEL: 'ERROR', HANDSHAKE_TIMEOUT: '1000' })
-    logs = createLoggerMockedComponent()
-
+    const config = createConfigComponent({
+      LOG_LEVEL: 'ERROR',
+      HANDSHAKE_TIMEOUT: '1000',
+      LEGACY_ISLAND_CHANGED_FORWARDING: legacyForwarding,
+      ...(dedupMs !== undefined ? { ISLAND_CHANGED_DEDUP_MS: dedupMs } : {})
+    })
     const server = { app: { get: jest.fn(), any: jest.fn(), ws: jest.fn() } }
 
     await main({
@@ -76,7 +90,7 @@ describe('ws-connector island change forwarding', () => {
         logs,
         server: server as never,
         fetch: { fetch: jest.fn() } as never,
-        metrics: createTestMetricsComponent(metricDeclarations),
+        metrics,
         nats,
         peersRegistry,
         banChecker: createBanCheckerMockedComponent(),
@@ -86,11 +100,21 @@ describe('ws-connector island change forwarding', () => {
       },
       startComponents: async () => {}
     } as never)
+  }
+
+  beforeEach(async () => {
+    sent = []
+    peersRegistry = createPeersRegistryMockedComponent()
+    logs = createLoggerMockedComponent()
+    metrics = createTestMetricsComponent(metricDeclarations)
+    jest.spyOn(metrics, 'increment')
+
+    await start('true')
   })
 
   describe('when an island change arrives for a connected peer', () => {
     beforeEach(async () => {
-      connectPeer(PEER)
+      connectPeer(PEER, DESKTOP)
       publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'livekit:wss://host?access_token=jwt' })
       await settle()
     })
@@ -118,7 +142,7 @@ describe('ws-connector island change forwarding', () => {
 
   describe('and the message subject carries a checksummed address', () => {
     beforeEach(async () => {
-      connectPeer(PEER)
+      connectPeer(PEER, DESKTOP)
       publishIslandChanged(PEER.toUpperCase(), { islandId: 'island-C8' })
       await settle()
     })
@@ -131,7 +155,7 @@ describe('ws-connector island change forwarding', () => {
 
   describe('and the message carries a previous island', () => {
     beforeEach(async () => {
-      connectPeer(PEER)
+      connectPeer(PEER, DESKTOP)
       publishIslandChanged(PEER, { islandId: 'island-C8', fromIslandId: 'island-C7' })
       await settle()
     })
@@ -149,7 +173,7 @@ describe('ws-connector island change forwarding', () => {
         end: jest.fn(),
         getUserData: jest.fn().mockReturnValue({})
       } as unknown as InternalWebSocket
-      peersRegistry.onPeerConnected(PEER, ws)
+      peersRegistry.onPeerConnected(PEER, DESKTOP, ws)
 
       publishIslandChanged(PEER, { islandId: 'island-C7' })
       await settle()
@@ -174,7 +198,7 @@ describe('ws-connector island change forwarding', () => {
 
   describe('when the payload cannot be decoded', () => {
     beforeEach(async () => {
-      connectPeer(PEER)
+      connectPeer(PEER, DESKTOP)
       publishRaw(PEER, new Uint8Array([0xff, 0xff, 0xff, 0xff]))
       await settle()
     })
@@ -192,7 +216,7 @@ describe('ws-connector island change forwarding', () => {
 
   describe('and a well-formed message arrives after a malformed one', () => {
     beforeEach(async () => {
-      connectPeer(PEER)
+      connectPeer(PEER, DESKTOP)
       publishRaw(PEER, new Uint8Array([0xff, 0xff, 0xff, 0xff]))
       await settle()
       publishIslandChanged(PEER, { islandId: 'island-C9' })
@@ -202,6 +226,162 @@ describe('ws-connector island change forwarding', () => {
     it('should still be delivered, proving the subscription survived', () => {
       const packet = lastForwarded()
       expect(packet.message?.$case === 'islandChanged' && packet.message.islandChanged.islandId).toBe('island-C9')
+    })
+  })
+
+  describe('when a session-addressed island change arrives', () => {
+    let desktop: InternalWebSocket
+    let laptop: InternalWebSocket
+
+    beforeEach(async () => {
+      desktop = connectPeer(PEER, DESKTOP)
+      laptop = connectPeer(PEER, LAPTOP)
+      publishIslandChangedTo(PEER, LAPTOP, {
+        islandId: 'island-C9',
+        connStr: 'livekit:wss://host?access_token=jwt-laptop'
+      })
+      await settle()
+    })
+
+    it('should forward it to the socket holding that session only', () => {
+      expect(laptop.send as jest.Mock).toHaveBeenCalledTimes(1)
+      expect(desktop.send as jest.Mock).not.toHaveBeenCalled()
+    })
+
+    it('should preserve the connection string', () => {
+      const packet = lastForwarded()
+      expect(packet.message?.$case === 'islandChanged' && packet.message.islandChanged.connStr).toBe(
+        'livekit:wss://host?access_token=jwt-laptop'
+      )
+    })
+  })
+
+  describe('when a session-addressed island change names a session this replica does not hold', () => {
+    beforeEach(async () => {
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, LAPTOP, { islandId: 'island-C9', connStr: 'x' })
+      await settle()
+    })
+
+    it('should forward nothing', () => {
+      expect(sent).toHaveLength(0)
+    })
+
+    it('should count the miss', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_no_session_socket_total')
+    })
+  })
+
+  describe('when a session-addressed island change names a wallet this replica does not hold at all', () => {
+    beforeEach(async () => {
+      publishIslandChangedTo(PEER, LAPTOP, { islandId: 'island-C9', connStr: 'x' })
+      await settle()
+    })
+
+    it('should forward nothing', () => {
+      expect(sent).toHaveLength(0)
+    })
+
+    it('should not count a miss, since ordinary fan-out is not a stale session', () => {
+      expect(metrics.increment).not.toHaveBeenCalledWith('dcl_ws_connector_island_changed_no_session_socket_total')
+    })
+  })
+
+  describe('when a legacy island change arrives for a wallet with two sessions', () => {
+    let desktop: InternalWebSocket
+    let laptop: InternalWebSocket
+
+    beforeEach(async () => {
+      desktop = connectPeer(PEER, DESKTOP)
+      laptop = connectPeer(PEER, LAPTOP)
+      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'x' })
+      await settle()
+    })
+
+    it('should forward it to the newest socket only, matching the last-wins behaviour it replaces', () => {
+      expect(laptop.send as jest.Mock).toHaveBeenCalledTimes(1)
+      expect(desktop.send as jest.Mock).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when legacy forwarding is off', () => {
+    beforeEach(async () => {
+      await start('false')
+      connectPeer(PEER, DESKTOP)
+      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'x' })
+      await settle()
+    })
+
+    it('should not forward the legacy subject', () => {
+      expect(sent).toHaveLength(0)
+    })
+
+    it('should still forward the session-addressed subject', async () => {
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'x' })
+      await settle()
+
+      expect(sent).toHaveLength(1)
+    })
+  })
+
+  describe('when the same island is forwarded twice to one socket within the dedup window', () => {
+    beforeEach(async () => {
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'b' })
+      await settle()
+    })
+
+    it('should forward only the first', () => {
+      expect(sent).toHaveLength(1)
+    })
+
+    it('should count the duplicate', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_deduplicated_total')
+    })
+  })
+
+  describe('when a different island follows within the window', () => {
+    beforeEach(async () => {
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C8', connStr: 'b' })
+      await settle()
+    })
+
+    it('should forward both', () => {
+      expect(sent).toHaveLength(2)
+    })
+
+    it('should not count a duplicate', () => {
+      expect(metrics.increment).not.toHaveBeenCalledWith('dcl_ws_connector_island_changed_deduplicated_total')
+    })
+  })
+
+  describe('when the same island is forwarded twice across the two subjects', () => {
+    beforeEach(async () => {
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'b' })
+      await settle()
+    })
+
+    it('should forward only the first, since the legacy path is deduplicated too', () => {
+      expect(sent).toHaveLength(1)
+    })
+  })
+
+  describe('when dedup is disabled', () => {
+    beforeEach(async () => {
+      await start('true', '0')
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'b' })
+      await settle()
+    })
+
+    it('should forward both messages', () => {
+      expect(sent).toHaveLength(2)
     })
   })
 })

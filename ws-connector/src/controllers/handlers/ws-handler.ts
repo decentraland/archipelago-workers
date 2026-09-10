@@ -4,6 +4,7 @@ import { craftKickedMessage, craftMessage } from '../../logic/craft-message'
 import { AppComponents, InternalWebSocket, WsUserData, Stage } from '../../types'
 import { EthAddress, AuthChain } from '@dcl/schemas'
 import { normalizeAddress } from '../../logic/address'
+import { sessionKeyOf } from '../../logic/session'
 import { getErrorMessage } from '../../logic/errors'
 import { Authenticator } from '@dcl/crypto'
 import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
@@ -11,30 +12,10 @@ import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
-    | 'config'
-    | 'logs'
-    | 'ethereumProvider'
-    | 'peersRegistry'
-    | 'banChecker'
-    | 'denyList'
-    | 'supersedeCooldown'
-    | 'nats'
-    | 'server'
-    | 'metrics'
+    'config' | 'logs' | 'ethereumProvider' | 'peersRegistry' | 'banChecker' | 'denyList' | 'nats' | 'server' | 'metrics'
   >
 ) {
-  const {
-    logs,
-    peersRegistry,
-    banChecker,
-    denyList,
-    supersedeCooldown,
-    nats,
-    server,
-    config,
-    ethereumProvider,
-    metrics
-  } = components
+  const { logs, peersRegistry, banChecker, denyList, nats, server, config, ethereumProvider, metrics } = components
   const logger = logs.getLogger('Websocket Handler')
 
   const timeout_ms = (await config.getNumber('HANDSHAKE_TIMEOUT')) || 60 * 1000 // 1 min
@@ -131,8 +112,7 @@ export async function registerWsHandler(
             }
 
             const challengeToSign = 'dcl-' + randomBytes(32).toString('hex')
-            const previousWs = peersRegistry.getPeerWs(address)
-            const alreadyConnected = !!previousWs
+            const alreadyConnected = peersRegistry.hasPeer(address)
             logger.debug('Generating challenge', {
               challengeToSign,
               address,
@@ -197,52 +177,32 @@ export async function registerWsHandler(
                 return
               }
 
-              // Almost certainly the session kicked a moment ago, coming straight back to
-              // retake the slot. Refuse it so the session that superseded it still holds the
-              // address when the island assignment for it arrives; the client retries on its
-              // own recovery interval.
-              //
-              // Keep this below the last await. Read earlier, a concurrent handshake could
-              // arm a cooldown in the gap before the register below and this one would miss
-              // it — the ban check alone is an uncached HTTP call.
-              if (supersedeCooldown.isCoolingDown(address)) {
-                metrics.increment('dcl_ws_connector_supersede_cooldown_refusals_total')
-                logger.warn(`Rejected reconnect during supersede cooldown: ${address}`)
-                safeEndWebSocket(ws, { code: 1013, message: Buffer.from('Try again later') })
-                return
-              }
+              // The device's ephemeral address: what the island feed is addressed to. Another
+              // device of the same wallet has a different one and is left alone.
+              const session = sessionKeyOf(authChain)
 
-              const previousWs = peersRegistry.getPeerWs(address)
-              // Only a socket that has not been reaped yet counts. That is weaker than
-              // liveness: `isClosed` is set from the close callback, so a client that vanished
-              // without a FIN still reads as open until uWS's idleTimeout, and its own reconnect
-              // supersedes itself. Bounded — it costs that client one refusal only if it drops
-              // again inside the window — and the alternative, inferring liveness from heartbeat
-              // age, cannot separate the two cases: a client reconnects fast enough that the
-              // dead socket's last heartbeat is no older than a live one's.
-              let superseded = false
+              // A socket already held for this exact (address, session) is this device's own
+              // zombie — a reconnect after a drop the server has not noticed yet. Only a socket
+              // that has not been reaped counts: `isClosed` is set from the close callback.
+              const previousWs = peersRegistry.getPeerWs(address, session)
               if (previousWs) {
-                const previousData = previousWs.getUserData()
-                if (!previousData.isClosed) {
-                  logger.debug('Sending kick message')
+                if (!previousWs.getUserData().isClosed) {
+                  logger.debug("Replacing this device's previous socket")
                   if (previousWs.send(craftKickedMessage(), true) !== 1) {
                     logger.error('Closing connection: cannot send kicked message')
                   }
-                  superseded = true
                 }
                 safeEndWebSocket(previousWs)
               }
 
-              // Stage, address and session id are set BEFORE the socket is reachable: the close
-              // handler needs the address to clean up if the welcome fails, and an announcement
-              // must never find a registered socket it cannot name or order.
-              const sessionId = `${Date.now().toString(16).padStart(12, '0')}${randomBytes(8).toString('hex')}`
+              // Stage, address and session are set BEFORE the socket is reachable: the close
+              // handler needs both to clean up if the welcome fails.
               changeStage(ws.getUserData(), {
                 stage: Stage.HANDSHAKE_COMPLETED,
                 address,
-                sessionId
+                session
               })
-              peersRegistry.onPeerConnected(address, ws)
+              peersRegistry.onPeerConnected(address, session, ws)
 
               const welcomeMessage = craftMessage({
                 message: {
@@ -257,21 +217,11 @@ export async function registerWsHandler(
                 return
               }
 
-              // Held back until the welcome landed. Announced any earlier, a failed welcome
-              // would leave the old session killed, the new one closed and every replica
-              // refusing the wallet — no session anywhere, and the client locked out of
-              // repairing it.
-              if (superseded) {
-                supersedeCooldown.onSuperseded(address)
-                nats.publish(`peer.${address}.superseded`)
-              }
-
-              // Announces that this address now has a live session. Island assignments come
-              // from Pulse's cluster feed, which is silent while a peer's cluster is unchanged,
-              // so without this a client that reconnects standing still is never told which
-              // island to join and waits forever. Archipelago Core covered the same case by
-              // forgetting the peer on disconnect and re-creating it on the next heartbeat.
-              nats.publish(`peer.${address}.connect`, Buffer.from(sessionId, 'utf8'))
+              // Announces that this session now has a live socket, so comms-gatekeeper can
+              // re-announce the wallet's island to it. Island assignments come from Pulse's
+              // cluster feed, which is silent while a peer's cluster is unchanged, so without
+              // this a client that reconnects standing still is never told which island to join.
+              nats.publish(`peer.${address}.connect`, Buffer.from(session, 'utf8'))
 
               logger.debug(`Welcome sent`, { address })
             } else {
@@ -304,8 +254,10 @@ export async function registerWsHandler(
         clearTimeout(data.timeout)
         data.timeout = undefined
       }
+      if (data.address && data.session) {
+        peersRegistry.onPeerDisconnected(data.address, data.session, ws)
+      }
       if (data.address) {
-        peersRegistry.onPeerDisconnected(data.address, ws)
         nats.publish(`peer.${data.address}.disconnect`)
       }
     }

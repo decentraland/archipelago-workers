@@ -70,10 +70,10 @@ export async function createBanSweep(
   async function runSweep(): Promise<void> {
     const peers = peersRegistry.snapshot()
     if (peers.length === 0) return
-    await mapWithConcurrency(peers, BAN_SWEEP_CONCURRENCY, async ({ id }) => {
+    await mapWithConcurrency(peers, BAN_SWEEP_CONCURRENCY, async ({ id, session }) => {
       try {
         if (!(await banChecker.isBanned(id))) return
-        const ws = peersRegistry.getPeerWs(id)
+        const ws = peersRegistry.getPeerWs(id, session)
         if (!ws) return
         logger.info(`Disconnecting banned user from comms`, { address: id })
         try {

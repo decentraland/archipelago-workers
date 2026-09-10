@@ -18,11 +18,11 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
 - Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed)
-- Publishes `peer.{addr}.connect` once a handshake completes, so comms-gatekeeper can re-announce that wallet's island
-- Subscribes to `engine.peer.{id}.island_changed` and forwards island assignment + LiveKit connection string (with embedded token) to the client
+- Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device
+- Subscribes to `engine.peer.{addr}.island_changed.{session}` (and, during the transition, the legacy `engine.peer.{addr}.island_changed`) and forwards the island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
-- Kicks duplicate sessions (same address reconnects evicts previous) across every replica, then
-  refuses that address for `SUPERSEDE_COOLDOWN_MS` so the kicked session cannot immediately kick back
+- Registers sockets by (wallet, session key) and forwards `engine.peer.{addr}.island_changed.{session}` only to the socket holding that session. A second device of the same wallet coexists; only the same device's zombie socket is replaced (and told `kicked`)
+- De-duplicates a repeated `island_changed` for the same island to the same socket within `ISLAND_CHANGED_DEDUP_MS` (default 10 s): the client already holds a token for that room, and a second string for it would make it join the room it is joining. Counted by `dcl_ws_connector_island_changed_deduplicated_total`.
 
 **Endpoint:** `/ws` (WebSocket)
 
@@ -88,10 +88,10 @@ its replicas answers.
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
 | `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position) |
-| `peer.{addr}.disconnect` | WS Connector | Stats | empty |
-| `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped), WS Connector (every replica) | the new socket's session id, UTF-8 |
-| `peer.{addr}.superseded` | WS Connector | WS Connector (every replica) | empty |
-| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage` |
+| `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat) |
+| `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8 |
+| `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
+| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage` (transition; behind `LEGACY_ISLAND_CHANGED_FORWARDING`) |
 | `engine.islands` | Pulse | Stats | cluster topology |
 | `engine.discovery` | Pulse | Stats | service discovery heartbeat |
 
@@ -130,6 +130,6 @@ docs/          OpenAPI specs, the removal runbook, the archived clustering algor
 - **Stats island IDs no longer match what clients receive.** `GET /islands` serves Pulse's cluster IDs (`C{n}`, from `engine.islands`), while the `islandId` gatekeeper puts on the client wire is the room name (`island-C{n}`). Under core the two were identical. Nothing joins them today — clients read only `connStr` — but any tooling that correlates stats islands with client-reported ones must account for the `island-` prefix.
 - **Clusters are uncapped, and no consumer re-partitions them — by design.** Pulse is the single source of cluster composition: comms-gatekeeper maps one cluster to one LiveKit room, `island-{clusterId}`, verbatim, with no sharding anywhere downstream. Nothing bounds co-located crowd size server-side, so the client's GPU is the binding constraint (unity-explorer's crowd-ghost work), and at capacity density a percolated cluster becomes one oversized room. If room/crowd size ever needs bounding it will be implemented in Pulse at the tracker level, never in consumers; the open question is tracked in `Pulse/docs/clustering-on-aoi.md` §7.
 - **No in-repo rollback for the clustering path.** Reverting to core means reverting a commit and rebuilding the image; there is no configuration flip. Stats' peer map is unaffected either way, being heartbeat-fed.
-- **A superseded client and its replacement trade the socket indefinitely.** The explorer never reads `kicked` — its sign flow handles only `IslandChanged` — so a kicked session treats the close as a transport error and reconnects, kicking the other straight back. `SUPERSEDE_COOLDOWN_MS` refuses the first of those retries, which is what lets the new session win the handover, but the pair keeps swapping the address every recovery interval afterwards. While that runs, a genuine `cluster_change` is minted unconditionally by comms-gatekeeper — only its `peer.{addr}.connect` path checks LiveKit first — and forwarded to whichever socket holds the slot at that instant, so it can reach the wrong session and evict the right one. No server-side window closes this: shorter than the client's recovery interval and it expires first, longer and it becomes a lockout. The durable fix is in unity-explorer — handle `Kicked` and stop the recovery loop.
-- **Which session survives is decided by id order, not by arrival order.** `peersRegistry` is per-process, so the kick and the cooldown both travel over NATS: `peer.{addr}.connect` carries the new socket's session id and `peer.{addr}.superseded` arms every replica. A replica only kicks what it holds when the announced id sorts *above* it, which is what keeps two welcomes that cross on the wire from killing each other — comparing for mere inequality would leave the wallet with no session anywhere. The id is a millisecond prefix plus random bytes, so two sessions opened in the same millisecond are ordered arbitrarily but *consistently*: every replica reaches the same verdict, and exactly one socket survives even when the tie-break picks the older one. During a rolling deploy the mechanism is inert both ways — a replica on the previous build neither subscribes nor sends a payload, and its payload-free announcement sorts below every real id — so both sockets survive until the deploy finishes.
+- **Two instances on one device are one session.** The session key is the cached ephemeral address, shared by every process on a device; their sockets replace each other and the island feed reaches whichever registered last. Not a product scenario.
 - **The topology change went unmeasured.** No shadow comparison was run between core's 64/80 single-linkage islands and Pulse's 100 u cell clusters, so the first evidence of a difference will be `GET /islands` in a live environment.
+- **`/status` `userCount` counts sockets, not wallets.** Since sockets are registered per (wallet, session), a wallet connected from two devices counts twice.
