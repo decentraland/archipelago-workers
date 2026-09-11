@@ -2,7 +2,7 @@
 
 **Service Purpose:** Monorepo with two services supporting Decentraland's real-time layer: the WS Connector (the only entry point clients talk to) and Stats (read-only monitoring). Players are grouped into clusters by proximity and each cluster maps to a LiveKit room.
 
-> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed`. WS Connector gained one publish — `peer.{addr}.connect` on a completed handshake, which comms-gatekeeper answers by re-announcing the wallet's island; Pulse's feed is edge-triggered, so without it a client that reconnects standing still is never given a room. Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
+> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed.{session}`, falling back to the legacy `engine.peer.{addr}.island_changed` for a session-less event. WS Connector gained one publish — `peer.{addr}.connect` on a completed handshake, which comms-gatekeeper answers by re-announcing the wallet's island; Pulse's feed is edge-triggered, so without it a client that reconnects standing still is never given a room. Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 **Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client, publishes its heartbeats, and forwards island assignments for the lifetime of the session. The LiveKit connection string it forwards is what the client uses to join the voice/CRDT room.
 
@@ -19,7 +19,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - Receives continuous position heartbeats from clients
 - Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed)
 - Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device
-- Subscribes to `engine.peer.{addr}.island_changed.{session}` (and, during the transition, the legacy `engine.peer.{addr}.island_changed`) and forwards the island assignment + LiveKit connection string (with embedded token) to the client
+- Subscribes to `engine.peer.{addr}.island_changed.{session}` and, for an assignment that carries no session (an older Pulse), the legacy `engine.peer.{addr}.island_changed` — and forwards the island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Registers sockets by (wallet, session key) and forwards `engine.peer.{addr}.island_changed.{session}` only to the socket holding that session. A second device of the same wallet coexists; only the same device's zombie socket is replaced (and told `kicked`)
 - De-duplicates a repeated `island_changed` for the same island to the same socket within `ISLAND_CHANGED_DEDUP_MS` (default 10 s): the client already holds a token for that room, and a second string for it would make it join the room it is joining. Counted by `dcl_ws_connector_island_changed_deduplicated_total`.
@@ -51,7 +51,7 @@ The `core` workspace no longer exists. Where each of its responsibilities went, 
 | Peer expiry (60 s heartbeat timeout) | Pulse connection lifecycle, ~5 s cleanup |
 | Clustering: 64/80 single-linkage, 100-peer cap | Pulse `ClusterTracker`: union-find over 100 u grid cells, **uncapped**, sticky `C{n}` IDs with a dwell debounce |
 | `engine.islands` and `engine.discovery` | Pulse `NatsPublisher` — `max_peers = 0`, discovery every 10 s |
-| `engine.peer.{addr}.island_changed`, LiveKit token minting, ban check at mint time | **comms-gatekeeper**, which subscribes to Pulse's `peer.{addr}.cluster_change` |
+| `engine.peer.{addr}.island_changed.{session}` (falling back to the legacy `engine.peer.{addr}.island_changed` for a session-less event), LiveKit token minting, ban check at mint time | **comms-gatekeeper**, which subscribes to Pulse's `peer.{addr}.cluster_change` |
 | `desiredRoom` → merge-target bias | Nothing. It only mattered when the 100-peer cap split a co-located crowd; uncapped clusters make that impossible, and no production client set it. The proto field survives on the wire and is read by nobody |
 
 The gatekeeper hop exists because minting means issuing a signed LiveKit JWT and running a per-user ban check — token-issuer concerns, so Pulse publishes only the assignment it knows about. That hop is the one piece of core's job that is **not** Pulse's, and it lives in a separate repo.
@@ -91,7 +91,7 @@ its replicas answers.
 | `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat) |
 | `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8 |
 | `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
-| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage` (transition; behind `LEGACY_ISLAND_CHANGED_FORWARDING`) |
+| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`; an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.islands` | Pulse | Stats | cluster topology |
 | `engine.discovery` | Pulse | Stats | service discovery heartbeat |
 

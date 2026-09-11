@@ -4,7 +4,7 @@
 
 The Archipelago Workers is a monorepo containing two services that support Decentraland's real-time communication layer: a WebSocket gateway for clients and a stats API for monitoring.
 
-> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed`. The WebSocket Connector is unchanged, and the Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
+> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is unchanged, and the Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
 
 ## Table of Contents
 
@@ -27,7 +27,7 @@ The Archipelago Workers is a monorepo containing two services that support Decen
 
 - **[Realm Provider](https://github.com/decentraland/realm-provider/)**: Exposes WebSocket connections to Decentraland clients
 - **Pulse**: Authors the peer clustering and publishes `engine.islands` / `engine.discovery`
-- **comms-gatekeeper**: Mints LiveKit connection strings and publishes `engine.peer.{address}.island_changed`
+- **comms-gatekeeper**: Mints LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event
 - **[Catalyst](https://github.com/decentraland/catalyst)**: Content server for fetching scene data (used by stats service)
 - **NATS**: Message broker for peer heartbeats, disconnect events, island changes, and discovery messages
 - **@dcl/protocol**: Archipelago protocol definitions
@@ -121,7 +121,7 @@ The services communicate via the following NATS message topics:
 | `peer.${address}.disconnect` | WS Connector | Stats |
 | `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
 | `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
-| `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector (transition) |
+| `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
 

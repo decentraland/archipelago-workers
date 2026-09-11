@@ -72,14 +72,13 @@ describe('ws-connector island change forwarding', () => {
     return ServerPacket.decode(sent[sent.length - 1])
   }
 
-  async function start(legacyForwarding: string, dedupMs?: string): Promise<void> {
-    // A fresh broker each call, so a nested describe rebuilding with a different flag gets a
-    // clean subscription set instead of layering a second one on top of the first.
+  async function start(dedupMs?: string): Promise<void> {
+    // A fresh broker each call, so a nested describe rebuilding with a different dedup window gets
+    // a clean subscription set instead of layering a second one on top of the first.
     nats = await createLocalNatsComponent()
     const config = createConfigComponent({
       LOG_LEVEL: 'ERROR',
       HANDSHAKE_TIMEOUT: '1000',
-      LEGACY_ISLAND_CHANGED_FORWARDING: legacyForwarding,
       ...(dedupMs !== undefined ? { ISLAND_CHANGED_DEDUP_MS: dedupMs } : {})
     })
     const server = { app: { get: jest.fn(), any: jest.fn(), ws: jest.fn() } }
@@ -109,7 +108,7 @@ describe('ws-connector island change forwarding', () => {
     metrics = createTestMetricsComponent(metricDeclarations)
     jest.spyOn(metrics, 'increment')
 
-    await start('true')
+    await start()
   })
 
   describe('when an island change arrives for a connected peer', () => {
@@ -304,26 +303,6 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
-  describe('when legacy forwarding is off', () => {
-    beforeEach(async () => {
-      await start('false')
-      connectPeer(PEER, DESKTOP)
-      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'x' })
-      await settle()
-    })
-
-    it('should not forward the legacy subject', () => {
-      expect(sent).toHaveLength(0)
-    })
-
-    it('should still forward the session-addressed subject', async () => {
-      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'x' })
-      await settle()
-
-      expect(sent).toHaveLength(1)
-    })
-  })
-
   describe('when the same island is forwarded twice to one socket within the dedup window', () => {
     beforeEach(async () => {
       connectPeer(PEER, DESKTOP)
@@ -373,7 +352,7 @@ describe('ws-connector island change forwarding', () => {
 
   describe('when dedup is disabled', () => {
     beforeEach(async () => {
-      await start('true', '0')
+      await start('0')
       connectPeer(PEER, DESKTOP)
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'b' })

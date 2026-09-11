@@ -18,7 +18,6 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
   const logger = logs.getLogger('ws-connector')
 
-  const legacyForwarding = (await config.getString('LEGACY_ISLAND_CHANGED_FORWARDING')) !== 'false'
   const dedupMs = (await config.getNumber('ISLAND_CHANGED_DEDUP_MS')) ?? 10_000
 
   function forward(ws: InternalWebSocket, id: string, data: Uint8Array): void {
@@ -77,19 +76,17 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     })
   )
 
-  // The session-less subject comms-gatekeeper publishes until it is switched to the one above.
-  // Delivered to the newest socket of the address, which is the last-wins behaviour it replaces.
-  if (legacyForwarding) {
-    nats.subscribe(
-      'engine.peer.*.island_changed',
-      guarded('island_changed', logger, (message) => {
-        const id = normalizeAddress(message.subject.split('.')[2])
-        const ws = peersRegistry.getNewestPeerWs(id)
-        if (!ws) {
-          return
-        }
-        forward(ws, id, message.data)
-      })
-    )
-  }
+  // The session-less subject comms-gatekeeper publishes for an assignment that carries no
+  // session (an older Pulse) — delivered to the newest socket of the address.
+  nats.subscribe(
+    'engine.peer.*.island_changed',
+    guarded('island_changed', logger, (message) => {
+      const id = normalizeAddress(message.subject.split('.')[2])
+      const ws = peersRegistry.getNewestPeerWs(id)
+      if (!ws) {
+        return
+      }
+      forward(ws, id, message.data)
+    })
+  )
 }
