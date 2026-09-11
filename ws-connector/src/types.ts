@@ -1,15 +1,12 @@
 import { HTTPProvider } from 'eth-connect'
-import type {
-  IBaseComponent,
-  IConfigComponent,
-  ILoggerComponent,
-  IMetricsComponent
-} from '@well-known-components/interfaces'
+import type { IConfigComponent, ILoggerComponent, IMetricsComponent } from '@well-known-components/interfaces'
 import type { IFetchComponent } from '@dcl/core-commons'
 import { metricDeclarations } from './metrics'
 import { INatsComponent } from '@well-known-components/nats-component/dist/types'
 import { IPeersRegistryComponent } from './adapters/peers-registry'
 import { IBanCheckerComponent } from './adapters/ban-checker'
+import { IBanSweepComponent } from './adapters/ban-sweep'
+import { IDenyListComponent } from './adapters/deny-list'
 import { IUWsComponent, HttpRequest, HttpResponse, WebSocket } from '@dcl/uws-http-server'
 
 // components used in every environment
@@ -22,7 +19,8 @@ export type BaseComponents = {
   nats: INatsComponent
   peersRegistry: IPeersRegistryComponent
   banChecker: IBanCheckerComponent
-  banSweep: IBaseComponent
+  banSweep: IBanSweepComponent
+  denyList: IDenyListComponent
   ethereumProvider: HTTPProvider
 }
 
@@ -34,8 +32,6 @@ export type TestComponents = BaseComponents & {
   // A fetch component that only hits the test server
   localFetch: IFetchComponent
 }
-
-export type Parcel = [number, number]
 
 export type JsonBody = Record<string, any>
 export type ResponseBody = JsonBody | string
@@ -61,6 +57,14 @@ export type WsUserData = {
   timeout?: NodeJS.Timeout
   address?: string
   isClosed?: boolean
+  /**
+   * Session key of the auth chain this socket authenticated with (see `logic/session.ts`): the
+   * device's ephemeral address. Island assignments are addressed to it.
+   */
+  session?: string
+  /** Island id of the last island_changed forwarded to this socket, and when. */
+  lastIslandId?: string
+  lastIslandAt?: number
 } & (
   | {
       stage: Stage.HANDSHAKE_START
@@ -72,6 +76,7 @@ export type WsUserData = {
   | {
       stage: Stage.HANDSHAKE_COMPLETED
       address: string
+      session: string
     }
 )
 

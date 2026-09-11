@@ -30,10 +30,10 @@ info:
     
     ### How It Works
     
-    The WebSocket Connector service integrates tightly with the Archipelago core service to provide seamless communication:
+    The WebSocket Connector service is the client-facing half of a chain it does not compute: peer clustering is performed by Pulse and LiveKit connection strings are minted by comms-gatekeeper, which publishes the island assignments this service forwards.
     
     1. **Connection Lifecycle**: When a client establishes a WebSocket connection, the service authenticates the peer and adds them to the active peer registry
-    2. **Island Coordination**: The service receives island assignment updates from the core service whenever a peer's island changes due to movement or clustering recalculation
+    2. **Island Coordination**: The service receives island assignment updates over NATS from comms-gatekeeper whenever a peer's cluster changes, and forwards them to the client unchanged
     3. **Message Broadcasting**: Position updates, chat messages, and profile events are routed to all relevant peers based on their current island assignments
     4. **Connection Monitoring**: The service tracks heartbeat messages to detect disconnected or inactive peers and removes them from the registry
     

@@ -4,7 +4,7 @@ info:
   description: |
     ## Overview
     
-    The Archipelago Stats API provides real-time visibility into the Decentraland communication system by aggregating and exposing statistics from the Archipelago core service. This API enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
+    The Archipelago Stats API provides real-time visibility into the Decentraland communication system by aggregating peer heartbeats and the cluster topology published by Pulse. This API enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
     
     ### Purpose
     
@@ -21,19 +21,13 @@ info:
     
     **Peers** are individual users/avatars currently active in the Archipelago system. Each peer entry includes their unique identifier, Ethereum address, real-time position coordinates (X, Y, Z), assigned island, and last heartbeat timestamp. This enables tracking of individual users and their current state in the system.
     
-    **Islands** are dynamic clusters of peers that are continuously recalculated based on user positions. Islands are the core mechanism for scalable communication—they group nearby users together to optimize message routing and rendering performance. Each island has a maximum capacity, center coordinates, radius, and contains a list of all peers currently assigned to it.
-    
+    **Islands** are dynamic clusters of peers that are continuously recalculated based on user positions. They group nearby users together to optimize message routing and rendering performance. Each island has center coordinates, a radius, and a list of all peers currently assigned to it. Island IDs read `C{n}` and `maxPeers` reads `0`: clusters are uncapped.
+
     ### How It Works
-    
-    The Archipelago core service implements sophisticated clustering algorithms that:
-    
-    - Calculate island centers dynamically as users move
-    - Assign users to islands based on proximity and capacity
-    - Create new islands when existing ones reach maximum occupancy
-    - Merge islands when their boundaries overlap and capacity allows
-    - Split or redistribute users across islands for optimal load balancing
-    
-    The Stats API continuously aggregates this information from the core service and provides it through REST endpoints with low latency, enabling real-time monitoring and analysis.
+
+    Clustering is performed by **Pulse**, which publishes the topology this API serves. Clusters have no size limit; comms-gatekeeper maps each one to a single LiveKit room named `island-C{n}`, so room size follows cluster size. Note the ID mismatch: clients receive the room name (`island-C{n}`) as their `islandId`, while this API reports the bare cluster ID (`C{n}`).
+
+    The Stats API continuously aggregates the published topology and provides it through REST endpoints with low latency, enabling real-time monitoring and analysis. Peer positions still come from client heartbeats.
     
     ### Data Freshness
     
@@ -189,7 +183,7 @@ paths:
         - Stats Service
       summary: Get all islands
       description: |
-        Returns a list of all active islands in the archipelago system. Islands are dynamic clusters of peers that are continuously recalculated based on user positions. Each island entry includes the island identifier, current peer count, maximum capacity, center coordinates (x, y, z), radius, and the list of peers currently assigned to that island. Islands are created, merged, and split dynamically to maintain optimal distribution of users across the metaverse.
+        Returns a list of all active islands in the archipelago system. Islands are dynamic clusters of peers, recalculated by Pulse as users move. Each entry includes the island identifier (`C{n}`), `maxPeers` (always 0 — clusters are uncapped), center coordinates (x, y, z), radius, and the list of peers assigned to it. The peer list is a join against heartbeat data, so a peer Pulse has assigned but which has not sent a heartbeat is omitted.
       operationId: getIslands
       security: []
       responses:
@@ -295,9 +289,9 @@ paths:
     get:
       tags:
         - Stats Service
-      summary: Get core service status
+      summary: Get clustering service status
       description: |
-        Returns the operational status of the Archipelago core service. The core service is responsible for implementing the archipelago clustering logic, managing island creation/merging/splitting, processing peer position updates, and publishing island change notifications. This endpoint allows monitoring of the core service health and availability.
+        Returns the operational status of whichever service publishes the `engine.discovery` heartbeat — the author of the peer clustering, which is Pulse. The path keeps its name for URL compatibility.
       operationId: getCoreStatus
       security: []
       responses:
@@ -560,7 +554,9 @@ components:
           description: List of peers in this island
         maxPeers:
           type: number
-          description: Maximum number of peers allowed
+          description: >-
+            Maximum number of peers allowed. Reads 0 since Pulse publishes the topology:
+            clusters are uncapped (it read 100 while archipelago-core published this feed).
         center:
           type: array
           items:
@@ -622,15 +618,19 @@ components:
     CoreStatus:
       type: object
       properties:
-        status:
-          type: string
-          description: Core service status
-        timestamp:
-          type: string
-          format: date-time
-          description: Status timestamp
+        healthy:
+          type: boolean
+          description: >-
+            True when the last `engine.discovery` heartbeat is under 90 seconds old. Published
+            by Pulse since iteration 1 of the Archipelago migration.
+        userCount:
+          type: number
+          description: >-
+            Connected user count as reported by the last heartbeat. Retains the last value
+            received, so it can be non-zero while `healthy` is false.
       required:
-        - status
+        - healthy
+        - userCount
     Status:
       type: object
       properties:

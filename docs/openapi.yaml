@@ -6,10 +6,10 @@ info:
     
     API documentation for Archipelago Stats and WebSocket Connector services implementing the Archipelago protocol for Decentraland's communication system. This unified specification provides access to both the observability layer (Stats API) and the real-time communication layer (WebSocket Connector API).
     
-    The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. When the maximum number of users per island is reached, the system creates overlapping islands to ensure all users can still interact.
-    
+    The Archipelago protocol clusters users into dynamic islands based on their positions, enabling efficient crowd management and scalable communication. Islands are recalculated in real-time as users move, allowing for optimal distribution of avatars and communication channels. Since iteration 1 of the Archipelago ⇒ Pulse migration the clustering is performed by **Pulse** and the islands it publishes are uncapped — comms-gatekeeper maps each island to a single LiveKit room verbatim, with no downstream sharding by design.
+
     **Key Concepts:**
-    - **Islands**: Dynamic groups of users clustered by proximity, with a configurable maximum occupancy
+    - **Islands**: Dynamic groups of users clustered by proximity, uncapped in size and identified as `C{n}`
     - **Peers**: Individual users/avatars in the Archipelago system
     - **Parcels**: Geographic coordinates in Decentraland where users are located
     - **Real-time updates**: Islands and peer positions are continuously recalculated
@@ -18,7 +18,7 @@ info:
     
     ### Stats Service
     
-    The **Archipelago Stats API** provides real-time visibility into the Decentraland communication system by aggregating and exposing statistics from the Archipelago core service. This service acts as an observability layer, transforming internal system state into queryable metrics and snapshots.
+    The **Archipelago Stats API** provides real-time visibility into the Decentraland communication system by aggregating peer heartbeats and the cluster topology published by Pulse. This service acts as an observability layer, transforming internal system state into queryable metrics and snapshots.
     
     **Purpose**: Enables monitoring, debugging, and analytics of user distribution, island clustering, and system health across the metaverse.
     
