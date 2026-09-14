@@ -1,0 +1,14 @@
+{
+  "probedAt": "2026-09-04T15:08Z",
+  "host": "archipelago-ea-stats.decentraland.org (archipelago-stats 0.2.2, commit 537def1)",
+  "ccu": 27,
+  "note": "Shape fixtures for R4 (no response-shape drift). Wallets were replaced by the pack's synthetic 0x000…000N addresses; every other value is verbatim from the probe (trimmed to a few entries). The scene metadata in hot-scenes.json is public Catalyst content.",
+  "observations": {
+    "/comms/peers": "200 with the same body as /peers — an alias today, not a redirect; iteration 2 turns both into 308 -> /realms/main/peers unless `id`/`all` is present",
+    "/about": 404,
+    "/health": 404,
+    "/realms": 404,
+    "/core-status": "200 {healthy,userCount} — retires; realm-provider moves to Pulse /about + /health",
+    "/islands": "ids are `island-ea-<3 chars>` (prod ROOM_PREFIX island-ea-), maxPeers 100; iteration 2 serves C{n} with maxPeers 0"
+  }
+}

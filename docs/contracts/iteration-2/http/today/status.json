@@ -1,0 +1,9 @@
+{
+  "request": "GET /status",
+  "status": 200,
+  "body": {
+    "version": "0.2.2",
+    "currentTime": 1788534518576,
+    "commitHash": "537def15e2609cf0ecc8ba5bd7ad400702e455c8"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "request": "GET /parcels",
+  "status": 200,
+  "body": {
+    "parcels": [
+      { "peersCount": 3, "parcel": { "x": 5, "y": 98 } },
+      { "peersCount": 2, "parcel": { "x": 126, "y": 104 } },
+      { "peersCount": 1, "parcel": { "x": 63, "y": 128 } },
+      { "peersCount": 2, "parcel": { "x": -1, "y": 0 } }
+    ]
+  }
+}
