@@ -43,6 +43,7 @@ describe('ws-handler', () => {
   let metrics: IMetricsComponent<keyof typeof metricDeclarations>
   let validateSignature: jest.SpyInstance
   let loggerWarn: jest.Mock
+  let loggerError: jest.Mock
 
   const identity = createEphemeralIdentity('handler-spec')
   const address = identity.address.toLowerCase()
@@ -85,13 +86,14 @@ describe('ws-handler', () => {
     metrics = createTestMetricsComponent(metricDeclarations)
     jest.spyOn(metrics, 'increment')
     loggerWarn = jest.fn()
+    loggerError = jest.fn()
 
     const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS), ...configOverrides })
-    // The real logger, with only `warn` made observable: the rest of this file relies on its
-    // actual behaviour (the protocol-violation cases print through it on purpose).
+    // The real logger, with `warn` and `error` made observable: the rest of this file relies on
+    // its actual behaviour (the protocol-violation cases print through it on purpose).
     const realLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
     const logs = {
-      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn })
+      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn, error: loggerError })
     }
     const server = {
       app: {
@@ -445,6 +447,109 @@ describe('ws-handler', () => {
     it('should close the socket without registering the peer', () => {
       expect(ws.end).toHaveBeenCalled()
       expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a handshake that never completed', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the address is deny-listed on the post-authentication check', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      denyList.isDenylisted.mockResolvedValue(true)
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should close the socket without registering the peer', () => {
+      expect(ws.end).toHaveBeenCalled()
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a handshake that was rejected', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the authenticated wallet is platform-banned', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockResolvedValue(true)
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should kick the socket without registering the peer', () => {
+      expect(ws.end).toHaveBeenCalled()
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a handshake that was rejected', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when a signed challenge authenticates successfully with heartbeat forwarding disabled', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'false' })
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should still announce the handshake, since connect is never gated by the flag', () => {
+      expect(published(`peer.${address}.connect`)).toHaveLength(1)
+    })
+  })
+
+  // `nats.publish` throws synchronously when the component was never started or the connection is
+  // gone. By then the peer is registered and the welcome is about to go out: a client with no
+  // island is degraded and re-handshakes, a client with no socket is broken — so the failed
+  // announcement must not take the socket down with it.
+  describe('when NATS refuses the handshake announcement', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      nats.publish.mockImplementation(() => {
+        throw new Error('NATS component was not started yet')
+      })
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should still finish the handshake and keep the socket open', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+
+    it('should have already sent the welcome', () => {
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('should count the refusal exactly once, so a broker that refuses announcements is visible on /metrics', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_connect_publish_refused_total')
+      expect(metrics.increment).toHaveBeenCalledTimes(1)
+    })
+
+    it('should log the failure once, naming the subject that was lost', () => {
+      expect(loggerError).toHaveBeenCalledTimes(1)
+      expect(String(loggerError.mock.calls[0][0])).toContain(`peer.${address}.connect`)
     })
   })
 

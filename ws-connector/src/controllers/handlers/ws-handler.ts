@@ -72,6 +72,20 @@ export async function registerWsHandler(
     }, timeout_ms)
   }
 
+  // `nats.publish` throws synchronously when the component was never started or the connection is
+  // gone. Left inline, that throw would propagate to the message handler's own try/catch, which
+  // treats it as a protocol violation and ends the socket — degrading a client that already has a
+  // welcome and a registered session into one with neither. A message buffered during a broker
+  // reconnect and then dropped by NATS itself is not visible here and is not counted.
+  function announcePeerConnected(address: string, session: string) {
+    try {
+      nats.publish(`peer.${address}.connect`, Buffer.from(session, 'utf8'))
+    } catch (error) {
+      logger.error(`Cannot announce the handshake on peer.${address}.connect: ${getErrorMessage(error)}`)
+      metrics.increment('dcl_ws_connector_connect_publish_refused_total')
+    }
+  }
+
   function changeStage(data: WsUserData, newData: WsUserData) {
     Object.assign(data, newData)
   }
@@ -271,7 +285,7 @@ export async function registerWsHandler(
               // re-announce the wallet's island to it. Island assignments come from Pulse's
               // cluster feed, which is silent while a peer's cluster is unchanged, so without
               // this a client that reconnects standing still is never told which island to join.
-              nats.publish(`peer.${address}.connect`, Buffer.from(session, 'utf8'))
+              announcePeerConnected(address, session)
 
               logger.debug(`Welcome sent`, { address })
             } else {
