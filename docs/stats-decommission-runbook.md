@@ -160,19 +160,37 @@ never becomes ready, so `warming` is the answer for the whole life of the proces
 `/core-status` is expected to be gone. Nothing should point at it once realm-provider runs
 `PRESENCE_SOURCE=pulse`; if something still calls it, find that caller before the cut.
 
-### 5. Nothing is publishing the retired subjects
+### 5. Nothing is publishing the retired subjects — and the session subjects are still alive
 
 `peer.<addr>.heartbeat` and `peer.<addr>.disconnect` must have been silent for 48 h (step 8's gate).
+This is retirement, not a wiring fault: iteration 1's session subjects, `peer.*.connect` and the
+five-token `engine.peer.*.island_changed.*`, are unaffected by `HEARTBEAT_FORWARDING_ENABLED` and
+must still be flowing on the same broker.
 
-**There is no ws-connector metric for this.** `ws-connector/src/metrics.ts` declares only the
-default HTTP metrics and the logger's, so a heartbeat rate is not on `/metrics` and cannot be
-graphed. Verify it the two ways that do work:
+**There is no ws-connector metric for either the retired or the session subjects.**
+`ws-connector/src/metrics.ts` declares only the default HTTP metrics, the logger's, the
+island_changed dedup/no-session counters, and the connect-publish-refused counter — none of them a
+rate you can read as "traffic on this subject". Verify all of it on the broker:
 
 ```bash
-# on the broker, over a window long enough to cover an arrival and a departure
+# retired: must be silent over a window long enough to cover an arrival and a departure
 nats sub 'peer.*.heartbeat'
 nats sub 'peer.*.disconnect'
+
+# still alive: a real handshake against this environment must show up on both
+nats sub 'peer.*.connect'                   # payload is the session key, a bare 0x… address —
+                                             # not empty, and not the four-token subject's shape
+nats sub 'engine.peer.*.island_changed.*'   # the five-token subject; deliveries here are
+                                             # session-addressed re-announces, gatekeeper → ws-connector
 ```
+
+Expected: `peer.*.connect` fires once per handshake with a `0x` + 40 lowercase hex chars payload —
+the ephemeral session address, not an empty buffer (a legacy publisher's tell) and not the wallet
+address unless the auth chain carries no delegation. `engine.peer.*.island_changed.*` shows
+five-token deliveries; the plain four-token `engine.peer.*.island_changed` may still appear for an
+assignment from an older Pulse, but should not be the only subject seen. Silence on either subject
+here — as opposed to on the retired pair — is not this runbook's success condition, it is a
+regression to raise before continuing the cut.
 
 and confirm the ws-connector deployment actually carries `HEARTBEAT_FORWARDING_ENABLED=false`.
 Check the value character by character, and grep the ws-connector logs for `does not recognise`:
