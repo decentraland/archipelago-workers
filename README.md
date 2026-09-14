@@ -117,17 +117,19 @@ The services communicate via the following NATS message topics:
 
 | Subject | Published by | Consumed by |
 | --- | --- | --- |
-| `peer.${address}.heartbeat` | WS Connector | Stats |
-| `peer.${address}.disconnect` | WS Connector | Stats |
-| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
+| `peer.${address}.heartbeat` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
+| `peer.${address}.disconnect` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
+| `peer.${address}.connect` | WS Connector | comms-gatekeeper (grouped) — the session key of the new socket, UTF-8. Never gated |
+| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper — not consumed by this repo; pinned in `ws-connector/test/contract/` |
 | `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
 | `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 
 Delivery of an `island_changed` to a socket is at most once. When µWebSockets drops the frame because the socket holds more than `WS_MAX_BACKPRESSURE_BYTES` of undrained data, the connector closes that socket with code 1013 (`dcl_ws_connector_island_changed_dropped_close_total`) so the client reconnects and its `peer.{address}.connect` has comms-gatekeeper mint fresh credentials; Pulse does not repeat an unchanged assignment on its own. A frame that is merely queued is accepted and drains on the same socket. Deploy order for that recovery: Pulse, then comms-gatekeeper, then this connector.
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
+| `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea — not consumed by this repo; wire bytes pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
 
-Only the two `peer.*` subjects are published by this repo. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged.
+This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by `HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged.
 
 ## Testing
 
