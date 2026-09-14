@@ -6,14 +6,6 @@ on:
       - "created"
 
 jobs:
-  archipelago-ea-stats-deployment:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-release.yml@main
-    with:
-      service-name: archipelago-ea-stats
-      image-name: archipelago-workers
-      deployment-environment: prd
-    secrets: inherit
-
   archipelago-ea-ws-connector-deployment:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-release.yml@main
     with:

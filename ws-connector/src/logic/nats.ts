@@ -10,7 +10,8 @@ import { getErrorMessage } from './errors'
  * publishers are out of this repo — comms-gatekeeper mints and publishes `island_changed` — so a
  * malformed payload must degrade to one dropped message, not a silently dead feed.
  *
- * Mirrors the same helper in the stats service (`stats/src/logic/subscriptions.ts`).
+ * Mirrored the same helper in the stats service until iteration 2 deleted that workspace; this is
+ * the surviving copy.
  *
  * @param what - Short name of the message kind, used in the error log.
  * @param logger - Logger for delivery and handler failures.

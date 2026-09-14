@@ -1,8 +1,8 @@
 # AI Agent Context
 
-**Service Purpose:** Monorepo with two services supporting Decentraland's real-time layer: the WS Connector (the only entry point clients talk to) and Stats (read-only monitoring). Players are grouped into clusters by proximity and each cluster maps to a LiveKit room.
+**Service Purpose:** Monorepo with one service supporting Decentraland's real-time layer: the WS Connector, the only entry point clients talk to. Players are grouped into clusters by proximity and each cluster maps to a LiveKit room.
 
-> **Iteration 1 of the Archipelago ⇒ Pulse migration is complete on this side.** `archipelago-core` was removed. Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`; comms-gatekeeper mints LiveKit connection strings and publishes `engine.peer.{addr}.island_changed.{session}`, falling back to the legacy `engine.peer.{addr}.island_changed` for a session-less event. WS Connector gained one publish — `peer.{addr}.connect` on a completed handshake, which comms-gatekeeper answers by re-announcing the wallet's island; Pulse's feed is edge-triggered, so without it a client that reconnects standing still is never given a room. Stats keeps every endpoint until iteration 2. Runbook: [core-decommission-runbook.md](./core-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of the removed algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
+> **Iterations 1 and 2 of the Archipelago ⇒ Pulse migration are complete on this side.** `archipelago-core` was removed in iteration 1 and `archipelago-stats` in iteration 2, leaving `ws-connector` as the only workspace. Pulse authors the clustering, publishes `engine.islands` / `engine.discovery` / `engine.parcel_changes`, and serves the online-player endpoints; comms-gatekeeper mints LiveKit connection strings, publishes `engine.peer.{addr}.island_changed.{session}` (falling back to the legacy `engine.peer.{addr}.island_changed` for a session-less event), and serves `/hot-scenes`. WS Connector is **not** unchanged by either: iteration 1 keyed it by (wallet, session) and added `peer.{addr}.connect`, published on every completed handshake so comms-gatekeeper can re-announce the wallet's island — Pulse's feed is edge-triggered, so without it a client that reconnects standing still would never be given a room; iteration 2 added server-side pings and the `HEARTBEAT_FORWARDING_ENABLED` flag. Runbooks: [core-decommission-runbook.md](./core-decommission-runbook.md), [stats-decommission-runbook.md](./stats-decommission-runbook.md). Upstream design: `Pulse/docs/clustering-on-aoi.md`. Archived record of core's algorithm: [island-clustering-algorithm.md](./island-clustering-algorithm.md).
 
 **Role in the real-time layer:** The WS Connector is the first connection a client makes on entering the world. It authenticates the client, publishes its heartbeats, and forwards island assignments for the lifetime of the session. The LiveKit connection string it forwards is what the client uses to join the voice/CRDT room.
 
@@ -17,7 +17,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 **Key responsibilities:**
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
-- Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed), unless `HEARTBEAT_FORWARDING_ENABLED=false`
+- Publishes heartbeats and disconnects to NATS, unless `HEARTBEAT_FORWARDING_ENABLED=false`. Both subjects are consumer-less now: core read them until iteration 1 removed it, archipelago-stats until iteration 2 removed it — retiring at rollout step 8
 - Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device — never gated by `HEARTBEAT_FORWARDING_ENABLED`. A broker that refuses the publish (not started, or connection lost) is logged and counted as `dcl_ws_connector_connect_publish_refused_total` rather than tearing the socket down
 - Subscribes to `engine.peer.{addr}.island_changed.{session}` and, for an assignment that carries no session (an older Pulse), the legacy `engine.peer.{addr}.island_changed` — and forwards the island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
@@ -28,7 +28,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 
 **Connection liveness:** the socket is held open by the server, not by the client. uWebSockets pings
 an idle connection (`sendPingsAutomatically`) and the client's automatic pong resets the idle timer,
-so a client that sends nothing of its own — as iteration 2's heartbeat-free clients will — is never
+so a client that sends nothing of its own — as iteration 2's heartbeat-free clients do — is never
 dropped for silence and keeps receiving `island_changed`. `WS_IDLE_TIMEOUT_SECONDS` (default `90`)
 therefore does **not** bound how long a client may stay quiet; it bounds how long a socket whose peer
 has stopped answering pings — a dead or half-open connection — lingers before uWS reaps it. Raising
@@ -39,7 +39,7 @@ of 4, and ws-connector refuses to start on anything in between.
 
 **Heartbeat retirement:** `HEARTBEAT_FORWARDING_ENABLED` (default `true`) controls whether the client
 heartbeat is still republished as `peer.<addr>.heartbeat` and the session close as
-`peer.<addr>.disconnect`. Iteration 2 retires both — archipelago-stats was their only consumer, and
+`peer.<addr>.disconnect`. Iteration 2 retired both — archipelago-stats was their only consumer, and
 Pulse reads positions from its own transport — so the switch exists to turn the intake off ahead of
 deleting the code. With it off the heartbeat packet is still decoded and accepted (clients on old
 builds keep sending it) and nothing else on the socket changes: the registry eviction on close,
@@ -48,20 +48,26 @@ builds keep sending it) and nothing else on the socket changes: the registry evi
 anything else leaves it on with a warning naming the key and the value — a typo in the switch must
 not take `/ws` down with it.
 
-**Flip it to `false` only when nothing reads archipelago-stats any more** — after the CloudFlare cut
-(rollout step 5) has moved every stats path to Pulse and comms-gatekeeper — *and* heartbeat-free
-clients are ≥ 95 % of sessions (step 7); together that is rollout step 8, and the code goes at step
-9. The first condition is the one that bites: stats has no time-based peer expiry (see its section
-below), so with the intake off its peer map freezes rather than empties — no arrivals, no
-departures, and every session that ends inside the off-window stays "online" in `/peers`, `/parcels`
-and `/hot-scenes`, which feeds places. This is not a free canary: flipping back resumes publishing
-but does not clear those entries, because the sessions that left will never announce it. Clearing
-them means restarting archipelago-stats, or waiting for its retirement.
+**Both subjects now have no subscriber at all**, so `false` is the value production wants: the flag
+was flipped at rollout step 8 and the stats workspace was deleted at step 9. The switch stays in the
+tree on purpose — it is the writer half of the stats rollback
+([stats-decommission-runbook.md](./stats-decommission-runbook.md#rollback) step 4), and a redeployed
+stats with the intake still off answers `200` with an empty peer map, which reads as "everyone left".
+The code goes in a follow-up, once that rollback is out of the question.
+
+The cost of the flip is recorded there too, and it is worth knowing why the ordering was strict:
+stats had no time-based peer expiry, so with the intake off its peer map froze rather than emptied —
+no arrivals, no departures, and every session that ended inside the off-window stayed "online" in
+`/peers`, `/parcels` and `/hot-scenes`, which feeds places. That is why step 8 waited on the
+CloudFlare cut (step 5) moving the readers to Pulse and comms-gatekeeper, *and* on heartbeat-free
+clients reaching ≥ 95 % of sessions (step 7). It was never a free canary: flipping back resumes
+publishing but cannot clear stale entries, because the sessions that left will never announce it.
 
 **Wire-contract tests:** `ws-connector/test/contract/` pins what Pulse publishes, in bytes —
-`pulse-wire.spec.ts` for `engine.discovery` / `engine.islands` (moved from `stats`, which iteration 2
-deletes) and `parcel-changes.spec.ts` for `engine.parcel_changes`, against fixtures copied verbatim
-from the contract pack. ws-connector consumes none of these feeds; it is the workspace that remains.
+`pulse-wire.spec.ts` for `engine.discovery` / `engine.islands` (moved out of `stats` before iteration
+2 deleted it) and `parcel-changes.spec.ts` for `engine.parcel_changes`, against fixtures copied
+verbatim from the contract pack. ws-connector consumes none of these feeds; it is the workspace that
+remains, and the feeds outlived their first consumer.
 
 **Auth flow:**
 ```
@@ -97,35 +103,38 @@ Rollback is a revert plus an image rebuild, not a config flip — see [core-deco
 
 ---
 
-### Archipelago Stats (`/stats`)
+### Archipelago Stats — removed
 
-Read-only monitoring service. Not in the client data path.
+The `stats` workspace no longer exists. It was read-only monitoring, never in the client data path. Where each endpoint is served now:
 
-**Key responsibilities:**
-- Subscribes to NATS: `peer.*.heartbeat`, `peer.*.disconnect`, `engine.islands`, `engine.discovery`
-- Aggregates peer count and island topology in memory
-- Exposes REST endpoints for island/peer statistics and clustering-service health
-- Integrates with Catalyst for content server metadata
+| Stats served | Now served by |
+| --- | --- |
+| `/peers`, `/peers/{id}`, `/parcels`, `/islands`, `/islands/{id}`, `/status`, and every `/comms`-prefixed alias | **Pulse HTTP**, realm-scoped under `/realms/{realm}/…`. Pulse itself answers `308` to `/realms/main/…` from the collection paths — `/peers`, `/parcels`, `/islands`, `/islands/{id}` and their `/comms/…` copies. Answered **directly**, across all realms: `/status`, the `?id=<wallet>` / `?all=true` query forms of `/peers` **and** `/comms/peers`, and the single-peer path form `/peers/{id}` **and** `/comms/peers/{id}` (stats served that alias, so it stays live rather than redirecting) |
+| `/about`, `/health` | **Pulse HTTP** — `/health` is the CloudFlare origin health check |
+| `/hot-scenes` | **comms-gatekeeper**, from its `engine.parcel_changes` presence map; `realm-provider` proxies it. Gatekeeper also serves `/scene-participants` |
+| `/core-status` | **retired outright** — realm-provider stopped reading it at rollout step 5 |
+| Position intake from `peer.*.heartbeat` | **Pulse reads positions from its own transport** — no NATS hop, and no client heartbeat |
+| Catalyst scene lookup for `/hot-scenes` thumbnails | comms-gatekeeper. `dcl-catalyst-client` is no longer a dependency of this repo |
 
-Unchanged by iteration 1, deliberately: the peer map is still heartbeat-fed, so `/peers`, `/parcels` and `/hot-scenes` behave exactly as before. Only the island topology's source moved — `GET /islands` now serves `C{n}` IDs with `maxPeers: 0`, and `/core-status` reports Pulse's health without changing its response shape. The wire contract is pinned in `ws-connector/test/contract/pulse-wire.spec.ts`; what is left in
-`stats/test/unit/pulse-topology.spec.ts` covers stats' own decode and handlers.
+`archipelago-ea-stats.decentraland.{org,zone}` still resolves: a CloudFlare rule fronts Pulse and comms-gatekeeper on that hostname, so the public URLs and response shapes stayed stable across the move. Nothing in this repo serves them.
 
-Stats has **no** time-based peer expiry: it drops a peer only on `peer.*.disconnect`, so a missed disconnect leaves one in `/peers`, `/parcels` and `/hot-scenes` indefinitely. `CHECK_HEARTBEAT_INTERVAL` was core's, not stats'.
+Two properties of the removed service still explain the rollout's ordering and the shape of its rollback: it had **no** time-based peer expiry — it dropped a peer only on `peer.*.disconnect`, so a missed disconnect left one in `/peers`, `/parcels` and `/hot-scenes` indefinitely — and its peer map was fed only by heartbeats, so it cannot be restored, only refilled. See [stats-decommission-runbook.md](./stats-decommission-runbook.md). (`CHECK_HEARTBEAT_INTERVAL` was core's, not stats'.)
 
-Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is iteration 2.
+The `engine.islands` / `engine.discovery` wire contract survived the deletion, in `ws-connector/test/contract/pulse-wire.spec.ts`.
 
 ---
 
 ## NATS Message Reference
 
-This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by
-`HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. ws-connector's own
-subscriptions are the two `island_changed` subjects — the five-token, session-addressed one and the
-four-token legacy fallback — both consumed here (`src/service.ts`) and carrying no queue group, so
-every replica receives its own copy. Of the broker-map rows below, `engine.islands` and
-`engine.discovery` are consumed by archipelago-stats on this branch, and their wire bytes, along
-with `engine.parcel_changes`, are pinned in `ws-connector/test/contract/` for the consumers that
-live elsewhere — `peer.{addr}.cluster_change` is listed for the broker map only: its
+This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, both consumer-less now
+(core read them until iteration 1 removed it, archipelago-stats until iteration 2 removed it) and
+gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8; and `connect`, which is never
+gated. ws-connector's own subscriptions are the two `island_changed` subjects — the five-token,
+session-addressed one and the four-token legacy fallback — both ungrouped, so every replica
+receives its own copy. Every other row below is broker-map context with no endpoint in this repo:
+`engine.islands` and `engine.discovery` (subscriber-less since stats' deletion) and
+`engine.parcel_changes` have their wire bytes pinned in `ws-connector/test/contract/` for the
+consumers that live elsewhere — `peer.{addr}.cluster_change` is listed for the broker map only: its
 `PeerClusterChange` payload is decoded by comms-gatekeeper, and nothing in this repo pins or decodes
 it. Of the subjects published elsewhere, comms-gatekeeper's `connect` subscription is grouped so
 exactly one of its replicas answers, and its `cluster_change` subscription is consumed twice —
@@ -134,13 +143,13 @@ queue-grouped for LiveKit minting, and again ungrouped so every replica mirrors 
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
-| `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
-| `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
+| `peer.{addr}.heartbeat` | WS Connector | nobody — archipelago-stats was its only consumer | `Heartbeat` (position). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
+| `peer.{addr}.disconnect` | WS Connector | nobody — same flag, same reason | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected. Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
 | `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8. Never gated |
 | `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica, ungrouped) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
 | `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica, ungrouped) | `IslandChangedMessage`; an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
-| `engine.islands` | Pulse | Stats | cluster topology |
-| `engine.discovery` | Pulse | Stats | service discovery heartbeat |
+| `engine.islands` | Pulse | nobody in this repo | `IslandStatusMessage` — full island topology, `C{n}` ids, `maxPeers: 0`. Fed stats' `GET /islands`, which Pulse serves itself now; still published, and still pinned in `ws-connector/test/contract/pulse-wire.spec.ts` |
+| `engine.discovery` | Pulse | nobody in this repo | `ServiceDiscoveryMessage` — clustering-service heartbeat every 10 s, `current_time` as `uint64`. Fed stats' `/core-status`, which retired; pinned in the same spec |
 | `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea | `decentraland.pulse.ParcelChangesBatch` — per-parcel presence deltas (snapshot or delta, `seq`-ordered), iteration 2's only source of online-player information. Nothing in this repo consumes it; its wire bytes are pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
 | `peer.{addr}.cluster_change` | Pulse | comms-gatekeeper (queue-grouped for LiveKit minting; ungrouped for the assignment mirror) | `decentraland.pulse.PeerClusterChange { cluster_id, realm, session, displaced_session, displaced_cluster_id }` — one peer's published cluster assignment changed; gatekeeper decodes it and mints the LiveKit token from it. Nothing in this repo consumes it, and its wire bytes are **not** pinned here — only `engine.parcel_changes`, `engine.islands` and `engine.discovery` are |
 
@@ -153,32 +162,30 @@ queue-grouped for LiveKit minting, and again ungrouped so every replica mirrors 
 - Component architecture: `@well-known-components` (logger, metrics, nats, http-server, env-config-provider)
 
 **External dependencies:**
-- **NATS**: All inter-service communication between WS Connector, Stats, Pulse and comms-gatekeeper
+- **NATS**: All inter-service communication between WS Connector, Pulse and comms-gatekeeper
 - **LiveKit API**: Called by comms-gatekeeper to generate room tokens — no longer from this repo
 - **`@dcl/protocol`**: Protobuf definitions for Heartbeat, IslandChangedMessage, IslandStatusMessage, ServiceDiscoveryMessage. Pinned to the npm release of [protocol#453](https://github.com/decentraland/protocol/pull/453), which restores `ServiceStatus`/`ServiceDiscoveryMessage` with `current_time` as `uint64`
 - **`@dcl/crypto`**: Ethereum signature validation, AuthChain
-- **`dcl-catalyst-client`**: Stats service fetches content server data
 
 ---
 
 ## Project Structure
 
 ```
-ws-connector/  WebSocket handlers, peer registry, auth flow, NATS pub/sub
-stats/         REST API endpoints, Catalyst integration, NATS subscribers, data aggregation
-docs/          OpenAPI specs, the removal runbook, the archived clustering algorithm
+ws-connector/  WebSocket handlers, peer registry, auth flow, NATS pub/sub — the only workspace
+docs/          OpenAPI spec, the two removal runbooks, the archived clustering algorithm
 ```
 
-**API Specification:** See `docs/openapi.yaml` for Stats and WS Connector REST API documentation.
+**API Specification:** See `docs/openapi.yaml` for the WS Connector REST API. The retired Stats endpoints are documented where they are served now — `Pulse/docs/openapi.yaml` and comms-gatekeeper's spec.
 
 ---
 
 ## Known Architectural Issues
 
 - **Cluster IDs are not unique beyond one Pulse process.** `C{n}` comes from a monotonic counter that resets on restart, so after a Pulse restart `C1` names a different crowd and comms-gatekeeper may map it onto the LiveKit room the previous `C1` used. Live-voice-room correctness, not cosmetics; tracked as an open question in `Pulse/docs/clustering-on-aoi.md` §7.
-- **Stats island IDs no longer match what clients receive.** `GET /islands` serves Pulse's cluster IDs (`C{n}`, from `engine.islands`), while the `islandId` gatekeeper puts on the client wire is the room name (`island-C{n}`). Under core the two were identical. Nothing joins them today — clients read only `connStr` — but any tooling that correlates stats islands with client-reported ones must account for the `island-` prefix.
+- **Reported island IDs do not match what clients receive.** Pulse's `GET /islands` serves cluster IDs (`C{n}`, the same ones it puts on `engine.islands`), while the `islandId` gatekeeper puts on the client wire is the room name (`island-C{n}`). Under core the two were identical. Nothing joins them today — clients read only `connStr` — but any tooling that correlates reported islands with client-reported ones must account for the `island-` prefix.
 - **Clusters are uncapped, and no consumer re-partitions them — by design.** Pulse is the single source of cluster composition: comms-gatekeeper maps one cluster to one LiveKit room, `island-{clusterId}`, verbatim, with no sharding anywhere downstream. Nothing bounds co-located crowd size server-side, so the client's GPU is the binding constraint (unity-explorer's crowd-ghost work), and at capacity density a percolated cluster becomes one oversized room. If room/crowd size ever needs bounding it will be implemented in Pulse at the tracker level, never in consumers; the open question is tracked in `Pulse/docs/clustering-on-aoi.md` §7.
-- **No in-repo rollback for the clustering path.** Reverting to core means reverting a commit and rebuilding the image; there is no configuration flip. Stats' peer map is unaffected either way, being heartbeat-fed.
+- **No in-repo rollback for the clustering path.** Reverting to core means reverting a commit and rebuilding the image; there is no configuration flip. The stats rollback is cheaper — a CloudFlare revert plus a redeploy — but it restores the endpoints, not their data: the peer map was heartbeat-fed, and heartbeat-free clients will not refill it. See [stats-decommission-runbook.md](./stats-decommission-runbook.md#rollback).
 - **Two instances on one device are one session.** The session key is the cached ephemeral address, shared by every process on a device; their sockets replace each other and the island feed reaches whichever registered last. Not a product scenario.
 - **The topology change went unmeasured.** No shadow comparison was run between core's 64/80 single-linkage islands and Pulse's 100 u cell clusters, so the first evidence of a difference will be `GET /islands` in a live environment.
 - **`/status` `userCount` counts sockets, not wallets.** Since sockets are registered per (wallet, session), a wallet connected from two devices counts twice.

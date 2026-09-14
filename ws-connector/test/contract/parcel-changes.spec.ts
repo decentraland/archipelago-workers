@@ -16,7 +16,7 @@ import { assertCanonicalBatch } from './assert-canonical'
  * the same bytes again — so a proto edit that renumbers a field, or stops omitting a proto3
  * default, fails here rather than in a consumer at 3 a.m.
  *
- * ws-connector consumes none of this. It hosts the pins because iteration 2 deletes the `stats`
+ * ws-connector consumes none of this. It hosts the pins because iteration 2 deleted the `stats`
  * workspace that used to hold the wire-contract tests, and this is the workspace that remains.
  */
 const FIXTURES = join(__dirname, 'fixtures', 'iteration-2')
