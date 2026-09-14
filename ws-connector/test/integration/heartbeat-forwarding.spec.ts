@@ -148,6 +148,7 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
       let ws: WebSocket | undefined
       let address: string
       let peerSubjects: string[]
+      let connectDeliveries: Array<{ subject: string; payload: string }>
       let delivered: ServerPacket | undefined
       let deliveryError: unknown
 
@@ -166,9 +167,17 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
         components.nats.subscribe('peer.*.heartbeat', record)
         components.nats.subscribe('peer.*.disconnect', record)
 
+        // `connect` is never gated by the flag: this is what lets comms-gatekeeper re-announce the
+        // island to a reconnecting socket once heartbeats stop existing at all.
+        connectDeliveries = []
+        components.nats.subscribe('peer.*.connect', (_error: Error | null, message: NatsMsg) => {
+          connectDeliveries.push({ subject: message.subject, payload: Buffer.from(message.data).toString('utf8') })
+        })
+
         const socket = await connectSocket()
         ws = socket.ws
         address = socket.address
+        await settle()
 
         await socketSend(
           ws,
@@ -224,6 +233,12 @@ function heartbeatForwardingProgram(options: HeartbeatForwardingProgram) {
         expect(delivered?.message?.$case === 'islandChanged' && delivered.message.islandChanged.islandId).toBe(
           'island-heartbeat-flag'
         )
+      })
+
+      it('should announce the handshake exactly once, carrying the session key, regardless of the flag', () => {
+        expect(connectDeliveries).toEqual([
+          { subject: `peer.${address}.connect`, payload: identity.ephemeralAddress.toLowerCase() }
+        ])
       })
     })
   })
