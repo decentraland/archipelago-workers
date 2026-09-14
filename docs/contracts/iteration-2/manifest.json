@@ -2,9 +2,9 @@
   "generatedBy": "tools/manifest.js",
   "files": {
     "hot-scenes/fixture.json": "0163ee98bfb424b0efcc0ab983facae9fb92687fb041069420ffab123117d843",
-    "hot-scenes/reference/content.ts": "a192434ed727dde832d131600381e7913176d4257f64de99a9acd939e0fab6d2",
-    "hot-scenes/reference/hot-scenes-handler.spec.ts": "729158579d87cac56477e022086800d2c2f98797cf715bc511873f0cb9f6a37e",
-    "hot-scenes/reference/hot-scenes-handler.ts": "9fac7b1343e63f5e7d4e31a7652e58ce08858ed2164cc066c77a9bc855e6e919",
+    "hot-scenes/reference/content.ts": "86a05dab710aea1e03ff940ed5bf4474f69aaf62e316e3d39f19cf970b1bbc09",
+    "hot-scenes/reference/hot-scenes-handler.spec.ts": "c6416d131f0e7ec815085d705425a1eae85b8c88b8ee11e160609eb60bc7dcab",
+    "hot-scenes/reference/hot-scenes-handler.ts": "ad22316fd0d20638ce1ee19ddbc5757be57f345ad0795290eaba6383ba704711",
     "http/about.json": "b51af39cc12c51d9dbb1ebac4bb630aad2fe8b61f9c450fba595e2716c5fbf4b",
     "http/health.json": "16abee59f557176765f823d2bfb0bcfbfcb4c07acc242cafb2dbc0412ad07288",
     "http/peers-all.json": "dfe29f818fbd44f4ee4070b126213ababc0535dc99c0120010f1d9dca946076c",
