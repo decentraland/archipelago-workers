@@ -406,9 +406,9 @@
     "@dcl/ts-proto" "1.154.0"
     protobufjs "7.2.4"
 
-"@dcl/protocol@https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-33890257211.commit-7dc9cee.tgz":
-  version "1.0.0-33890257211.commit-7dc9cee"
-  resolved "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-33890257211.commit-7dc9cee.tgz#a4e67e89fb610672427488bebf5cc97f892090e6"
+"@dcl/protocol@https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-34523473551.commit-3ef4c52.tgz":
+  version "1.0.0-34523473551.commit-3ef4c52"
+  resolved "https://sdk-team-cdn.decentraland.org/@dcl/protocol/branch//dcl-protocol-1.0.0-34523473551.commit-3ef4c52.tgz#3d625a19ca99e0293b0611ddb6861b7eb8a32911"
   dependencies:
     "@dcl/ts-proto" "1.154.0"
     protobufjs "7.2.4"
