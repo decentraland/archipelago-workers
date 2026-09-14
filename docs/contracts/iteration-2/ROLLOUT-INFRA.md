@@ -27,6 +27,7 @@ Rollback: revert the rule; archipelago-stats keeps running until step 9.
 | realm-provider | `PULSE_URL`, `COMMS_GATEKEEPER_URL`, `PRESENCE_SOURCE` archipelago (`ARCHIPELAGO_STATS_URL` stays until removed) | stats aggregation + `/core-status` | step 5: `pulse` (startup fails loudly if either URL is missing) |
 | archipelago-workers ws-connector | `WS_IDLE_TIMEOUT_SECONDS` 90, `HEARTBEAT_FORWARDING_ENABLED` true | unchanged | step 8: `HEARTBEAT_FORWARDING_ENABLED=false` |
 | unity-explorer | feature flag `archipelago-heartbeats` (enabled = today) | heartbeats sent | step 7: disable, ramp to 100 % |
+| iteration-1 keys (unchanged by iteration 2) | ws-connector `ISLAND_CHANGED_DEDUP_MS` 10000; gatekeeper `CLUSTER_ASSIGNMENT_MIRROR_TTL_MS` 3600000, `CLUSTER_TAKEOVER_RETRY_DELAY_MS` 100; Pulse `Clusters:SessionRetentionPasses` 300 | as shipped by iteration 1 | n/a |
 
 `NATS_URL` is already shared by every NATS consumer. Pulse's HTTP port is `HttpService:Port` (5000).
 
@@ -34,19 +35,22 @@ Rollback: revert the rule; archipelago-stats keeps running until step 9.
 
 | Step | Change | Gate | Rollback |
 |---|---|---|---|
+| 0 | Iteration 1 cut over: archipelago-workers #128 → Pulse #34 → comms-gatekeeper #283 (with the parking commit); `@dcl/protocol` registry release re-pinned; social-service main without the legacy peer.*.connect handler | `dcl_pulse_cluster_takeovers_total == takeover_evicted + takeover_absent`; `_failed` flat; core at zero; LiveKit ≥ 1.6 recorded | previous images, gatekeeper first |
 | 1 | WP7 places casing fix; WP3a ws pings | deployed; no idle-disconnect spike | revert |
 | 2 | WP1 Pulse feed + HTTP | `engine.parcel_changes` shows snapshots + deltas; C2 routes return data | `Presence:Enabled=false` |
 | 3 | WP2 gatekeeper map + `/hot-scenes` in shadow | WP10 diffs 1 and 4 within tolerance 7 days | `PRESENCE_MAP_ENABLED=false` |
 | 4 | WP4 social-service `both`; WP5 wcs `both` | WP10 diffs 2 and 3 within tolerance 7 days | `PRESENCE_SOURCE=archipelago` / `livekit` |
 | 5 | WP6 realm-provider `pulse`; CloudFlare cut | consumers' error rates flat (places, sites, unity `/status`, referral) | revert CF rule |
 | 6 | gatekeeper fallback off; social-service + wcs `pulse` | 24 h clean | flags back |
-| 7 | WP8 unity release, heartbeat flag ramps to 100 % | ≥ 95 % sessions on new build; retired subjects silent on the broker (the client reads the flag once at launch, so allow ≥ 24 h for live sessions to cycle after the ramp) | ramp down (takes effect on next launch) |
-| 8 | ws-connector `HEARTBEAT_FORWARDING_ENABLED=false`; wcs `PUBLISH_PEER_WORLD_EVENTS=false`; delete social-service worlds-stats | no subscriber logs for retired subjects 48 h | redeploy previous images |
+| 7 | WP8 unity release, heartbeat flag ramps to 100 % | ≥ 95 % sessions on new build; retired subjects silent on the broker (the client reads the flag once at launch, so allow ≥ 24 h for live sessions to cycle after the ramp); step 0 verified in the same environment | ramp down (takes effect on next launch) |
+| 8 | ws-connector `HEARTBEAT_FORWARDING_ENABLED=false`; wcs `PUBLISH_PEER_WORLD_EVENTS=false`; delete social-service worlds-stats | no subscriber logs for retired subjects 48 h; `peer.*.connect` still observed on the broker | redeploy previous images |
 | 9 | WP3c delete `stats`; remove fallback flags; wcs remove `connected-world` | runbook verification green | redeploy last stats image + CF revert |
 
 ## Known risks to clear before step 6
 
-- **WebSocket reconnects lose their island without heartbeats** (found in the WP8 review): gatekeeper only emits `island_changed` on a Pulse cluster change, so a reconnecting socket gets nothing until the crowd changes. Fix in flight: ws-connector publishes `peer.{address}.connect` on handshake (WP3d) and gatekeeper re-mints the current assignment on it (WP2 A9). Both must be deployed before step 7 (client heartbeats off).
+- **WebSocket reconnects lose their island without heartbeats**: fixed by iteration 1 (ws-connector `7fb1c02`,
+  gatekeeper `105b845` plus its parking commit) — connect signal + session-gated re-announce; no iteration-2 work
+  in flight.
 - **Silent clients** (refined after the WP1 review): a hard-killed client is detected by the transport keepalive in about 5 s in production and emits its exit entry (the minutes-long lingering seen in local acceptance came from the Development config's 5-minute `Transport:PeerTimeoutMs`). The residual gap is a client that keeps ACKing but stops sending input: `/peers` shows a frozen `lastPing` and the feed carries no staleness field. Pulse needs an input-idle timeout (no `MovementInput` for N s => treated as left) before LiveKit fallbacks are switched off.
 - **`/realms` on realm-provider lists only `main`** today because catalyst `/about` has no `comms` block; WP6 keeps
   that behaviour. Decide separately whether third-party catalysts should be listed.

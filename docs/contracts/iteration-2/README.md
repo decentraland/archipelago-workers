@@ -138,6 +138,24 @@ consumers read the two documented keys.
 
 ## Subjects (addendum)
 
-- `peer.{address}.connect` — published by ws-connector after every successful handshake (empty payload, lowercase
-  address). comms-gatekeeper re-emits the peer's current `engine.peer.{address}.island_changed` on it, so a
-  reconnecting WebSocket gets its island back without a cluster change (this is what heartbeats used to provide).
+C0 — consumed iteration-1 facts. Not produced by iteration 2; every implementer reads them and none re-derives them.
+
+- **Session key**: lower-cased address that signed the final link of the validated auth chain — the per-device
+  ephemeral address, or the wallet itself for a chain without delegation. Pulse: `IdentityBoard.GetSessionByPeerIndex`.
+  ws-connector: `ws-connector/src/logic/session.ts` `sessionKeyOf(authChain)`. Gatekeeper validates it as
+  `/^0x[0-9a-f]{40}$/` before it becomes a subject token.
+- `peer.{address}.connect` — published by ws-connector after the welcome, payload = session key UTF-8. A payload
+  that is not `/^0x[0-9a-f]{40}$/` is a legacy publisher. Consumed by comms-gatekeeper (queue-grouped) to
+  re-announce the wallet's island to that session.
+- `engine.peer.{address}.island_changed.{session}` — gatekeeper → ws-connector, `IslandChangedMessage`, delivered
+  only to the socket registered under `(addr, session)`. The four-token `engine.peer.{address}.island_changed` is
+  published only for an event without a session (older Pulse) and reaches the wallet's newest socket. No transition
+  flags; deploy ws-connector before gatekeeper.
+- `peer.{address}.cluster_change` — `decentraland.pulse.PeerClusterChange { 1 cluster_id, 2 realm, 3 session,
+  4 displaced_session, 5 displaced_cluster_id }` (`@dcl/protocol` `decentraland/pulse/pulse_clusters.proto`, branch
+  build `dcl-protocol-1.0.0-34523473551.commit-3ef4c52.tgz`, which also carries `pulse_presence.proto`). Fields 4–5
+  are set only on the first publish of a new session for a wallet whose retained assignment belonged to another
+  session.
+- Deploy order: ws-connector → Pulse (any time) → gatekeeper.
+- C1 (`engine.parcel_changes`) stays wallet-keyed by decision — Pulse keeps one live peer per wallet; `ParcelChange`
+  carries no session field.
