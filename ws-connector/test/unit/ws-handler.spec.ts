@@ -553,6 +553,75 @@ describe('ws-handler', () => {
     })
   })
 
+  // Three awaits sit between the signed challenge and the announcement — signature validation, the
+  // post-auth deny list, and the out-of-process ban check — and a TCP connection can drop inside
+  // any of them. uWS runs `close` first, which only marks `isClosed`; the suspended handshake then
+  // resumes against a socket that no longer exists. Registering it would leave an entry the close
+  // already walked past, and announcing it would ask comms-gatekeeper to mint a LiveKit token and
+  // re-emit an island for a session that is gone.
+  describe('when the socket closes while the handshake is still awaiting the ban check', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockImplementation(async () => {
+        ws.getUserData().isClosed = true
+        return false
+      })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not register the peer that is already gone', () => {
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+      expect(peersRegistry.getPeerCount()).toBe(0)
+    })
+
+    it('should not announce a session nobody will ever hold', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should not try to send the welcome', () => {
+      expect(ws.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the socket closes mid-authentication and the wallet has a live session elsewhere', () => {
+    let previousWs: StubWebSocket
+    let ws: StubWebSocket
+    const previousSession = '0xd000000000000000000000000000000000000002'
+
+    beforeEach(async () => {
+      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, session: previousSession } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, previousSession, previousWs)
+      peersRegistry.onPeerConnected.mockClear()
+
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockImplementation(async () => {
+        ws.getUserData().isClosed = true
+        return false
+      })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not kick the live session on behalf of a socket that is already gone', () => {
+      expect(previousWs.send).not.toHaveBeenCalled()
+      expect(previousWs.end).not.toHaveBeenCalled()
+      expect(previousWs.getUserData().isClosed).toBeFalsy()
+    })
+
+    it('should leave the live session registered, and announce nothing new', () => {
+      expect(peersRegistry.getPeerWs(address, previousSession)).toBe(previousWs)
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
   describe('when the same device reconnects while its older socket is still registered', () => {
     let previousWs: StubWebSocket
     let ws: StubWebSocket

@@ -241,6 +241,19 @@ export async function registerWsHandler(
                 return
               }
 
+              // Three awaits sit between the signed challenge and here — signature validation, the
+              // deny list above, and the ban check above that — and the TCP connection can drop
+              // inside any of them. uWS runs `close` first, which only marks `isClosed`; the
+              // suspended handshake then resumes against a socket that no longer exists.
+              // Registering it would leave an entry the close already walked past, and announcing
+              // it would ask comms-gatekeeper to mint a LiveKit token and re-emit an island for a
+              // session that is gone — and the kick below would cost this wallet a live session
+              // for the sake of a dead one.
+              if (ws.getUserData().isClosed) {
+                logger.debug('Aborting handshake: the socket closed while it was being authenticated', { address })
+                return
+              }
+
               // The device's ephemeral address: what the island feed is addressed to. Another
               // device of the same wallet has a different one and is left alone.
               const session = sessionKeyOf(authChain)
