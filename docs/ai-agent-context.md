@@ -119,17 +119,18 @@ Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is ite
 ## NATS Message Reference
 
 This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by
-`HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. The `engine.*` rows and the
-broker-map rows below are published and consumed elsewhere; they are documented here for context
-only. Of those, `engine.parcel_changes`, `engine.islands` and `engine.discovery` are the ones whose
-wire bytes are pinned in `ws-connector/test/contract/` — `peer.{addr}.cluster_change` is listed for
-the broker map only: its `PeerClusterChange` payload is decoded by comms-gatekeeper, and nothing in
-this repo pins or decodes it. ws-connector's own subscriptions (both `island_changed` subjects)
-carry no queue group, so every replica receives its own copy. Of the subjects published elsewhere,
-comms-gatekeeper's `connect` subscription is grouped so exactly one of its replicas answers, and its
-`cluster_change` subscription is consumed twice — queue-grouped for LiveKit minting, and again
-ungrouped so every replica mirrors the assignment (`CLUSTER_ASSIGNMENT_MIRROR_TTL_MS`). Payload
-types come from `@dcl/protocol`.
+`HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. ws-connector's own
+subscriptions are the two `island_changed` subjects — the five-token, session-addressed one and the
+four-token legacy fallback — both consumed here (`src/service.ts`) and carrying no queue group, so
+every replica receives its own copy. Of the broker-map rows below, `engine.islands` and
+`engine.discovery` are consumed by archipelago-stats on this branch, and their wire bytes, along
+with `engine.parcel_changes`, are pinned in `ws-connector/test/contract/` for the consumers that
+live elsewhere — `peer.{addr}.cluster_change` is listed for the broker map only: its
+`PeerClusterChange` payload is decoded by comms-gatekeeper, and nothing in this repo pins or decodes
+it. Of the subjects published elsewhere, comms-gatekeeper's `connect` subscription is grouped so
+exactly one of its replicas answers, and its `cluster_change` subscription is consumed twice —
+queue-grouped for LiveKit minting, and again ungrouped so every replica mirrors the assignment
+(`CLUSTER_ASSIGNMENT_MIRROR_TTL_MS`). Payload types come from `@dcl/protocol`.
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
