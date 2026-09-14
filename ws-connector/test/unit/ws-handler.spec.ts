@@ -42,6 +42,8 @@ describe('ws-handler', () => {
   let nats: { publish: jest.Mock; subscribe: jest.Mock }
   let metrics: IMetricsComponent<keyof typeof metricDeclarations>
   let validateSignature: jest.SpyInstance
+  let loggerWarn: jest.Mock
+  let loggerError: jest.Mock
 
   const identity = createEphemeralIdentity('handler-spec')
   const address = identity.address.toLowerCase()
@@ -64,6 +66,18 @@ describe('ws-handler', () => {
     return ClientPacket.encode({ message }).finish() as unknown as ArrayBuffer
   }
 
+  /** A completed session that sends one heartbeat and then goes away — both publish sites, in order. */
+  async function heartbeatThenClose(): Promise<StubWebSocket> {
+    const session = '0xd000000000000000000000000000000000000001'
+    const ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, session } as Partial<WsUserData>)
+    peersRegistry.onPeerConnected(address, session, ws)
+
+    await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+    handlers.close(ws, 1000, new ArrayBuffer(0))
+
+    return ws
+  }
+
   async function build(configOverrides: Record<string, string> = {}): Promise<void> {
     peersRegistry = createPeersRegistryMockedComponent()
     banChecker = createBanCheckerMockedComponent()
@@ -71,9 +85,16 @@ describe('ws-handler', () => {
     nats = { publish: jest.fn(), subscribe: jest.fn() }
     metrics = createTestMetricsComponent(metricDeclarations)
     jest.spyOn(metrics, 'increment')
+    loggerWarn = jest.fn()
+    loggerError = jest.fn()
 
     const config = createConfigComponent({ HANDSHAKE_TIMEOUT: String(HANDSHAKE_TIMEOUT_MS), ...configOverrides })
-    const logs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
+    // The real logger, with `warn` and `error` made observable: the rest of this file relies on
+    // its actual behaviour (the protocol-violation cases print through it on purpose).
+    const realLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'ERROR' }) })
+    const logs = {
+      getLogger: (name: string) => ({ ...realLogs.getLogger(name), warn: loggerWarn, error: loggerError })
+    }
     const server = {
       app: {
         ws: jest.fn((_path: string, registered: WsHandlers & RouteOptions) => {
@@ -427,6 +448,178 @@ describe('ws-handler', () => {
       expect(ws.end).toHaveBeenCalled()
       expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
     })
+
+    it('should not announce a handshake that never completed', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the address is deny-listed on the post-authentication check', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      denyList.isDenylisted.mockResolvedValue(true)
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should close the socket without registering the peer', () => {
+      expect(ws.end).toHaveBeenCalled()
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a handshake that was rejected', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the authenticated wallet is platform-banned', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockResolvedValue(true)
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should kick the socket without registering the peer', () => {
+      expect(ws.end).toHaveBeenCalled()
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+    })
+
+    it('should not announce a handshake that was rejected', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when a signed challenge authenticates successfully with heartbeat forwarding disabled', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'false' })
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should still announce the handshake, since connect is never gated by the flag', () => {
+      expect(published(`peer.${address}.connect`)).toHaveLength(1)
+    })
+  })
+
+  // `nats.publish` throws synchronously when the component was never started or the connection is
+  // gone. By then the peer is registered and the welcome is about to go out: a client with no
+  // island is degraded and re-handshakes, a client with no socket is broken — so the failed
+  // announcement must not take the socket down with it.
+  describe('when NATS refuses the handshake announcement', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      nats.publish.mockImplementation(() => {
+        throw new Error('NATS component was not started yet')
+      })
+      validateSignature.mockResolvedValue({ ok: true })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should still finish the handshake and keep the socket open', () => {
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+
+    it('should have already sent the welcome', () => {
+      expect(ws.send).toHaveBeenCalledTimes(1)
+    })
+
+    it('should count the refusal exactly once, so a broker that refuses announcements is visible on /metrics', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_connect_publish_refused_total')
+      expect(metrics.increment).toHaveBeenCalledTimes(1)
+    })
+
+    it('should log the failure once, naming the subject that was lost', () => {
+      expect(loggerError).toHaveBeenCalledTimes(1)
+      expect(String(loggerError.mock.calls[0][0])).toContain(`peer.${address}.connect`)
+    })
+  })
+
+  // Three awaits sit between the signed challenge and the announcement — signature validation, the
+  // post-auth deny list, and the out-of-process ban check — and a TCP connection can drop inside
+  // any of them. uWS runs `close` first, which only marks `isClosed`; the suspended handshake then
+  // resumes against a socket that no longer exists. Registering it would leave an entry the close
+  // already walked past, and announcing it would ask comms-gatekeeper to mint a LiveKit token and
+  // re-emit an island for a session that is gone.
+  describe('when the socket closes while the handshake is still awaiting the ban check', () => {
+    let ws: StubWebSocket
+
+    beforeEach(async () => {
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockImplementation(async () => {
+        ws.getUserData().isClosed = true
+        return false
+      })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not register the peer that is already gone', () => {
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+      expect(peersRegistry.getPeerCount()).toBe(0)
+    })
+
+    it('should not announce a session nobody will ever hold', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    it('should not try to send the welcome', () => {
+      expect(ws.send).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('when the socket closes mid-authentication and the wallet has a live session elsewhere', () => {
+    let previousWs: StubWebSocket
+    let ws: StubWebSocket
+    const previousSession = '0xd000000000000000000000000000000000000002'
+
+    beforeEach(async () => {
+      previousWs = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, session: previousSession } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, previousSession, previousWs)
+      peersRegistry.onPeerConnected.mockClear()
+
+      validateSignature.mockResolvedValue({ ok: true })
+      banChecker.isBanned.mockImplementation(async () => {
+        ws.getUserData().isClosed = true
+        return false
+      })
+      const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
+      ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
+
+      await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
+    })
+
+    it('should not kick the live session on behalf of a socket that is already gone', () => {
+      expect(previousWs.send).not.toHaveBeenCalled()
+      expect(previousWs.end).not.toHaveBeenCalled()
+      expect(previousWs.getUserData().isClosed).toBeFalsy()
+    })
+
+    it('should leave the live session registered, and announce nothing new', () => {
+      expect(peersRegistry.getPeerWs(address, previousSession)).toBe(previousWs)
+      expect(peersRegistry.onPeerConnected).not.toHaveBeenCalled()
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
   })
 
   describe('when the same device reconnects while its older socket is still registered', () => {
@@ -601,6 +794,121 @@ describe('ws-handler', () => {
 
     it('should announce the disconnect so the rest of the platform notices', () => {
       expect(nats.publish).toHaveBeenCalledWith(`peer.${address}.disconnect`)
+    })
+  })
+
+  // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
+  // their only consumer (archipelago-stats). `HEARTBEAT_FORWARDING_ENABLED` switches the intake
+  // off ahead of deleting the code, so it must default to today's behaviour — a deploy that sets
+  // nothing still publishes both subjects.
+  describe('when HEARTBEAT_FORWARDING_ENABLED is left unset', () => {
+    beforeEach(async () => {
+      await heartbeatThenClose()
+    })
+
+    it('should publish the heartbeat and the disconnect, exactly as before the flag existed', () => {
+      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+      expect(nats.publish).toHaveBeenCalledTimes(2)
+    })
+
+    it('should say nothing about a key nobody set', () => {
+      expect(loggerWarn).not.toHaveBeenCalled()
+    })
+  })
+
+  // The value is read leniently, and never throws: this is a rollback switch an operator types by
+  // hand under time pressure, and `registerWsHandler` runs inside the Lifecycle entrypoint — a
+  // throw here means `/ws` is never registered and every client loses its gateway over a typo.
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value that reads as on', () => {
+    it.each([['true'], ['TRUE'], [' true '], ['1'], ['yes'], ['on'], [''], ['  ']])(
+      'should publish both subjects for %p, as today',
+      async (value) => {
+        await build({ HEARTBEAT_FORWARDING_ENABLED: value })
+        await heartbeatThenClose()
+
+        expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+        expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+        expect(nats.publish).toHaveBeenCalledTimes(2)
+        expect(loggerWarn).not.toHaveBeenCalled()
+      }
+    )
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value that reads as off', () => {
+    it.each([['false'], ['FALSE'], [' false '], ['0'], ['no'], ['off']])(
+      'should publish neither subject for %p',
+      async (value) => {
+        await build({ HEARTBEAT_FORWARDING_ENABLED: value })
+        await heartbeatThenClose()
+
+        expect(nats.publish).not.toHaveBeenCalled()
+        expect(loggerWarn).not.toHaveBeenCalled()
+      }
+    )
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED holds a value it does not recognise', () => {
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'maybe' })
+    })
+
+    it('should keep forwarding, which is the default and today’s behaviour, rather than fail the deploy', async () => {
+      await heartbeatThenClose()
+
+      expect(nats.publish).toHaveBeenNthCalledWith(1, `peer.${address}.heartbeat`, expect.any(Uint8Array))
+      expect(nats.publish).toHaveBeenNthCalledWith(2, `peer.${address}.disconnect`)
+    })
+
+    it('should warn, naming the key and the value, so the flip that did not happen is visible', () => {
+      expect(loggerWarn).toHaveBeenCalledTimes(1)
+      const [message] = loggerWarn.mock.calls[0]
+      expect(message).toContain('HEARTBEAT_FORWARDING_ENABLED')
+      expect(message).toContain('maybe')
+    })
+
+    it.each([['disabled'], ['1)'], ['ture'], ['null']])('should not throw on %p', async (value) => {
+      await expect(build({ HEARTBEAT_FORWARDING_ENABLED: value })).resolves.toBeUndefined()
+    })
+  })
+
+  describe('when HEARTBEAT_FORWARDING_ENABLED is false', () => {
+    let ws: StubWebSocket
+    const session = '0xd000000000000000000000000000000000000001'
+
+    beforeEach(async () => {
+      await build({ HEARTBEAT_FORWARDING_ENABLED: 'false' })
+      ws = makeWs({ stage: Stage.HANDSHAKE_COMPLETED, address, session } as Partial<WsUserData>)
+      peersRegistry.onPeerConnected(address, session, ws)
+
+      await handlers.message(ws, encode({ $case: 'heartbeat', heartbeat: { position: { x: 1, y: 2, z: 3 } } }))
+    })
+
+    it('should publish nothing for the heartbeat', () => {
+      expect(nats.publish).not.toHaveBeenCalled()
+    })
+
+    // Clients on old builds keep sending heartbeats after the flip; the packet stays a valid
+    // message on a live session, so the socket must survive it rather than be torn down.
+    it('should still accept the packet and keep the session open', () => {
+      expect(ws.end).not.toHaveBeenCalled()
+      expect(ws.getUserData().isClosed).toBeFalsy()
+      expect(ws.getUserData().stage).toBe(Stage.HANDSHAKE_COMPLETED)
+    })
+
+    describe('and the socket then closes', () => {
+      beforeEach(() => {
+        handlers.close(ws, 1000, new ArrayBuffer(0))
+      })
+
+      it('should publish nothing for the disconnect either', () => {
+        expect(nats.publish).not.toHaveBeenCalled()
+      })
+
+      it('should still evict the peer from the registry, which is what forwarding relies on', () => {
+        expect(peersRegistry.onPeerDisconnected).toHaveBeenCalledWith(address, session, ws)
+        expect(peersRegistry.getPeerCount()).toBe(0)
+      })
     })
   })
 })

@@ -4,7 +4,7 @@
 
 The Archipelago Workers is a monorepo containing two services that support Decentraland's real-time communication layer: a WebSocket gateway for clients and a stats API for monitoring.
 
-> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is unchanged, and the Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
+> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, ws-connector now keys sockets by (wallet, session) and publishes `peer.{address}.connect` after every handshake, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is **not** unchanged: iteration 1 keyed it by (wallet, session) and added the connect announcement, and iteration 2 added server-side pings (`WS_IDLE_TIMEOUT_SECONDS`) and the `HEARTBEAT_FORWARDING_ENABLED` flag. The Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ The Archipelago Workers is a monorepo containing two services that support Decen
 
 ## Features
 
-- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), maintains the peer registry, and forwards island assignments to clients. Untouched by the migration.
+- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), maintains the peer registry (keyed by wallet and session), and forwards island assignments to clients. Not untouched by the migration: iteration 1 added the session key and the `peer.{address}.connect` announcement, iteration 2 added server-side pings and the `HEARTBEAT_FORWARDING_ENABLED` flag.
 - **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability. Its peer map is still built from client heartbeats; its island topology now comes from Pulse, so `GET /islands` reports cluster IDs as `C{n}` with `maxPeers: 0` (clusters are uncapped).
 
 ## Dependencies
@@ -117,15 +117,17 @@ The services communicate via the following NATS message topics:
 
 | Subject | Published by | Consumed by |
 | --- | --- | --- |
-| `peer.${address}.heartbeat` | WS Connector | Stats |
-| `peer.${address}.disconnect` | WS Connector | Stats |
-| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
+| `peer.${address}.heartbeat` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
+| `peer.${address}.disconnect` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
+| `peer.${address}.connect` | WS Connector | comms-gatekeeper (grouped) — the session key of the new socket, UTF-8. Never gated |
+| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper (queue-grouped for LiveKit minting; ungrouped for the assignment mirror) — decodes `PeerClusterChange`; not consumed by this repo and its wire bytes are **not** pinned here |
 | `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
 | `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
+| `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea — not consumed by this repo; wire bytes pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
 
-Only the two `peer.*` subjects are published by this repo. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged.
+This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by `HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged. Of the rows above, only `engine.parcel_changes`, `engine.islands` and `engine.discovery` have their wire bytes pinned in `ws-connector/test/contract/` — `peer.${address}.cluster_change` is listed for the broker map only and is decoded by comms-gatekeeper, not by this repo.
 
 ## Testing
 

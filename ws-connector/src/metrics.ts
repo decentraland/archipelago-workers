@@ -13,6 +13,10 @@ export const metricDeclarations = {
   dcl_ws_connector_island_changed_deduplicated_total: {
     help: 'Total island_changed messages dropped because the same island was forwarded to the same socket within ISLAND_CHANGED_DEDUP_MS',
     type: IMetricsComponent.CounterType
+  },
+  dcl_ws_connector_connect_publish_refused_total: {
+    help: 'Total peer.{addr}.connect announcements the NATS client refused (not started, or connection lost); a message buffered during a broker reconnect and then dropped is not counted',
+    type: IMetricsComponent.CounterType
   }
 }
 

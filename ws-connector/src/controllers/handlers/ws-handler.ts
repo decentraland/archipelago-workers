@@ -9,6 +9,13 @@ import { getErrorMessage } from '../../logic/errors'
 import { Authenticator } from '@dcl/crypto'
 import { onRequestEnd, onRequestStart } from '@dcl/uws-http-server'
 
+// The vocabulary `HEARTBEAT_FORWARDING_ENABLED` understands, trimmed and lower-cased. Deliberately
+// symmetric: `0`/`no`/`off` turn the forwarding off because `1`/`yes`/`on` turn it on, and an
+// operator who reaches for one expects the other to work. `''` is unset, or a bare key in an env
+// file. Everything outside both lists reads as on and is warned about — see below.
+const HEARTBEAT_FORWARDING_OFF_VALUES = ['false', '0', 'no', 'off']
+const HEARTBEAT_FORWARDING_ON_VALUES = ['', 'true', '1', 'yes', 'on']
+
 export async function registerWsHandler(
   components: Pick<
     AppComponents,
@@ -23,6 +30,28 @@ export async function registerWsHandler(
   // `??` rather than `||`: 0 is uWS's "never time out", and coercing it back to 90 would silently
   // ignore an operator who asked for exactly that.
   const idleTimeout = (await config.getNumber('WS_IDLE_TIMEOUT_SECONDS')) ?? 90
+
+  // Iteration 2 retires the client heartbeat: `peer.*.heartbeat` and `peer.*.disconnect` lose
+  // their only consumer (archipelago-stats). This switches the republishing off ahead of deleting
+  // the code, so the rollout can flip it once heartbeat-free clients dominate. Defaults to true —
+  // today's behaviour, so a deploy that sets nothing is a no-op. Nothing else on the socket
+  // depends on it.
+  //
+  // Read leniently, and it never throws. This is a rollback switch an operator types by hand under
+  // time pressure, and `registerWsHandler` is awaited inside the Lifecycle entrypoint: a throw here
+  // means the `/ws` route is never registered and every client loses its gateway over a typo.
+  // So anything that is not a recognised "off" reads as on — the flag's own default and today's
+  // behaviour — and an unrecognised value is warned about, so the flip that did not happen is
+  // visible instead of silent. A blank value counts as unset: an env file may carry the bare key.
+  const heartbeatForwardingRaw = (await config.getString('HEARTBEAT_FORWARDING_ENABLED')) ?? ''
+  const heartbeatForwarding = heartbeatForwardingRaw.trim().toLowerCase()
+  const heartbeatForwardingEnabled = !HEARTBEAT_FORWARDING_OFF_VALUES.includes(heartbeatForwarding)
+  if (heartbeatForwardingEnabled && !HEARTBEAT_FORWARDING_ON_VALUES.includes(heartbeatForwarding)) {
+    logger.warn(
+      `HEARTBEAT_FORWARDING_ENABLED is set to '${heartbeatForwardingRaw}', which this key does not ` +
+        `recognise; heartbeat forwarding stays ON, its default. Set it to 'false' to turn it off.`
+    )
+  }
 
   // uWS takes 0 or values >= 8 and nothing in between; given anything else it aborts route
   // registration with "idleTimeout must be either 0 or greater than 8!", which names neither the
@@ -41,6 +70,20 @@ export async function registerWsHandler(
       logger.debug(`Terminating socket in stage: ${data.stage} because of timeout`)
       safeEndWebSocket(ws)
     }, timeout_ms)
+  }
+
+  // `nats.publish` throws synchronously when the component was never started or the connection is
+  // gone. Left inline, that throw would propagate to the message handler's own try/catch, which
+  // treats it as a protocol violation and ends the socket — degrading a client that already has a
+  // welcome and a registered session into one with neither. A message buffered during a broker
+  // reconnect and then dropped by NATS itself is not visible here and is not counted.
+  function announcePeerConnected(address: string, session: string) {
+    try {
+      nats.publish(`peer.${address}.connect`, Buffer.from(session, 'utf8'))
+    } catch (error) {
+      logger.error(`Cannot announce the handshake on peer.${address}.connect: ${getErrorMessage(error)}`)
+      metrics.increment('dcl_ws_connector_connect_publish_refused_total')
+    }
   }
 
   function changeStage(data: WsUserData, newData: WsUserData) {
@@ -198,6 +241,19 @@ export async function registerWsHandler(
                 return
               }
 
+              // Three awaits sit between the signed challenge and here — signature validation, the
+              // deny list above, and the ban check above that — and the TCP connection can drop
+              // inside any of them. uWS runs `close` first, which only marks `isClosed`; the
+              // suspended handshake then resumes against a socket that no longer exists.
+              // Registering it would leave an entry the close already walked past, and announcing
+              // it would ask comms-gatekeeper to mint a LiveKit token and re-emit an island for a
+              // session that is gone — and the kick below would cost this wallet a live session
+              // for the sake of a dead one.
+              if (ws.getUserData().isClosed) {
+                logger.debug('Aborting handshake: the socket closed while it was being authenticated', { address })
+                return
+              }
+
               // The device's ephemeral address: what the island feed is addressed to. Another
               // device of the same wallet has a different one and is left alone.
               const session = sessionKeyOf(authChain)
@@ -242,7 +298,7 @@ export async function registerWsHandler(
               // re-announce the wallet's island to it. Island assignments come from Pulse's
               // cluster feed, which is silent while a peer's cluster is unchanged, so without
               // this a client that reconnects standing still is never told which island to join.
-              nats.publish(`peer.${address}.connect`, Buffer.from(session, 'utf8'))
+              announcePeerConnected(address, session)
 
               logger.debug(`Welcome sent`, { address })
             } else {
@@ -252,7 +308,9 @@ export async function registerWsHandler(
             break
           }
           case Stage.HANDSHAKE_COMPLETED: {
-            if (packet.message && packet.message.$case === 'heartbeat') {
+            // Still decoded and accepted with forwarding off: clients on old builds keep sending
+            // heartbeats, and tearing their session down over one would be worse than ignoring it.
+            if (heartbeatForwardingEnabled && packet.message && packet.message.$case === 'heartbeat') {
               nats.publish(`peer.${userData.address}.heartbeat`, Heartbeat.encode(packet.message.heartbeat).finish())
             }
             break
@@ -279,7 +337,11 @@ export async function registerWsHandler(
         peersRegistry.onPeerDisconnected(data.address, data.session, ws)
       }
       if (data.address) {
-        nats.publish(`peer.${data.address}.disconnect`)
+        // The registry eviction above is unconditional: `island_changed` forwarding keys off it,
+        // so it has nothing to do with whether the retired subjects are still published.
+        if (heartbeatForwardingEnabled) {
+          nats.publish(`peer.${data.address}.disconnect`)
+        }
       }
     }
   })
