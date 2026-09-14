@@ -4,7 +4,7 @@
 
 The Archipelago Workers is a monorepo containing two services that support Decentraland's real-time communication layer: a WebSocket gateway for clients and a stats API for monitoring.
 
-> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is unchanged, and the Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
+> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, ws-connector now keys sockets by (wallet, session) and publishes `peer.{address}.connect` after every handshake, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is **not** unchanged: iteration 1 keyed it by (wallet, session) and added the connect announcement, and iteration 2 added server-side pings (`WS_IDLE_TIMEOUT_SECONDS`) and the `HEARTBEAT_FORWARDING_ENABLED` flag. The Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ The Archipelago Workers is a monorepo containing two services that support Decen
 
 ## Features
 
-- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), maintains the peer registry, and forwards island assignments to clients. Untouched by the migration.
+- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), maintains the peer registry (keyed by wallet and session), and forwards island assignments to clients. Not untouched by the migration: iteration 1 added the session key and the `peer.{address}.connect` announcement, iteration 2 added server-side pings and the `HEARTBEAT_FORWARDING_ENABLED` flag.
 - **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability. Its peer map is still built from client heartbeats; its island topology now comes from Pulse, so `GET /islands` reports cluster IDs as `C{n}` with `maxPeers: 0` (clusters are uncapped).
 
 ## Dependencies
