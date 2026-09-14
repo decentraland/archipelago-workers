@@ -120,23 +120,28 @@ Endpoint migration to Pulse and comms-gatekeeper, plus heartbeat removal, is ite
 
 This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by
 `HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. The `engine.*` rows and the
-broker-map rows below are published elsewhere; the broker-map ones are not consumed by this repo
-either, but their wire bytes are pinned in `ws-connector/test/contract/` and documented here for
-context. None of these carry a queue group, so each subscribing replica receives its own copy —
-except comms-gatekeeper's `connect` subscription, which is grouped so exactly one of its replicas
-answers. Payload types come from `@dcl/protocol`.
+broker-map rows below are published and consumed elsewhere; they are documented here for context
+only. Of those, `engine.parcel_changes`, `engine.islands` and `engine.discovery` are the ones whose
+wire bytes are pinned in `ws-connector/test/contract/` — `peer.{addr}.cluster_change` is listed for
+the broker map only: its `PeerClusterChange` payload is decoded by comms-gatekeeper, and nothing in
+this repo pins or decodes it. ws-connector's own subscriptions (both `island_changed` subjects)
+carry no queue group, so every replica receives its own copy. Of the subjects published elsewhere,
+comms-gatekeeper's `connect` subscription is grouped so exactly one of its replicas answers, and its
+`cluster_change` subscription is consumed twice — queue-grouped for LiveKit minting, and again
+ungrouped so every replica mirrors the assignment (`CLUSTER_ASSIGNMENT_MIRROR_TTL_MS`). Payload
+types come from `@dcl/protocol`.
 
 | Subject | Publisher | Subscriber | Content |
 | --- | --- | --- | --- |
 | `peer.{addr}.heartbeat` | WS Connector | Stats | `Heartbeat` (position). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
 | `peer.{addr}.disconnect` | WS Connector | Stats | empty; published when any one socket of the wallet closes, so with two devices the first to leave announces the wallet while the other is still connected (Stats' peer map is heartbeat-fed, so it recovers on the next heartbeat). Gated by `HEARTBEAT_FORWARDING_ENABLED`; retiring at rollout step 8 |
 | `peer.{addr}.connect` | WS Connector | comms-gatekeeper (grouped) | the session key of the new socket, UTF-8. Never gated |
-| `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
-| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica) | `IslandChangedMessage`; an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
+| `engine.peer.{addr}.island_changed.{session}` | comms-gatekeeper | WS Connector (every replica, ungrouped) | `IslandChangedMessage`, delivered only to the socket holding `{session}` |
+| `engine.peer.{addr}.island_changed` | comms-gatekeeper | WS Connector (every replica, ungrouped) | `IslandChangedMessage`; an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.islands` | Pulse | Stats | cluster topology |
 | `engine.discovery` | Pulse | Stats | service discovery heartbeat |
 | `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea | `decentraland.pulse.ParcelChangesBatch` — per-parcel presence deltas (snapshot or delta, `seq`-ordered), iteration 2's only source of online-player information. Nothing in this repo consumes it; its wire bytes are pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
-| `peer.{addr}.cluster_change` | Pulse | comms-gatekeeper (queue group) | `decentraland.pulse.PeerClusterChange { cluster_id, realm, session, displaced_session, displaced_cluster_id }` — one peer's published cluster assignment changed; gatekeeper mints the LiveKit token from it. Nothing in this repo consumes it; pinned alongside the other broker-map fixtures in `ws-connector/test/contract/` |
+| `peer.{addr}.cluster_change` | Pulse | comms-gatekeeper (queue-grouped for LiveKit minting; ungrouped for the assignment mirror) | `decentraland.pulse.PeerClusterChange { cluster_id, realm, session, displaced_session, displaced_cluster_id }` — one peer's published cluster assignment changed; gatekeeper decodes it and mints the LiveKit token from it. Nothing in this repo consumes it, and its wire bytes are **not** pinned here — only `engine.parcel_changes`, `engine.islands` and `engine.discovery` are |
 
 ## Technology Stack
 

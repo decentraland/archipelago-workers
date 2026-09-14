@@ -120,14 +120,14 @@ The services communicate via the following NATS message topics:
 | `peer.${address}.heartbeat` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
 | `peer.${address}.disconnect` | WS Connector | Stats — gated by `HEARTBEAT_FORWARDING_ENABLED`, retiring at rollout step 8 |
 | `peer.${address}.connect` | WS Connector | comms-gatekeeper (grouped) — the session key of the new socket, UTF-8. Never gated |
-| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper — not consumed by this repo; pinned in `ws-connector/test/contract/` |
+| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper (queue-grouped for LiveKit minting; ungrouped for the assignment mirror) — decodes `PeerClusterChange`; not consumed by this repo and its wire bytes are **not** pinned here |
 | `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
 | `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
 | `engine.parcel_changes` | Pulse | comms-gatekeeper, social-service-ea — not consumed by this repo; wire bytes pinned in `ws-connector/test/contract/parcel-changes.spec.ts` |
 
-This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by `HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged.
+This repo publishes three `peer.*` subjects — `heartbeat` and `disconnect`, gated by `HEARTBEAT_FORWARDING_ENABLED`, and `connect`, which is never gated. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged. Of the rows above, only `engine.parcel_changes`, `engine.islands` and `engine.discovery` have their wire bytes pinned in `ws-connector/test/contract/` — `peer.${address}.cluster_change` is listed for the broker map only and is decoded by comms-gatekeeper, not by this repo.
 
 ## Testing
 
