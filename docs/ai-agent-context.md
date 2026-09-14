@@ -18,7 +18,7 @@ Persistent WebSocket gateway. Clients connect here and talk to nothing else.
 - ECDSA challenge-response auth at connect time using `@dcl/crypto` AuthChain
 - Receives continuous position heartbeats from clients
 - Publishes heartbeats and disconnects to NATS for Stats to aggregate (Core consumed these until it was removed), unless `HEARTBEAT_FORWARDING_ENABLED=false`
-- Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device — never gated by `HEARTBEAT_FORWARDING_ENABLED`
+- Publishes `peer.{addr}.connect` once a handshake completes, carrying the session key (the auth chain's ephemeral address), so comms-gatekeeper can re-announce that wallet's island to that device — never gated by `HEARTBEAT_FORWARDING_ENABLED`. A broker that refuses the publish (not started, or connection lost) is logged and counted as `dcl_ws_connector_connect_publish_refused_total` rather than tearing the socket down
 - Subscribes to `engine.peer.{addr}.island_changed.{session}` and, for an assignment that carries no session (an older Pulse), the legacy `engine.peer.{addr}.island_changed` — and forwards the island assignment + LiveKit connection string (with embedded token) to the client
 - Enforces the platform deny list at connection time
 - Registers sockets by (wallet, session key) and forwards `engine.peer.{addr}.island_changed.{session}` only to the socket holding that session. A second device of the same wallet coexists; only the same device's zombie socket is replaced (and told `kicked`)
