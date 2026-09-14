@@ -24,19 +24,18 @@ only rollback is redeploying the previous image (see Gates below).
 
 | Service | Required config, injected before its cut-over deploy | Notes |
 |---|---|---|
-| comms-gatekeeper | `PULSE_URL` (with `NATS_URL`); `PRESENCE_PRIME_TTL_MS` 90000, `PRESENCE_SERVER_TTL_MS` 150000, `HOT_SCENES_REFRESH_MS` 10000, `HOT_SCENES_SCENE_TTL_MS` 300000 | boot fails without `PULSE_URL` when `NATS_URL` is set; `COMMS_ROOM_PREFIX` / `SCENE_ROOM_PREFIX` must equal worlds-content-server's (prod: verify, defaults are `world-` / `world-scene-room-`) |
-| social-service-ea | `PULSE_URL` | required |
-| worlds-content-server | `PULSE_URL` | required |
-| realm-provider | `PULSE_URL`, `COMMS_GATEKEEPER_URL` | required — boot fails if either is missing |
+| comms-gatekeeper | `PULSE_URL` (with `NATS_URL`); `PRESENCE_PRIME_TTL_MS` 90000, `PRESENCE_SERVER_TTL_MS` 150000, `HOT_SCENES_REFRESH_MS` 10000, `HOT_SCENES_SCENE_TTL_MS` 300000 | `PULSE_URL` is read with `requireString` and validated as an absolute http(s) URL at boot; a missing or placeholder value fails the process, so `.env.default` keeps it commented out. Boot also fails without `PULSE_URL` when `NATS_URL` is set; `COMMS_ROOM_PREFIX` / `SCENE_ROOM_PREFIX` must equal worlds-content-server's (prod: verify, defaults are `world-` / `world-scene-room-`) |
+| social-service-ea | `PULSE_URL` | required — read with `requireString` and validated as an absolute http(s) URL at boot; a missing or placeholder value fails the process, so `.env.default` keeps it commented out |
+| worlds-content-server | `PULSE_URL` | required — read with `requireString` and validated as an absolute http(s) URL at boot; a missing or placeholder value fails the process, so `.env.default` keeps it commented out |
+| realm-provider | `PULSE_URL`, `COMMS_GATEKEEPER_URL` | required — boot fails if either is missing; both are read with `requireString` and validated as absolute http(s) URLs at boot, so `.env.default` keeps them commented out |
 | Pulse | `Presence:Enabled` (follows `Nats:Url` being set), `Presence:BatchIntervalMs` 2000, `Presence:SnapshotIntervalMs` 60000 | feed off without `NATS_URL` |
 | archipelago-workers ws-connector | `WS_IDLE_TIMEOUT_SECONDS` 90, `HEARTBEAT_FORWARDING_ENABLED` true | the one remaining server-side switch: a publisher retirement, not a presence source |
 | unity-explorer | feature flag `archipelago-heartbeats` (enabled = today) | client-side publisher retirement; step 7: disable, ramp to 100 % |
 | iteration-1 keys (unchanged by iteration 2) | ws-connector `ISLAND_CHANGED_DEDUP_MS` 10000; gatekeeper `CLUSTER_ASSIGNMENT_MIRROR_TTL_MS` 3600000, `CLUSTER_TAKEOVER_RETRY_DELAY_MS` 100; Pulse `Clusters:SessionRetentionPasses` 300 | as shipped by iteration 1 |
 
 `NATS_URL` is already shared by every NATS consumer. Pulse's HTTP port is `HttpService:Port` (5000).
-The presence-source and shadow-compare switches this table carried earlier in the plan are gone from
-every consumer; `.env.default` / `appsettings` keep any such retired key commented out — a
-placeholder value would defeat `requireString`.
+The presence-source and shadow-compare switches this table carried earlier in the plan are simply
+gone from every consumer — there is no retired key left for `.env.default` / `appsettings` to guard.
 
 ## Rollout sequence (from the plan, rev 3)
 
