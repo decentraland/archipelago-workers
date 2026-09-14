@@ -34,8 +34,6 @@ const TEST_TIMEOUT_MS = SILENCE_MS + 30 * 1000
 const { HTTP_SERVER_HOST, HTTP_SERVER_PORT } = defaultServerConfig()
 
 test('idle websocket test', ({ components, beforeStart }) => {
-  const identity = createEphemeralIdentity('idle')
-
   // `test/components.ts` builds the config from `process.env`, and `beforeStart` runs before the
   // program is initialized, so this is the seam for handing the handler a test-sized idle timeout.
   // Restored afterwards because jest reuses the worker process for the other spec files.
@@ -59,7 +57,7 @@ test('idle websocket test', ({ components, beforeStart }) => {
     }
   })
 
-  async function connectSocket() {
+  async function connectSocket(identity: ReturnType<typeof createEphemeralIdentity>) {
     const url = new URL('/ws', `ws://${HTTP_SERVER_HOST}:${HTTP_SERVER_PORT}`).toString()
     const ws = new WebSocket(url)
     const channel = wsAsAsyncChannel<ServerPacket>(ws, ServerPacket.decode)
@@ -93,6 +91,7 @@ test('idle websocket test', ({ components, beforeStart }) => {
   }
 
   describe('when an authenticated client sends nothing for longer than the idle timeout', () => {
+    const identity = createEphemeralIdentity('idle-session-addressed')
     let ws: WebSocket | undefined
     let readyStateAfterSilence: number
     let closeCode: number | undefined
@@ -109,7 +108,7 @@ test('idle websocket test', ({ components, beforeStart }) => {
       // 18 s of silence against the 90 s default, which any socket survives.
       expect(await components.config.requireNumber('WS_IDLE_TIMEOUT_SECONDS')).toBe(IDLE_TIMEOUT_SECONDS)
 
-      const socket = await connectSocket()
+      const socket = await connectSocket(identity)
       ws = socket.ws
       ws.on('close', (code) => {
         closeCode = code
@@ -119,8 +118,12 @@ test('idle websocket test', ({ components, beforeStart }) => {
       await new Promise((resolve) => setTimeout(resolve, SILENCE_MS))
       readyStateAfterSilence = ws.readyState
 
+      // Five tokens: the session this socket registered under (see `sessionKeyOf` /
+      // `service.ts`'s `engine.peer.*.island_changed.*` subscription). Publishing on the
+      // session-less four-token subject instead would resolve through `getNewestPeerWs` and
+      // prove nothing about the session-addressed path this idle client depends on.
       components.nats.publish(
-        `engine.peer.${socket.address}.island_changed`,
+        `engine.peer.${socket.address}.island_changed.${identity.ephemeralAddress.toLowerCase()}`,
         IslandChangedMessage.encode({
           islandId: 'island-idle',
           connStr: 'livekit:wss://example.com?access_token=jwt',
@@ -147,11 +150,58 @@ test('idle websocket test', ({ components, beforeStart }) => {
       expect(closeCode).toBeUndefined()
     })
 
-    it('should still receive its island assignment, the message the socket exists to carry', () => {
+    it('should still receive its session-addressed island assignment, the message the socket exists to carry', () => {
       expect(deliveryError).toBeUndefined()
       expect(delivered?.message?.$case).toBe('islandChanged')
       expect(delivered?.message?.$case === 'islandChanged' && delivered.message.islandChanged.islandId).toBe(
         'island-idle'
+      )
+    })
+  })
+
+  describe('when the legacy, session-less island_changed arrives after the same silence', () => {
+    const identity = createEphemeralIdentity('idle-legacy-newest-socket')
+    let ws: WebSocket | undefined
+    let delivered: ServerPacket | undefined
+    let deliveryError: unknown
+
+    beforeAll(async () => {
+      expect(await components.config.requireNumber('WS_IDLE_TIMEOUT_SECONDS')).toBe(IDLE_TIMEOUT_SECONDS)
+
+      const socket = await connectSocket(identity)
+      ws = socket.ws
+
+      await new Promise((resolve) => setTimeout(resolve, SILENCE_MS))
+
+      // Four tokens: no session. `service.ts`'s second subscription resolves this through
+      // `getNewestPeerWs`, the fallback for an assignment minted by a Pulse that predates the
+      // session redesign — it must still reach an idle socket, since it is the only one open
+      // for this wallet.
+      components.nats.publish(
+        `engine.peer.${socket.address}.island_changed`,
+        IslandChangedMessage.encode({
+          islandId: 'island-idle-legacy',
+          connStr: 'livekit:wss://example.com?access_token=jwt',
+          peers: {}
+        }).finish()
+      )
+
+      try {
+        delivered = await socket.channel.yield(5000, 'island_changed did not arrive after the silent period')
+      } catch (error) {
+        deliveryError = error
+      }
+    }, TEST_TIMEOUT_MS)
+
+    afterAll(() => {
+      ws?.close()
+    })
+
+    it('should still receive the legacy island assignment, via the newest-socket rule', () => {
+      expect(deliveryError).toBeUndefined()
+      expect(delivered?.message?.$case).toBe('islandChanged')
+      expect(delivered?.message?.$case === 'islandChanged' && delivered.message.islandChanged.islandId).toBe(
+        'island-idle-legacy'
       )
     })
   })
