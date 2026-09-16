@@ -106,7 +106,7 @@ its replicas answers.
 **External dependencies:**
 - **NATS**: All inter-service communication between WS Connector, Stats, Pulse and comms-gatekeeper
 - **LiveKit API**: Called by comms-gatekeeper to generate room tokens — no longer from this repo
-- **`@dcl/protocol`**: Protobuf definitions for Heartbeat, IslandChangedMessage, IslandStatusMessage, ServiceDiscoveryMessage. Pinned to the npm release of [protocol#453](https://github.com/decentraland/protocol/pull/453), which restores `ServiceStatus`/`ServiceDiscoveryMessage` with `current_time` as `uint64`
+- **`@dcl/protocol`**: Protobuf definitions for Heartbeat, IslandChangedMessage, IslandStatusMessage, ServiceDiscoveryMessage. Pinned to the `main` npm release `1.0.0-35089025179.commit-5810768` (published from the merge of [protocol#454](https://github.com/decentraland/protocol/pull/454)); it carries [protocol#453](https://github.com/decentraland/protocol/pull/453), which restores `ServiceStatus`/`ServiceDiscoveryMessage` with `current_time` as `uint64`
 - **`@dcl/crypto`**: Ethereum signature validation, AuthChain
 - **`dcl-catalyst-client`**: Stats service fetches content server data
 
