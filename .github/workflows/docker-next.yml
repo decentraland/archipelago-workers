@@ -6,14 +6,6 @@ on:
       - "main"
 
 jobs:
-  archipelago-ea-core-deployment:
-    uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
-    with:
-      service-name: archipelago-ea-core
-      image-name: archipelago-workers
-      deployment-environment: dev
-    secrets: inherit
-
   archipelago-ea-stats-deployment:
     uses: decentraland/platform-actions/.github/workflows/apps-docker-next.yml@main
     with:

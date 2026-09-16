@@ -39,6 +39,46 @@ describe('core-status-handler-unit', () => {
     expect(userCount).toEqual(10)
   })
 
+  it('if the discovery timestamp is far in the future, the publisher is not healthy', async () => {
+    const url = new URL('https://localhost/core-status')
+    const now = Date.now()
+    const clock = {
+      now: () => now
+    }
+    const coreStatus = createCoreStatusComponent({ clock })
+    coreStatus.onServiceDiscoveryReceived({
+      serverName: 'pulse',
+      status: {
+        currentTime: now + 3600000,
+        userCount: 3000
+      }
+    })
+    const {
+      body: { healthy }
+    } = await coreStatusHandler({ url, components: { coreStatus } })
+    expect(healthy).toEqual(false)
+  })
+
+  it('tolerates a small clock difference in either direction', async () => {
+    const url = new URL('https://localhost/core-status')
+    const now = Date.now()
+    const clock = {
+      now: () => now
+    }
+    const coreStatus = createCoreStatusComponent({ clock })
+    coreStatus.onServiceDiscoveryReceived({
+      serverName: 'pulse',
+      status: {
+        currentTime: now + 5000,
+        userCount: 10
+      }
+    })
+    const {
+      body: { healthy }
+    } = await coreStatusHandler({ url, components: { coreStatus } })
+    expect(healthy).toEqual(true)
+  })
+
   it('if last discovery is newer than 90 seconds, core is healthy', async () => {
     const url = new URL('https://localhost/core-status')
     const now = Date.now()

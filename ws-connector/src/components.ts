@@ -7,6 +7,7 @@ import { createNatsComponent } from '@well-known-components/nats-component'
 import { createPeersRegistry } from './adapters/peers-registry'
 import { createBanChecker } from './adapters/ban-checker'
 import { createBanSweep } from './adapters/ban-sweep'
+import { createDenyListComponent } from './adapters/deny-list'
 import { createFetchComponent } from '@dcl/fetch-component'
 import { createUWsComponent } from '@dcl/uws-http-server'
 import { createMetricsComponent } from '@dcl/metrics'
@@ -25,7 +26,8 @@ export async function initComponents(): Promise<AppComponents> {
   const natsLogs = await createLogComponent({ config: createConfigComponent({ LOG_LEVEL: 'WARN' }) })
   const nats = await createNatsComponent({ config, logs: natsLogs })
   const peersRegistry = await createPeersRegistry()
-  const banChecker = await createBanChecker({ config, logs })
+  const banChecker = await createBanChecker({ config, logs, fetch })
+  const denyList = await createDenyListComponent({ config, logs, fetch })
   const banSweep = await createBanSweep({ config, logs, peersRegistry, banChecker })
 
   const ethNetwork = (await config.getString('ETH_NETWORK')) ?? 'sepolia'
@@ -44,6 +46,7 @@ export async function initComponents(): Promise<AppComponents> {
     peersRegistry,
     banChecker,
     banSweep,
+    denyList,
     ethereumProvider
   }
 }

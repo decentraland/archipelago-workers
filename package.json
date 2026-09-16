@@ -2,14 +2,13 @@
   "name": "archipelago-service",
   "private": true,
   "workspaces": [
-    "core",
     "ws-connector",
     "stats"
   ],
   "scripts": {
     "build": "yarn workspaces run build",
     "test": "yarn workspaces run test && jest --coverage --onlyChanged=false --runInBand",
-    "start:local": "yarn workspace core start & yarn workspace ws-connector start & yarn workspace stats start",
+    "start:local": "yarn workspace ws-connector start & yarn workspace stats start",
     "lint:check": "eslint '**/*.{js,ts}'",
     "lint:fix": "eslint . --ext .ts --fix"
   },

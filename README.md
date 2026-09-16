@@ -2,7 +2,9 @@
 
 [![Coverage Status](https://coveralls.io/repos/github/decentraland/archipelago-workers/badge.svg?branch=coverage)](https://coveralls.io/github/decentraland/archipelago-workers?branch=coverage)
 
-The Archipelago Workers is a monorepo containing three services that implement the Archipelago protocol for clustering users into dynamic islands based on their positions in Decentraland's metaverse. The protocol enables scalable crowd management and efficient real-time communication for standalone realms.
+The Archipelago Workers is a monorepo containing two services that support Decentraland's real-time communication layer: a WebSocket gateway for clients and a stats API for monitoring.
+
+> **Island clustering has moved to Pulse.** In iteration 1 of the Archipelago ⇒ Pulse migration the `core` service was **removed** from this repo: Pulse authors the clustering and publishes `engine.islands` / `engine.discovery`, and comms-gatekeeper mints the LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event. The WebSocket Connector is unchanged, and the Stats Service keeps every endpoint until iteration 2. See [docs/core-decommission-runbook.md](docs/core-decommission-runbook.md), and [docs/island-clustering-algorithm.md](docs/island-clustering-algorithm.md) for the archived record of how core clustered.
 
 ## Table of Contents
 
@@ -18,13 +20,14 @@ The Archipelago Workers is a monorepo containing three services that implement t
 
 ## Features
 
-- **Core Service**: Implements island clustering algorithms that dynamically group users into islands based on their in-world positions. Manages peer-to-island assignments, processes position updates, and publishes island change notifications via NATS.
-- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), and maintains peer registry.
-- **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability of the Archipelago system.
+- **WebSocket Connector Service**: Provides real-time bidirectional WebSocket connections for Decentraland clients. Handles Ethereum-based authentication, routes real-time messages (positions, chat, profiles), maintains the peer registry, and forwards island assignments to clients. Untouched by the migration.
+- **Stats Service**: Aggregates information about islands and peers, providing REST API endpoints for monitoring, analytics, and observability. Its peer map is still built from client heartbeats; its island topology now comes from Pulse, so `GET /islands` reports cluster IDs as `C{n}` with `maxPeers: 0` (clusters are uncapped).
 
 ## Dependencies
 
 - **[Realm Provider](https://github.com/decentraland/realm-provider/)**: Exposes WebSocket connections to Decentraland clients
+- **Pulse**: Authors the peer clustering and publishes `engine.islands` / `engine.discovery`
+- **comms-gatekeeper**: Mints LiveKit connection strings and publishes `engine.peer.{address}.island_changed.{session}`, falling back to the legacy `engine.peer.{address}.island_changed` for a session-less event
 - **[Catalyst](https://github.com/decentraland/catalyst)**: Content server for fetching scene data (used by stats service)
 - **NATS**: Message broker for peer heartbeats, disconnect events, island changes, and discovery messages
 - **@dcl/protocol**: Archipelago protocol definitions
@@ -44,7 +47,7 @@ The monorepo includes:
 
 Before running this service, ensure you have the following installed:
 
-- **Node.js**: Version 18.x or higher (LTS recommended)
+- **Node.js**: Version 24.x — see `.nvmrc`; the Docker image pins `node:24-trixie-slim`
 - **Yarn**: Version 1.22.x or higher
 - **Docker**: For containerized deployment and local development dependencies
 
@@ -102,20 +105,27 @@ To run all services in development mode:
 yarn start:local
 ```
 
-This will start all three services:
-- **Core Service**: Island clustering engine
+This will start both services:
 - **WebSocket Connector Service**: WebSocket gateway for clients
 - **Stats Service**: REST API for monitoring and analytics
+
+Neither produces island assignments. For a client to receive one locally you also need Pulse publishing to the same broker and comms-gatekeeper subscribed to it.
 
 ### NATS Messages
 
 The services communicate via the following NATS message topics:
 
-- `peer.${address}.heartbeat` - Peer heartbeat messages
-- `peer.${address}.disconnect` - Peer disconnect events
-- `engine.peer.${address}.island_changed` - Island assignment changes
-- `engine.discovery` - Service discovery messages
-- `engine.islands` - Island status reports
+| Subject | Published by | Consumed by |
+| --- | --- | --- |
+| `peer.${address}.heartbeat` | WS Connector | Stats |
+| `peer.${address}.disconnect` | WS Connector | Stats |
+| `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
+| `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
+| `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
+| `engine.discovery` | Pulse | Stats — feeds `/core-status` |
+| `engine.islands` | Pulse | Stats — feeds `/islands` |
+
+Only the two `peer.*` subjects are published by this repo. `engine.islands` from Pulse reports cluster IDs as `C{n}` and `maxPeers: 0`; `GET /islands` passes both through unchanged.
 
 ## Testing
 
@@ -160,5 +170,5 @@ For detailed AI Agent context, see [docs/ai-agent-context.md](docs/ai-agent-cont
 
 ---
 
-**Note**: This is a monorepo containing three separate services. Each service can be run independently, but they work together to provide the complete Archipelago communication system.
+**Note**: This is a monorepo containing two separate services. Each can be run independently. They no longer form a complete communication system on their own — Pulse and comms-gatekeeper own the clustering and the LiveKit token minting.
 
