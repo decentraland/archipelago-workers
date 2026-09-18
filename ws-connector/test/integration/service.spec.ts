@@ -165,21 +165,77 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
-  describe('when the send to the peer fails', () => {
+  describe('when the send to the peer is dropped at the backpressure limit', () => {
+    let ws: InternalWebSocket
+    let sendResult: number
+
     beforeEach(async () => {
-      const ws = {
-        send: jest.fn().mockReturnValue(0),
+      // uWS returns 2 only when the frame is discarded, so this is the one code that means the
+      // peer never received its room.
+      sendResult = 2
+      const userData = {}
+      ws = {
+        send: jest.fn((data: Uint8Array) => {
+          if (sendResult === 1) sent.push(data)
+          return sendResult
+        }),
         end: jest.fn(),
-        getUserData: jest.fn().mockReturnValue({})
+        getUserData: () => userData
       } as unknown as InternalWebSocket
       peersRegistry.onPeerConnected(PEER, DESKTOP, ws)
 
-      publishIslandChanged(PEER, { islandId: 'island-C7' })
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
       await settle()
     })
 
     it('should warn rather than fail silently, since the peer never got its room', () => {
       expect(logs.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to send island change'))
+    })
+
+    it('should leave the island out of the dedup ledger, since nothing reached the peer', () => {
+      expect(ws.getUserData().lastIslandId).toBeUndefined()
+    })
+
+    describe('and the same island is re-announced inside the dedup window', () => {
+      beforeEach(async () => {
+        sendResult = 1
+        publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'b' })
+        await settle()
+      })
+
+      it('should forward it instead of suppressing the only message able to repair the peer', () => {
+        expect(sent).toHaveLength(1)
+      })
+
+      it('should not count it as a duplicate', () => {
+        expect(metrics.increment).not.toHaveBeenCalledWith('dcl_ws_connector_island_changed_deduplicated_total')
+      })
+    })
+  })
+
+  describe('when the send to the peer is queued behind backpressure', () => {
+    let ws: InternalWebSocket
+
+    beforeEach(async () => {
+      // uWS returns 0 when the frame is buffered and will drain, so the peer does get it.
+      const userData = {}
+      ws = {
+        send: jest.fn(() => 0),
+        end: jest.fn(),
+        getUserData: () => userData
+      } as unknown as InternalWebSocket
+      peersRegistry.onPeerConnected(PEER, DESKTOP, ws)
+
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      await settle()
+    })
+
+    it('should not warn, since a queued frame is not a lost one', () => {
+      expect(logs.logger.warn).not.toHaveBeenCalledWith(expect.stringContaining('Failed to send island change'))
+    })
+
+    it('should record the island in the dedup ledger', () => {
+      expect(ws.getUserData().lastIslandId).toBe('island-C7')
     })
   })
 
