@@ -62,7 +62,10 @@ export type WsUserData = {
    * device's ephemeral address. Island assignments are addressed to it.
    */
   session?: string
-  /** Island id of the last island_changed forwarded to this socket, and when. */
+  /**
+   * The last island_changed this socket actually received, and when. Only a delivered frame is
+   * recorded, so a dropped send never suppresses the re-announce that would repair it.
+   */
   lastIslandId?: string
   lastIslandAt?: number
 } & (

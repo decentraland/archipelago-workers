@@ -6,6 +6,12 @@ import { normalizeAddress } from './logic/address'
 import { guarded } from './logic/nats'
 import { AppComponents, InternalWebSocket, TestComponents } from './types'
 
+/**
+ * uWebSockets `send` result codes: 1 delivered, 0 queued behind backpressure and drained later,
+ * 2 dropped at the backpressure limit. Only 2 means the peer never gets the frame.
+ */
+const SEND_DROPPED = 2
+
 // this function wires the business logic (adapters & controllers) with the components (ports)
 export async function main(program: Lifecycle.EntryPointParameters<AppComponents | TestComponents>) {
   const { components, startComponents } = program
@@ -25,6 +31,9 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
 
     // The same room handed to the same socket twice inside the window is the client's own first
     // assignment arriving again through the re-announce path; it already holds a token for it.
+    // Keyed on the island alone on purpose: the client treats any new connection string as a room
+    // change and reconnects, so re-handing a healthy peer a fresh token for the room it is already
+    // in would evict it under LiveKit's duplicate-identity rule.
     const userData = ws.getUserData()
     const now = Date.now()
     if (
@@ -36,8 +45,6 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       metrics.increment('dcl_ws_connector_island_changed_deduplicated_total')
       return
     }
-    userData.lastIslandId = islandChanged.islandId
-    userData.lastIslandAt = now
 
     const sendResult = ws.send(
       craftMessage({
@@ -48,11 +55,18 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       }),
       true
     )
-    if (sendResult !== 1) {
+
+    if (sendResult === SEND_DROPPED) {
+      // The peer got nothing, so the ledger is left untouched: recording a drop would suppress the
+      // re-announce that is the only thing able to repair it, and nothing re-publishes on a timer.
       logger.warn(`Failed to send island change to peer ${id}, send returned ${sendResult}`)
-    } else {
-      logger.debug(`island change published for ${id}`)
+      return
     }
+
+    userData.lastIslandId = islandChanged.islandId
+    userData.lastIslandAt = now
+
+    logger.debug(`island change published for ${id}`)
   }
 
   // Five tokens: the last is the session key the message is addressed to. Every replica
