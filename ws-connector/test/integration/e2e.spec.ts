@@ -7,6 +7,7 @@ import { URL } from 'url'
 import {
   ChallengeResponseMessage,
   ClientPacket,
+  IslandChangedMessage,
   ServerPacket,
   WelcomeMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
@@ -171,6 +172,106 @@ test('end to end test', ({ components, stubComponents }) => {
 
     desktop.close()
     laptop.close()
+  })
+
+  describe('when native backpressure drops an island assignment', () => {
+    let desktop: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let laptop: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let replacement: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let sendResults: number[]
+    let droppedIsland: string
+    let desktopClosed: Promise<number>
+    let connectedSessions: string[]
+    let connectSubscription: ReturnType<typeof components.nats.subscribe>
+    let recoveredPacket: ServerPacket
+    let registryWasCleared: boolean
+
+    beforeEach(async () => {
+      desktop = undefined
+      laptop = undefined
+      replacement = undefined
+      sendResults = []
+      connectedSessions = []
+      droppedIsland = ''
+      registryWasCleared = false
+      connectSubscription = components.nats.subscribe(
+        `peer.${aliceIdentity.address.toLowerCase()}.connect`,
+        (error, message) => {
+          if (error) throw error
+          connectedSessions.push(Buffer.from(message.data).toString('utf8'))
+        }
+      )
+      desktop = await connectSocket(aliceIdentity)
+      laptop = await connectSocket(createEphemeralIdentity('alice', 'backpressure-laptop'))
+      desktopClosed = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Backpressured socket did not close')), 5000)
+        desktop?.once('close', (code) => {
+          clearTimeout(timeout)
+          resolve(code)
+        })
+      })
+
+      // Pause actual TCP reads, then fill bounded native send buffers with valid packets.
+      // No mocked send result or close callback: production forwarding must observe uWS's 2.
+      desktop.pause()
+      const socket = components.peersRegistry.getPeerWs(
+        aliceIdentity.address.toLowerCase(),
+        aliceIdentity.ephemeralAddress.toLowerCase()
+      )
+      if (!socket) throw new Error('Authenticated socket was not registered')
+      const send = socket.send.bind(socket)
+      jest.spyOn(socket, 'send').mockImplementation((...args) => {
+        const result = send(...args)
+        sendResults.push(result)
+        return result
+      })
+      for (let attempt = 0; attempt < 32 && !sendResults.includes(2); attempt++) {
+        droppedIsland = `backpressure-${attempt}`
+        components.nats.publish(
+          `engine.peer.${aliceIdentity.address.toLowerCase()}.island_changed.${aliceIdentity.ephemeralAddress.toLowerCase()}`,
+          IslandChangedMessage.encode({ islandId: droppedIsland, connStr: 'x'.repeat(256 * 1024), peers: {} }).finish()
+        )
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+      registryWasCleared = !components.peersRegistry.getPeerWs(
+        aliceIdentity.address.toLowerCase(),
+        aliceIdentity.ephemeralAddress.toLowerCase()
+      )
+      desktop.resume()
+      if (!sendResults.includes(2)) throw new Error('Native backpressure limit was not reached within 8 MiB')
+      await desktopClosed
+
+      // Exercise a second real signed handshake, not a manually inserted registry entry.
+      replacement = await connectSocket(aliceIdentity)
+      components.nats.publish(
+        `engine.peer.${aliceIdentity.address.toLowerCase()}.island_changed.${aliceIdentity.ephemeralAddress.toLowerCase()}`,
+        IslandChangedMessage.encode({ islandId: droppedIsland, connStr: 'fresh-recovery-token', peers: {} }).finish()
+      )
+      recoveredPacket = await replacement.channel.yield(2000, 'Fresh assignment did not reach replacement socket')
+    })
+
+    afterEach(() => {
+      desktop?.resume()
+      desktop?.terminate()
+      laptop?.terminate()
+      replacement?.terminate()
+      connectSubscription?.unsubscribe()
+      jest.restoreAllMocks()
+    })
+
+    it('should clean up the dropped socket and recover the same island through a fresh authenticated connection', async () => {
+      expect(sendResults).toContain(2)
+      expect(registryWasCleared).toBe(true)
+      // The close frame itself may be dropped by the full native buffer. Explorer reconnects
+      // for both the requested retry code and an abnormal transport close.
+      expect([1013, 1006]).toContain(await desktopClosed)
+      expect(laptop?.readyState).toBe(WebSocket.OPEN)
+      expect(connectedSessions.filter((session) => session === aliceIdentity.ephemeralAddress.toLowerCase())).toHaveLength(2)
+      expect(recoveredPacket.message).toMatchObject({
+        $case: 'islandChanged',
+        islandChanged: { islandId: droppedIsland, connStr: 'fresh-recovery-token' }
+      })
+    })
   })
 
   it.skip(
