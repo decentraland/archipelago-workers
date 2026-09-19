@@ -21,11 +21,14 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
   const dedupMs = (await config.getNumber('ISLAND_CHANGED_DEDUP_MS')) ?? 10_000
 
   function forward(ws: InternalWebSocket, id: string, data: Uint8Array): void {
+    const userData = ws.getUserData()
+    if (userData.isClosed) {
+      return
+    }
     const islandChanged = IslandChangedMessage.decode(data)
 
     // The same room handed to the same socket twice inside the window is the client's own first
     // assignment arriving again through the re-announce path; it already holds a token for it.
-    const userData = ws.getUserData()
     const now = Date.now()
     if (
       dedupMs > 0 &&
@@ -36,9 +39,6 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       metrics.increment('dcl_ws_connector_island_changed_deduplicated_total')
       return
     }
-    userData.lastIslandId = islandChanged.islandId
-    userData.lastIslandAt = now
-
     const sendResult = ws.send(
       craftMessage({
         message: {
@@ -48,11 +48,21 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       }),
       true
     )
-    if (sendResult !== 1) {
-      logger.warn(`Failed to send island change to peer ${id}, send returned ${sendResult}`)
-    } else {
-      logger.debug(`island change published for ${id}`)
+    if (sendResult === 2) {
+      // uWS dropped the frame, and Pulse may never repeat an unchanged assignment. Force
+      // this session to reconnect and request fresh credentials instead of leaving it in
+      // its old island. Set the flag before end(), which can invoke the close handler.
+      logger.warn(`Failed to send island change to peer ${id}, send returned 2; closing socket for recovery`)
+      userData.isClosed = true
+      ws.end(1013, 'Island assignment dropped; reconnect')
+      return
     }
+
+    // Both 1 (sent) and 0 (queued under backpressure) accepted the frame. Only accepted
+    // assignments may suppress duplicates; a queued frame will drain on the same socket.
+    userData.lastIslandId = islandChanged.islandId
+    userData.lastIslandAt = now
+    logger.debug(`island change accepted for ${id}, send returned ${sendResult}`)
   }
 
   // Five tokens: the last is the session key the message is addressed to. Every replica

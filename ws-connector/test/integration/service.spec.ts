@@ -13,7 +13,7 @@ import { createLoggerMockedComponent } from '../mocks/logger-mock'
 import { createPeersRegistryMockedComponent } from '../mocks/peers-registry-mock'
 
 /**
- * Drives the real `main()` against a local NATS broker, so the subscription, the subject
+ * Drives the real `main()` against an in-memory NATS component, so the subscription, the subject
  * parsing, the decode and the forwarding are the production ones. The previous version of this
  * file re-implemented all of that inside the spec, which meant it passed no matter what
  * src/service.ts did.
@@ -63,7 +63,7 @@ describe('ws-connector island change forwarding', () => {
     nats.publish(`engine.peer.${peerId}.island_changed`, data)
   }
 
-  /** The subscription callback runs off the broker's own loop, so let it drain. */
+  /** Allow any asynchronous work scheduled by a subscription callback to settle. */
   function settle(): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, 50))
   }
@@ -73,7 +73,7 @@ describe('ws-connector island change forwarding', () => {
   }
 
   async function start(dedupMs?: string): Promise<void> {
-    // A fresh broker each call, so a nested describe rebuilding with a different dedup window gets
+    // A fresh in-memory component each call, so a context with a different dedup window gets
     // a clean subscription set instead of layering a second one on top of the first.
     nats = await createLocalNatsComponent()
     const config = createConfigComponent({
@@ -109,6 +109,10 @@ describe('ws-connector island change forwarding', () => {
     jest.spyOn(metrics, 'increment')
 
     await start()
+  })
+
+  afterEach(() => {
+    jest.restoreAllMocks()
   })
 
   describe('when an island change arrives for a connected peer', () => {
@@ -165,21 +169,111 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
-  describe('when the send to the peer fails', () => {
-    beforeEach(async () => {
-      const ws = {
-        send: jest.fn().mockReturnValue(0),
-        end: jest.fn(),
-        getUserData: jest.fn().mockReturnValue({})
-      } as unknown as InternalWebSocket
-      peersRegistry.onPeerConnected(PEER, DESKTOP, ws)
+  describe('when an island change is queued under backpressure', () => {
+    let ws: InternalWebSocket
 
+    beforeEach(async () => {
+      ws = connectPeer(PEER, DESKTOP)
+      jest.spyOn(ws, 'send').mockReturnValueOnce(0)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7' })
+      await settle()
+    })
+
+    it('should keep the socket open so the accepted frame can drain', () => {
+      expect(ws.end).not.toHaveBeenCalled()
+    })
+
+    it('should not report a queued frame as failed delivery', () => {
+      expect(logs.logger.warn).not.toHaveBeenCalled()
+    })
+
+    describe('and the assignment is repeated before draining', () => {
+      beforeEach(async () => {
+        publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7' })
+        await settle()
+      })
+
+      it('should deduplicate the already accepted assignment', () => {
+        expect(ws.send).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
+
+  describe('when an island change is dropped under backpressure', () => {
+    let desktop: InternalWebSocket
+    let laptop: InternalWebSocket
+
+    beforeEach(async () => {
+      desktop = connectPeer(PEER, DESKTOP)
+      laptop = connectPeer(PEER, LAPTOP)
+      jest.spyOn(desktop, 'send').mockReturnValueOnce(2)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'dropped-token' })
+      await settle()
+    })
+
+    it('should close the affected session to trigger a fresh authenticated assignment request', () => {
+      expect(desktop.end).toHaveBeenCalledWith(1013, 'Island assignment dropped; reconnect')
+    })
+
+    it('should leave the other session open', () => {
+      expect(laptop.end).not.toHaveBeenCalled()
+    })
+
+    it('should not forward the dropped assignment to another session', () => {
+      expect(laptop.send).not.toHaveBeenCalled()
+    })
+
+    it('should not record the dropped assignment as accepted', () => {
+      expect(desktop.getUserData().lastIslandId).toBeUndefined()
+      expect(desktop.getUserData().lastIslandAt).toBeUndefined()
+    })
+
+    describe('and another notification arrives while the socket is closing', () => {
+      beforeEach(async () => {
+        publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C8' })
+        await settle()
+      })
+
+      it('should not send on the closing socket', () => {
+        expect(desktop.send).toHaveBeenCalledTimes(1)
+      })
+
+      it('should close the socket only once', () => {
+        expect(desktop.end).toHaveBeenCalledTimes(1)
+      })
+    })
+
+    describe('and the session reconnects with a new socket', () => {
+      let replacement: InternalWebSocket
+
+      beforeEach(async () => {
+        replacement = connectPeer(PEER, DESKTOP)
+        publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'fresh-token' })
+        await settle()
+      })
+
+      it('should deliver the fresh credentials for the same island without deduplicating them', () => {
+        expect(lastForwarded().message).toMatchObject({
+          $case: 'islandChanged',
+          islandChanged: { islandId: 'island-C7', connStr: 'fresh-token' }
+        })
+        expect(replacement.send).toHaveBeenCalledTimes(1)
+      })
+    })
+  })
+
+  describe('when a legacy island change is dropped', () => {
+    let ws: InternalWebSocket
+
+    beforeEach(async () => {
+      ws = connectPeer(PEER, DESKTOP)
+      jest.spyOn(ws, 'send').mockReturnValueOnce(2)
       publishIslandChanged(PEER, { islandId: 'island-C7' })
       await settle()
     })
 
-    it('should warn rather than fail silently, since the peer never got its room', () => {
-      expect(logs.logger.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to send island change'))
+    it('should trigger the same socket recovery as a session-addressed change', () => {
+      expect(ws.end).toHaveBeenCalledWith(1013, 'Island assignment dropped; reconnect')
     })
   })
 
