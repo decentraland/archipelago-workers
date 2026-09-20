@@ -122,6 +122,8 @@ The services communicate via the following NATS message topics:
 | `peer.${address}.cluster_change` | Pulse | comms-gatekeeper |
 | `engine.peer.${address}.island_changed.${session}` | comms-gatekeeper | WS Connector |
 | `engine.peer.${address}.island_changed` | comms-gatekeeper | WS Connector — an assignment that carries no session, from an older Pulse — delivered to the newest socket of the address |
+
+Delivery of an `island_changed` to a socket is at most once. When µWebSockets drops the frame because the socket holds more than `WS_MAX_BACKPRESSURE_BYTES` of undrained data, the connector closes that socket with code 1013 (`dcl_ws_connector_island_changed_dropped_close_total`) so the client reconnects and its `peer.{address}.connect` has comms-gatekeeper mint fresh credentials; Pulse does not repeat an unchanged assignment on its own. A frame that is merely queued is accepted and drains on the same socket. Deploy order for that recovery: Pulse, then comms-gatekeeper, then this connector.
 | `engine.discovery` | Pulse | Stats — feeds `/core-status` |
 | `engine.islands` | Pulse | Stats — feeds `/islands` |
 

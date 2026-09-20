@@ -1,12 +1,14 @@
 import { wsAsAsyncChannel } from '../helpers/ws-as-async-channel'
 import { test } from '../components'
 import { createEphemeralIdentity } from '../helpers/identity'
+import { CLOSE_TRY_AGAIN_LATER, SendResult } from '../../src/logic/websocket'
 import { future } from 'fp-future'
 import { WebSocket } from 'ws'
 import { URL } from 'url'
 import {
   ChallengeResponseMessage,
   ClientPacket,
+  IslandChangedMessage,
   ServerPacket,
   WelcomeMessage
 } from '@dcl/protocol/out-js/decentraland/kernel/comms/v3/archipelago.gen'
@@ -171,6 +173,165 @@ test('end to end test', ({ components, stubComponents }) => {
 
     desktop.close()
     laptop.close()
+  })
+
+  describe('when native backpressure drops an island assignment', () => {
+    // Frames four times the default maxBackpressure, so the first frame the kernel's send buffer
+    // will not take cannot be queued either and is dropped outright. How many frames the kernel
+    // absorbs first is decided by its TCP buffer autotuning on the server and the paused client,
+    // not by anything in this repo, so the loop runs until the drop is observed, bounded only far
+    // enough out (64 MiB) that a runner with generous buffers still gets there.
+    const FLOOD_FRAME_BYTES = 4 * 64 * 1024
+    const MAX_FLOOD_FRAMES = 256
+    const aliceSession = aliceIdentity.ephemeralAddress.toLowerCase()
+    const aliceAddress = aliceIdentity.address.toLowerCase()
+
+    let desktop: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let laptop: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let replacement: Awaited<ReturnType<typeof connectSocket>> | undefined
+    let sendResults: number[]
+    let droppedIsland: string
+    let closeCode: number
+    let connectedSessions: string[]
+    let connectSubscription: ReturnType<typeof components.nats.subscribe>
+    let registryWasCleared: boolean
+
+    function publishIslandChanged(session: string, islandId: string, connStr: string): void {
+      components.nats.publish(
+        `engine.peer.${aliceAddress}.island_changed.${session}`,
+        IslandChangedMessage.encode({ islandId, connStr, peers: {} }).finish()
+      )
+    }
+
+    beforeEach(async () => {
+      desktop = undefined
+      laptop = undefined
+      replacement = undefined
+      sendResults = []
+      connectedSessions = []
+      droppedIsland = ''
+      registryWasCleared = false
+      jest.spyOn(components.metrics, 'increment')
+      connectSubscription = components.nats.subscribe(`peer.${aliceAddress}.connect`, (error, message) => {
+        if (error) throw error
+        connectedSessions.push(Buffer.from(message.data).toString('utf8'))
+      })
+      desktop = await connectSocket(aliceIdentity)
+      laptop = await connectSocket(createEphemeralIdentity('alice', 'backpressure-laptop'))
+      const desktopClosed = new Promise<number>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Backpressured socket did not close')), 5000)
+        desktop?.once('close', (code) => {
+          clearTimeout(timeout)
+          resolve(code)
+        })
+      })
+
+      // Pause actual TCP reads, then fill bounded native send buffers with valid packets.
+      // No mocked send result or close callback: production forwarding must observe uWS's drop.
+      desktop.pause()
+      const socket = components.peersRegistry.getPeerWs(aliceAddress, aliceSession)
+      if (!socket) throw new Error('Authenticated socket was not registered')
+      const send = socket.send.bind(socket)
+      jest.spyOn(socket, 'send').mockImplementation((...args) => {
+        const result = send(...args)
+        sendResults.push(result)
+        return result
+      })
+      for (let attempt = 0; attempt < MAX_FLOOD_FRAMES && !sendResults.includes(SendResult.DROPPED); attempt++) {
+        droppedIsland = `backpressure-${attempt}`
+        publishIslandChanged(aliceSession, droppedIsland, 'x'.repeat(FLOOD_FRAME_BYTES))
+        await new Promise<void>((resolve) => setImmediate(resolve))
+      }
+      registryWasCleared = !components.peersRegistry.getPeerWs(aliceAddress, aliceSession)
+      desktop.resume()
+      if (!sendResults.includes(SendResult.DROPPED)) {
+        throw new Error(`Native backpressure limit was not reached within ${MAX_FLOOD_FRAMES} frames`)
+      }
+      closeCode = await desktopClosed
+      // Two handshakes, the flood, the close wait and, in the nested contexts, a third handshake
+      // and delivery waits: well past Jest's 5 s default, which would otherwise pre-empt the close
+      // timeout above and report a generic hook timeout instead of its message.
+    }, 20_000)
+
+    afterEach(() => {
+      desktop?.resume()
+      desktop?.terminate()
+      laptop?.terminate()
+      replacement?.terminate()
+      connectSubscription?.unsubscribe()
+      jest.restoreAllMocks()
+    })
+
+    it('should close the dropped socket with the retry code, or abnormally when the close frame is dropped too', () => {
+      // Explorer reconnects for both the requested retry code and an abnormal transport close.
+      expect([CLOSE_TRY_AGAIN_LATER, 1006]).toContain(closeCode)
+    })
+
+    it('should clear the registry entry synchronously from the close', () => {
+      expect(registryWasCleared).toBe(true)
+    })
+
+    it("should leave the other device's socket open", () => {
+      expect(laptop?.readyState).toBe(WebSocket.OPEN)
+    })
+
+    it('should count the forced close', () => {
+      expect(components.metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_dropped_close_total')
+    })
+
+    describe('and the same device reconnects with its previous key', () => {
+      let recoveredPacket: ServerPacket
+
+      beforeEach(async () => {
+        // A second real signed handshake, not a manually inserted registry entry.
+        replacement = await connectSocket(aliceIdentity)
+        publishIslandChanged(aliceSession, droppedIsland, 'fresh-recovery-token')
+        recoveredPacket = await replacement.channel.yield(2000, 'Fresh assignment did not reach replacement socket')
+      }, 10_000)
+
+      it('should announce the session again so comms-gatekeeper re-mints for it', () => {
+        expect(connectedSessions.filter((session) => session === aliceSession)).toHaveLength(2)
+      })
+
+      it('should deliver fresh credentials for the same island without deduplicating them', () => {
+        expect(recoveredPacket.message).toMatchObject({
+          $case: 'islandChanged',
+          islandChanged: { islandId: droppedIsland, connStr: 'fresh-recovery-token' }
+        })
+      })
+    })
+
+    describe('and the device reconnects with a fresh ephemeral key, as Explorer does', () => {
+      const recoveryIdentity = createEphemeralIdentity('alice', 'recovery-device')
+      const recoverySession = recoveryIdentity.ephemeralAddress.toLowerCase()
+      let firstPacket: ServerPacket
+
+      beforeEach(async () => {
+        replacement = await connectSocket(recoveryIdentity)
+        // Back to back, and delivery is in publish order: were the frame addressed to the dead
+        // session forwarded, it would be the first packet the new socket sees.
+        publishIslandChanged(aliceSession, droppedIsland, 'token-for-a-dead-session')
+        publishIslandChanged(recoverySession, droppedIsland, 'token-for-the-new-session')
+        firstPacket = await replacement.channel.yield(2000, 'Assignment did not reach the new session')
+      }, 10_000)
+
+      it('should announce the new session on connect', () => {
+        expect(connectedSessions).toContain(recoverySession)
+      })
+
+      it('should deliver only the assignment addressed to the new session', () => {
+        expect(firstPacket.message).toMatchObject({
+          $case: 'islandChanged',
+          islandChanged: { islandId: droppedIsland, connStr: 'token-for-the-new-session' }
+        })
+      })
+
+      it('should count the dead-session assignment as a miss, since this replica still holds the wallet', () => {
+        expect(components.metrics.increment).toHaveBeenCalledWith(
+          'dcl_ws_connector_island_changed_no_session_socket_total'
+        )
+      })
+    })
   })
 
   it.skip(
