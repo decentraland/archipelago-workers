@@ -6,6 +6,7 @@ import { createTestMetricsComponent } from '@dcl/metrics'
 import { IMetricsComponent } from '@well-known-components/interfaces'
 import { main } from '../../src/service'
 import { metricDeclarations } from '../../src/metrics'
+import { ISLAND_ASSIGNMENT_DROPPED_CLOSE, SendResult } from '../../src/logic/websocket'
 import { InternalWebSocket } from '../../src/types'
 import { createBanCheckerMockedComponent } from '../mocks/ban-checker-mock'
 import { createDenyListMockedComponent } from '../mocks/deny-list-mock'
@@ -34,7 +35,7 @@ describe('ws-connector island change forwarding', () => {
     const ws = {
       send: jest.fn((data: Uint8Array) => {
         sent.push(data)
-        return 1
+        return SendResult.SENT
       }),
       end: jest.fn(),
       getUserData: () => userData
@@ -63,9 +64,14 @@ describe('ws-connector island change forwarding', () => {
     nats.publish(`engine.peer.${peerId}.island_changed`, data)
   }
 
-  /** Allow any asynchronous work scheduled by a subscription callback to settle. */
+  /**
+   * The in-memory NATS component delivers synchronously: `publish` invokes the subscription
+   * callbacks inline, so by the time it returns the forwarding has run. One macrotask is still
+   * yielded so anything a callback scheduled has settled too. Not a race-safe margin for a real
+   * broker; a broker-backed version of this spec needs to await delivery explicitly.
+   */
   function settle(): Promise<void> {
-    return new Promise((resolve) => setTimeout(resolve, 50))
+    return new Promise((resolve) => setImmediate(resolve))
   }
 
   function lastForwarded(): ServerPacket {
@@ -174,7 +180,7 @@ describe('ws-connector island change forwarding', () => {
 
     beforeEach(async () => {
       ws = connectPeer(PEER, DESKTOP)
-      jest.spyOn(ws, 'send').mockReturnValueOnce(0)
+      jest.spyOn(ws, 'send').mockReturnValueOnce(SendResult.QUEUED)
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7' })
       await settle()
     })
@@ -206,13 +212,24 @@ describe('ws-connector island change forwarding', () => {
     beforeEach(async () => {
       desktop = connectPeer(PEER, DESKTOP)
       laptop = connectPeer(PEER, LAPTOP)
-      jest.spyOn(desktop, 'send').mockReturnValueOnce(2)
+      jest.spyOn(desktop, 'send').mockReturnValueOnce(SendResult.DROPPED)
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'dropped-token' })
       await settle()
     })
 
     it('should close the affected session to trigger a fresh authenticated assignment request', () => {
-      expect(desktop.end).toHaveBeenCalledWith(1013, 'Island assignment dropped; reconnect')
+      expect(desktop.end).toHaveBeenCalledWith(
+        ISLAND_ASSIGNMENT_DROPPED_CLOSE.code,
+        ISLAND_ASSIGNMENT_DROPPED_CLOSE.message
+      )
+    })
+
+    it('should count the forced close, since a reconnect storm is only visible through it', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_dropped_close_total')
+    })
+
+    it('should warn about the dropped frame', () => {
+      expect(logs.logger.warn).toHaveBeenCalledWith(expect.stringContaining('frame dropped under backpressure'))
     })
 
     it('should leave the other session open', () => {
@@ -267,13 +284,17 @@ describe('ws-connector island change forwarding', () => {
 
     beforeEach(async () => {
       ws = connectPeer(PEER, DESKTOP)
-      jest.spyOn(ws, 'send').mockReturnValueOnce(2)
+      jest.spyOn(ws, 'send').mockReturnValueOnce(SendResult.DROPPED)
       publishIslandChanged(PEER, { islandId: 'island-C7' })
       await settle()
     })
 
     it('should trigger the same socket recovery as a session-addressed change', () => {
-      expect(ws.end).toHaveBeenCalledWith(1013, 'Island assignment dropped; reconnect')
+      expect(ws.end).toHaveBeenCalledWith(ISLAND_ASSIGNMENT_DROPPED_CLOSE.code, ISLAND_ASSIGNMENT_DROPPED_CLOSE.message)
+    })
+
+    it('should count it the same way', () => {
+      expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_dropped_close_total')
     })
   })
 

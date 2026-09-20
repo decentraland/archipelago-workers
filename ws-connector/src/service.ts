@@ -4,6 +4,7 @@ import { setupRoutes } from './controllers/routes'
 import { craftMessage } from './logic/craft-message'
 import { normalizeAddress } from './logic/address'
 import { guarded } from './logic/nats'
+import { ISLAND_ASSIGNMENT_DROPPED_CLOSE, safeEndWebSocket, SendResult } from './logic/websocket'
 import { AppComponents, InternalWebSocket, TestComponents } from './types'
 
 // this function wires the business logic (adapters & controllers) with the components (ports)
@@ -48,18 +49,21 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       }),
       true
     )
-    if (sendResult === 2) {
-      // uWS dropped the frame, and Pulse may never repeat an unchanged assignment. Force
-      // this session to reconnect and request fresh credentials instead of leaving it in
-      // its old island. Set the flag before end(), which can invoke the close handler.
-      logger.warn(`Failed to send island change to peer ${id}, send returned 2; closing socket for recovery`)
-      userData.isClosed = true
-      ws.end(1013, 'Island assignment dropped; reconnect')
+    if (sendResult === SendResult.DROPPED) {
+      // µWebSockets dropped the frame, and Pulse may never repeat an unchanged assignment. Force
+      // this session to reconnect and request fresh credentials instead of leaving it in its old
+      // island. Counted before the close: under systemic backpressure this fires for many sockets
+      // in one drain window, and the reconnect storm it causes is only visible through this.
+      metrics.increment('dcl_ws_connector_island_changed_dropped_close_total')
+      logger.warn(
+        `Failed to send island change to peer ${id}, frame dropped under backpressure; closing socket for recovery`
+      )
+      safeEndWebSocket(ws, logger, ISLAND_ASSIGNMENT_DROPPED_CLOSE)
       return
     }
 
-    // Both 1 (sent) and 0 (queued under backpressure) accepted the frame. Only accepted
-    // assignments may suppress duplicates; a queued frame will drain on the same socket.
+    // Both SENT and QUEUED accepted the frame. Only accepted assignments may suppress
+    // duplicates; a queued frame drains on the same socket.
     userData.lastIslandId = islandChanged.islandId
     userData.lastIslandAt = now
     logger.debug(`island change accepted for ${id}, send returned ${sendResult}`)
