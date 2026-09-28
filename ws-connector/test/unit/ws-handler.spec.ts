@@ -8,6 +8,7 @@ import { registerWsHandler } from '../../src/controllers/handlers/ws-handler'
 import { metricDeclarations } from '../../src/metrics'
 import { InternalWebSocket, Stage, WsUserData } from '../../src/types'
 import { sessionKeyOf } from '../../src/logic/session'
+import { SendResult } from '../../src/logic/websocket'
 import { createEphemeralIdentity } from '../helpers/identity'
 import { createBanCheckerMockedComponent } from '../mocks/ban-checker-mock'
 import { createDenyListMockedComponent } from '../mocks/deny-list-mock'
@@ -47,7 +48,7 @@ describe('ws-handler', () => {
 
     return {
       getUserData: () => data,
-      send: jest.fn().mockReturnValue(1),
+      send: jest.fn().mockReturnValue(SendResult.SENT),
       end: jest.fn()
     } as unknown as StubWebSocket
   }
@@ -276,7 +277,7 @@ describe('ws-handler', () => {
       validateSignature.mockResolvedValue({ ok: true })
       const authChainJson = JSON.stringify(await identity.sign('dcl-challenge'))
       ws = makeWs({ stage: Stage.HANDSHAKE_CHALLENGE_SENT, challengeToSign: 'dcl-challenge' } as Partial<WsUserData>)
-      ws.send.mockReturnValue(0)
+      ws.send.mockReturnValue(SendResult.QUEUED)
 
       await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
     })
@@ -338,7 +339,7 @@ describe('ws-handler', () => {
     describe('and the challenge cannot be sent', () => {
       beforeEach(async () => {
         ws = makeWs()
-        ws.send.mockReturnValue(0)
+        ws.send.mockReturnValue(SendResult.QUEUED)
         handlers.open(ws)
         await handlers.message(ws, encode({ $case: 'challengeRequest', challengeRequest: { address } }))
       })
@@ -423,7 +424,7 @@ describe('ws-handler', () => {
       await handlers.message(ws, encode({ $case: 'signedChallenge', signedChallenge: { authChainJson } }))
     })
 
-    it('should kick and close the previous socket, since it is this device\'s zombie', () => {
+    it("should kick and close the previous socket, since it is this device's zombie", () => {
       expect(previousWs.send).toHaveBeenCalledTimes(1)
       expect(previousWs.end).toHaveBeenCalledTimes(1)
     })
@@ -498,7 +499,7 @@ describe('ws-handler', () => {
       expect(laptop.address.toLowerCase()).toBe(address)
     })
 
-    it('should leave the first device\'s socket untouched', () => {
+    it("should leave the first device's socket untouched", () => {
       expect(desktopWs.send).not.toHaveBeenCalled()
       expect(desktopWs.end).not.toHaveBeenCalled()
     })
@@ -508,14 +509,14 @@ describe('ws-handler', () => {
       expect(peersRegistry.getPeerWs(address, laptopWs.getUserData().session!)).toBe(laptopWs)
     })
 
-    it('should announce the second device\'s session', () => {
+    it("should announce the second device's session", () => {
       const [[, payload]] = published(`peer.${address}.connect`)
 
       expect(Buffer.from(payload as Uint8Array).toString('utf8')).toBe(laptopWs.getUserData().session)
     })
   })
 
-  describe('when the kick to this device\'s previous socket cannot be sent', () => {
+  describe("when the kick to this device's previous socket cannot be sent", () => {
     let previousWs: StubWebSocket
 
     beforeEach(async () => {
@@ -528,7 +529,7 @@ describe('ws-handler', () => {
         session,
         isClosed: false
       } as Partial<WsUserData>)
-      previousWs.send.mockReturnValue(0)
+      previousWs.send.mockReturnValue(SendResult.QUEUED)
       peersRegistry.onPeerConnected(address, session, previousWs)
       const ws = makeWs({
         stage: Stage.HANDSHAKE_CHALLENGE_SENT,
