@@ -13,6 +13,10 @@ export const metricDeclarations = {
   dcl_ws_connector_island_changed_deduplicated_total: {
     help: 'Total island_changed messages dropped because the same island was forwarded to the same socket within ISLAND_CHANGED_DEDUP_MS',
     type: IMetricsComponent.CounterType
+  },
+  dcl_ws_connector_island_changed_dropped_close_total: {
+    help: 'Total sockets closed with 1013 because µWebSockets dropped an island_changed frame under backpressure; each one reconnects and re-authenticates',
+    type: IMetricsComponent.CounterType
   }
 }
 

@@ -30,7 +30,7 @@
     "@dcl/fetch-component": "^1.1.1",
     "@dcl/http-server": "^2.1.0",
     "@dcl/metrics": "^1.0.1",
-    "@dcl/protocol": "1.0.0-30361475985.commit-df8a4ff",
+    "@dcl/protocol": "1.0.0-35089025179.commit-5810768",
     "@well-known-components/env-config-provider": "^1.1.1",
     "@well-known-components/interfaces": "^1.5.2",
     "@well-known-components/logger": "^3.1.3",
