@@ -46,7 +46,7 @@ info:
     3. **Signature Submission**: Client signs the challenge using their Ethereum private key and sends a `signedChallenge` with the AuthChain
     4. **Verification & Welcome**: Server validates the signature, assigns a peer ID, and sends a `welcome` message confirming successful authentication
     
-    Once authenticated, the peer can send and receive messages. The connection is kept alive through periodic `heartbeat` messages, and peers can be `kicked` if they establish duplicate sessions or violate protocol rules.
+    Once authenticated, the peer can send and receive messages. The server keeps the connection alive on its own — it pings an idle socket and the client's automatic pong resets the idle timer — so a client that has nothing to send stays connected without sending `heartbeat` messages for that purpose. Peers can be `kicked` if they establish duplicate sessions or violate protocol rules.
     
     ### Message Types
     
@@ -56,7 +56,7 @@ info:
     - **`challengeResponse`**: Server-provided cryptographic challenge
     - **`signedChallenge`**: Client-signed challenge with AuthChain
     - **`welcome`**: Server confirmation with assigned peer ID
-    - **`heartbeat`**: Keep-alive messages to maintain connection
+    - **`heartbeat`**: Periodic client position reports
     - **`kicked`**: Disconnection notification (e.g., due to new session)
     
     Authenticated peers receive real-time messages for position updates, profile changes, chat messages, and island assignment notifications as they move through Decentraland's metaverse.
@@ -186,9 +186,11 @@ paths:
         - `challengeResponse`: Server-provided challenge
         - `signedChallenge`: Client-provided signed challenge with AuthChain
         - `welcome`: Server confirmation with assigned peer ID
-        - `heartbeat`: Keep-alive messages
+        - `heartbeat`: Periodic client position reports
         - `kicked`: Disconnection notification
-        
+
+        **Connection liveness:** the server pings idle sockets, so clients do not need to send anything to stay connected.
+
         Once authenticated, the peer receives real-time updates about island assignments, nearby peers, and position changes as they move through Decentraland's metaverse.
       operationId: connectWebSocket
       security: []
