@@ -28,12 +28,14 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     }
     const islandChanged = IslandChangedMessage.decode(data)
 
-    // The same room handed to the same socket twice inside the window is the client's own first
-    // assignment arriving again through the re-announce path; it already holds a token for it.
+    // Suppress only the exact assignment already accepted by this socket. Recovery can renew
+    // credentials for the same room; those credentials must reach the client.
     const now = Date.now()
     if (
       dedupMs > 0 &&
-      userData.lastIslandId === islandChanged.islandId &&
+      userData.lastIslandPayload !== undefined &&
+      userData.lastIslandPayload.length === data.length &&
+      userData.lastIslandPayload.every((byte, index) => byte === data[index]) &&
       userData.lastIslandAt !== undefined &&
       now - userData.lastIslandAt < dedupMs
     ) {
@@ -50,8 +52,8 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
       true
     )
     if (sendResult === SendResult.DROPPED) {
-      // µWebSockets dropped the frame, and Pulse may never repeat an unchanged assignment. Force
-      // this session to reconnect and request fresh credentials instead of leaving it in its old
+      // µWebSockets dropped the frame; delivery recovery should not wait for the next periodic
+      // hint. Force this session to reconnect and request fresh credentials instead of leaving it in its old
       // island. Counted before the close: under systemic backpressure this fires for many sockets
       // in one drain window, and the reconnect storm it causes is only visible through this.
       metrics.increment('dcl_ws_connector_island_changed_dropped_close_total')
@@ -65,6 +67,8 @@ export async function main(program: Lifecycle.EntryPointParameters<AppComponents
     // Both SENT and QUEUED accepted the frame. Only accepted assignments may suppress
     // duplicates; a queued frame drains on the same socket.
     userData.lastIslandId = islandChanged.islandId
+    // NATS may reuse its receive buffer; retain our own copy of the accepted assignment.
+    userData.lastIslandPayload = Uint8Array.from(data)
     userData.lastIslandAt = now
     logger.debug(`island change accepted for ${id}, send returned ${sendResult}`)
   }
