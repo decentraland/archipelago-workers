@@ -62,8 +62,9 @@ export type WsUserData = {
    * device's ephemeral address. Island assignments are addressed to it.
    */
   session?: string
-  /** Island id of the last island_changed forwarded to this socket, and when. */
+  /** Last accepted assignment payload and island id, and when this socket accepted them. */
   lastIslandId?: string
+  lastIslandPayload?: Uint8Array
   lastIslandAt?: number
 } & (
   | {
