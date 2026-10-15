@@ -242,6 +242,7 @@ describe('ws-connector island change forwarding', () => {
 
     it('should not record the dropped assignment as accepted', () => {
       expect(desktop.getUserData().lastIslandId).toBeUndefined()
+      expect(desktop.getUserData().lastIslandPayload).toBeUndefined()
       expect(desktop.getUserData().lastIslandAt).toBeUndefined()
     })
 
@@ -418,7 +419,7 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
-  describe('when the same island is forwarded twice to one socket within the dedup window', () => {
+  describe('when renewed credentials for the same island arrive within the dedup window', () => {
     beforeEach(async () => {
       connectPeer(PEER, DESKTOP)
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
@@ -426,13 +427,45 @@ describe('ws-connector island change forwarding', () => {
       await settle()
     })
 
-    it('should forward only the first', () => {
+    it('should forward both and preserve the renewed credentials', () => {
+      expect(sent).toHaveLength(2)
+      expect(lastForwarded().message).toMatchObject({
+        $case: 'islandChanged',
+        islandChanged: { islandId: 'island-C7', connStr: 'b' }
+      })
+    })
+
+    it('should not count replacement credentials as a duplicate', () => {
+      expect(metrics.increment).not.toHaveBeenCalledWith('dcl_ws_connector_island_changed_deduplicated_total')
+    })
+  })
+
+  describe('when an identical assignment is repeated within the dedup window', () => {
+    beforeEach(async () => {
+      connectPeer(PEER, DESKTOP)
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+      await settle()
+    })
+
+    it('should forward only the accepted first assignment', () => {
       expect(sent).toHaveLength(1)
     })
 
-    it('should count the duplicate', () => {
+    it('should count the identical duplicate', () => {
       expect(metrics.increment).toHaveBeenCalledWith('dcl_ws_connector_island_changed_deduplicated_total')
     })
+  })
+
+  it.each([
+    { fromIslandId: 'previous-room' },
+    { peers: { other: { x: 1, y: 2, z: 3 } } }
+  ])('should forward changed assignment details with unchanged credentials: %j', async (details) => {
+    connectPeer(PEER, DESKTOP)
+    publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+    publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a', ...details })
+    await settle()
+    expect(sent).toHaveLength(2)
   })
 
   describe('when a different island follows within the window', () => {
@@ -452,17 +485,37 @@ describe('ws-connector island change forwarding', () => {
     })
   })
 
-  describe('when the same island is forwarded twice across the two subjects', () => {
+  describe('when identical assignments arrive across the two subjects', () => {
     beforeEach(async () => {
       connectPeer(PEER, DESKTOP)
       publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
-      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'b' })
+      publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'a' })
       await settle()
     })
 
     it('should forward only the first, since the legacy path is deduplicated too', () => {
       expect(sent).toHaveLength(1)
     })
+  })
+
+  it('should forward renewed same-room credentials across the two subjects', async () => {
+    connectPeer(PEER, DESKTOP)
+    publishIslandChangedTo(PEER, DESKTOP, { islandId: 'island-C7', connStr: 'a' })
+    publishIslandChanged(PEER, { islandId: 'island-C7', connStr: 'b' })
+    await settle()
+    expect(sent).toHaveLength(2)
+  })
+
+  it('should retain an accepted payload independently of the broker receive buffer', async () => {
+    const ws = connectPeer(PEER, DESKTOP)
+    const payload = IslandChangedMessage.encode({ islandId: 'island-C7', connStr: 'a', peers: {} }).finish()
+    publishRaw(PEER, payload)
+    const original = Uint8Array.from(payload)
+    payload.fill(0)
+    expect(ws.getUserData().lastIslandPayload).toEqual(original)
+    publishRaw(PEER, original)
+    await settle()
+    expect(sent).toHaveLength(1)
   })
 
   describe('when dedup is disabled', () => {
