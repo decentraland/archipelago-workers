@@ -35,7 +35,7 @@ info:
     1. **Connection Lifecycle**: When a client establishes a WebSocket connection, the service authenticates the peer and adds them to the active peer registry
     2. **Island Coordination**: The service receives island assignment updates over NATS from comms-gatekeeper whenever a peer's cluster changes, and forwards them to the client unchanged
     3. **Message Broadcasting**: Position updates, chat messages, and profile events are routed to all relevant peers based on their current island assignments
-    4. **Connection Monitoring**: The service tracks heartbeat messages to detect disconnected or inactive peers and removes them from the registry
+    4. **Connection Monitoring**: The server keeps each socket alive by pinging it, and a peer leaves the registry only when its socket closes. Client `heartbeat` messages are republished to NATS and are not used to detect or remove anyone; iteration 2 retires them, and `HEARTBEAT_FORWARDING_ENABLED=false` stops the republishing without affecting the session
     
     ### Authentication Flow
     
@@ -56,7 +56,7 @@ info:
     - **`challengeResponse`**: Server-provided cryptographic challenge
     - **`signedChallenge`**: Client-signed challenge with AuthChain
     - **`welcome`**: Server confirmation with assigned peer ID
-    - **`heartbeat`**: Periodic client position reports
+    - **`heartbeat`**: Periodic client position reports. Accepted but no longer required, and retired in iteration 2
     - **`kicked`**: Disconnection notification (e.g., due to new session)
     
     Authenticated peers receive real-time messages for position updates, profile changes, chat messages, and island assignment notifications as they move through Decentraland's metaverse.
@@ -186,10 +186,10 @@ paths:
         - `challengeResponse`: Server-provided challenge
         - `signedChallenge`: Client-provided signed challenge with AuthChain
         - `welcome`: Server confirmation with assigned peer ID
-        - `heartbeat`: Periodic client position reports
+        - `heartbeat`: Periodic client position reports (accepted, not required; retired in iteration 2)
         - `kicked`: Disconnection notification
 
-        **Connection liveness:** the server pings idle sockets, so clients do not need to send anything to stay connected.
+        **Connection liveness:** the server pings idle sockets, so clients do not need to send anything to stay connected. A `heartbeat` is republished to NATS and nothing more — it neither keeps the session alive nor ends it. `HEARTBEAT_FORWARDING_ENABLED=false` stops that republishing; the packet is still accepted, so clients on older builds are unaffected.
 
         Once authenticated, the peer receives real-time updates about island assignments, nearby peers, and position changes as they move through Decentraland's metaverse.
       operationId: connectWebSocket
