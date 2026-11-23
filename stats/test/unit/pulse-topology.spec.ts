@@ -11,20 +11,14 @@ import { coreStatusHandler } from '../../src/controllers/handlers/core-status-ha
 /**
  * Iteration 1 of the Archipelago => Pulse migration: Pulse publishes engine.islands and
  * engine.discovery in core's place. Cluster IDs read C{n} and max_peers is 0 because
- * clusters are uncapped. These tests pin that wire contract through real protobuf bytes.
+ * clusters are uncapped. These tests pin what stats makes of that feed.
+ *
+ * The frozen-wire-bytes pins that needed nothing but the generated codec moved to
+ * `ws-connector/test/contract/pulse-wire.spec.ts`, because iteration 2 deletes this workspace and
+ * the wire contract outlives it. What is left here goes through stats' own decode and handlers,
+ * and goes away with them.
  */
 describe('pulse-published topology', () => {
-  /**
-   * Frozen wire bytes, hand-checked against archipelago.proto field numbers. Encoding and
-   * decoding with the same generated module only proves the build round-trips; these literals
-   * pin the bytes, so a regeneration that renumbers a field fails here instead of silently
-   * zeroing `currentTime` (permanently unhealthy `/core-status`) or dropping every island.
-   *
-   * `08 80f4a9d2f933` is protocol#453's guarantee on the wire: current_time as a uint64
-   * varint, wide enough for epoch milliseconds.
-   */
-  const DISCOVERY_WIRE = Buffer.from('0a0570756c736512120880f4a9d2f933120761626331323334182a', 'hex')
-
   /** Note the absence of field 3 (max_peers): proto3 omits zero, which is what Pulse sends. */
   const ISLANDS_WIRE = Buffer.from(
     '0a290a02433112063078303030311206307830303032220a0d000020411d0000a041290000000000002e40',
@@ -32,15 +26,6 @@ describe('pulse-published topology', () => {
   )
 
   describe('when decoding frozen wire bytes', () => {
-    it('should read the discovery heartbeat Pulse actually sends', () => {
-      const decoded = ServiceDiscoveryMessage.decode(DISCOVERY_WIRE)
-
-      expect(decoded.serverName).toEqual('pulse')
-      expect(decoded.status!.currentTime).toEqual(1785000000000)
-      expect(decoded.status!.commitHash).toEqual('abc1234')
-      expect(decoded.status!.userCount).toEqual(42)
-    })
-
     it('should read an islands snapshot with an omitted zero maxPeers', () => {
       const report = decodeIslandsReport(ISLANDS_WIRE)
 
@@ -53,15 +38,6 @@ describe('pulse-published topology', () => {
           radius: 15
         }
       ])
-    })
-
-    it('should still agree with what this build encodes', () => {
-      const encoded = ServiceDiscoveryMessage.encode({
-        serverName: 'pulse',
-        status: { currentTime: 1785000000000, commitHash: 'abc1234', userCount: 42 }
-      }).finish()
-
-      expect(Buffer.from(encoded).toString('hex')).toEqual(DISCOVERY_WIRE.toString('hex'))
     })
   })
 
