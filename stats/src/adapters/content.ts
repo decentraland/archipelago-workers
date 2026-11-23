@@ -23,19 +23,13 @@ export async function createContentComponent(
   }
 
   function calculateThumbnail(scene: Entity): string | undefined {
-    let thumbnail: string | undefined = scene.metadata?.display?.navmapThumbnail
-    if (thumbnail && !thumbnail.startsWith('http')) {
-      // We are assuming that the thumbnail is an uploaded file. We will try to find the matching hash
-
-      const thumbnailHash = scene.content?.find(({ file }) => file === thumbnail)?.hash
-      if (thumbnailHash) {
-        thumbnail = `${url}/contents/${thumbnailHash}`
-      } else {
-        // If we couldn't find a file with the correct path, then we ignore whatever was set on the thumbnail property
-        thumbnail = undefined
-      }
+    const thumbnail: unknown = scene.metadata?.display?.navmapThumbnail
+    if (!thumbnail || typeof thumbnail !== 'string') {
+      return undefined
     }
-    return thumbnail
+    // Only serve thumbnails stored with the scene
+    const thumbnailHash = scene.content?.find(({ file }) => file === thumbnail)?.hash
+    return thumbnailHash ? `${url}/contents/${thumbnailHash}` : undefined
   }
 
   return {
