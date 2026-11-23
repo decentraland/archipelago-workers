@@ -14,6 +14,7 @@ export async function createContentComponent(
   const { config, fetch } = components
   const url = (await config.getString('CONTENT_URL')) || 'https://peer.decentraland.org/content/'
   const contentClient = createContentClient({ url, fetcher: fetch })
+  const contentsBaseUrl = url.replace(/\/+$/, '')
 
   function fetchScenes(tiles: string[]): Promise<Entity[]> {
     if (tiles.length === 0) {
@@ -24,12 +25,12 @@ export async function createContentComponent(
 
   function calculateThumbnail(scene: Entity): string | undefined {
     const thumbnail: unknown = scene.metadata?.display?.navmapThumbnail
-    if (!thumbnail || typeof thumbnail !== 'string') {
+    if (typeof thumbnail !== 'string') {
       return undefined
     }
     // Only serve thumbnails stored with the scene
     const thumbnailHash = scene.content?.find(({ file }) => file === thumbnail)?.hash
-    return thumbnailHash ? `${url}/contents/${thumbnailHash}` : undefined
+    return thumbnailHash ? `${contentsBaseUrl}/contents/${thumbnailHash}` : undefined
   }
 
   return {

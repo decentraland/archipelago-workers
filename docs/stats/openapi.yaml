@@ -599,7 +599,7 @@ components:
             description: List of parcel coordinates
           thumbnail:
             type: string
-            description: Scene thumbnail URL
+            description: Content server URL of the scene's thumbnail file. Omitted when the navmap thumbnail is not a file included in the scene.
           projectId:
             type: string
             description: Project ID

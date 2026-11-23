@@ -63,20 +63,18 @@ describe('when calculating the thumbnail of a scene', () => {
       scene.metadata.display.navmapThumbnail = 'https://images.example.com/thumbnail.png'
     })
 
-    describe('and no file of the scene has that name', () => {
-      it('should return undefined', () => {
-        expect(content.calculateThumbnail(scene)).toBeUndefined()
-      })
+    it('should return undefined', () => {
+      expect(content.calculateThumbnail(scene)).toBeUndefined()
+    })
+  })
+
+  describe('and the navmap thumbnail is an empty string', () => {
+    beforeEach(() => {
+      scene.metadata.display.navmapThumbnail = ''
     })
 
-    describe('and a file of the scene has that name', () => {
-      beforeEach(() => {
-        scene.content = [{ file: 'https://images.example.com/thumbnail.png', hash: 'bafkreiurlnamed' }]
-      })
-
-      it('should return the content server URL of the file', () => {
-        expect(content.calculateThumbnail(scene)).toEqual('https://peer.example.org/content/contents/bafkreiurlnamed')
-      })
+    it('should return undefined', () => {
+      expect(content.calculateThumbnail(scene)).toBeUndefined()
     })
   })
 
@@ -98,6 +96,20 @@ describe('when calculating the thumbnail of a scene', () => {
 
     it('should return undefined', () => {
       expect(content.calculateThumbnail(scene)).toBeUndefined()
+    })
+  })
+
+  describe('and the content URL ends with a slash', () => {
+    beforeEach(async () => {
+      content = await createContentComponent({
+        config: createConfigComponent({ CONTENT_URL: 'https://peer.example.org/content/' }),
+        fetch: { fetch: jest.fn() } as any
+      })
+      scene.metadata.display.navmapThumbnail = 'thumbnail.png'
+    })
+
+    it('should return the content server URL of the file without a double slash', () => {
+      expect(content.calculateThumbnail(scene)).toEqual('https://peer.example.org/content/contents/bafkreithumbnail')
     })
   })
 })
